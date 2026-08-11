@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import {
   ShoppingCart, X, ChevronDown, Plus, Minus, Trash2,
-  User, LogOut, Menu, Heart, Tag, Leaf, Truck, Star
+  User, LogOut, Menu, Heart, Tag, Leaf, Truck, Star,
+  LeafyGreen,
+  GemIcon, Sprout,
 } from "lucide-react";
+import { SignpostBig } from "./components/icons/SignpostBig";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -285,15 +288,20 @@ export default function App() {
               onClick={() => selectCategory("todos")}
               className="flex items-baseline gap-1.5 group"
             >
-              <span className="font-serif text-2xl font-bold text-primary leading-none">Brechó</span>
-              <span className="font-serif text-2xl font-normal text-foreground/70 leading-none italic">Chic</span>
+              <span className="font-cloister text-3xl font-bold text-primary leading-none">Holy War</span>
+              <span className="font-serif text-4xl font-normal text-foreground/70 leading-none italic">7</span>
             </button>
 
             {/* Desktop nav */}
             <nav className="hidden md:flex items-center gap-7">
               <button
-                onClick={() => selectCategory("todos")}
-                className={`text-sm font-medium transition-colors hover:text-primary ${activeCategory === "todos" ? "text-primary" : ""}`}
+                onClick={() => {
+                  window.scrollTo({
+                    top: 0,
+                  });
+                }}
+                className={`text-sm font-medium cursor-pointer transition-colors hover:text-primary ${activeCategory === "todos" ? "text-primary" : ""
+                  }`}
               >
                 Início
               </button>
@@ -302,7 +310,7 @@ export default function App() {
               <div className="relative" ref={dropdownRef}>
                 <button
                   onClick={() => setCatDropdownOpen((v) => !v)}
-                  className="flex items-center gap-1 text-sm font-medium hover:text-primary transition-colors"
+                  className="flex items-center gap-1 text-sm font-medium cursor-pointer hover:text-primary transition-colors"
                 >
                   Categorias
                   <ChevronDown
@@ -315,9 +323,8 @@ export default function App() {
                       <button
                         key={cat.value}
                         onClick={() => selectCategory(cat.value)}
-                        className={`w-full text-left px-4 py-2.5 text-sm transition-colors hover:bg-muted ${
-                          activeCategory === cat.value ? "text-primary font-medium bg-muted" : ""
-                        }`}
+                        className={`w-full text-left px-4 py-2.5 text-sm cursor-pointer transition-colors hover:bg-muted ${activeCategory === cat.value ? "text-primary font-medium bg-muted" : ""
+                          }`}
                       >
                         {cat.label}
                       </button>
@@ -391,7 +398,7 @@ export default function App() {
                 onClick={() => selectCategory("todos")}
                 className="w-full text-left px-3 py-2.5 text-sm font-medium rounded-lg hover:bg-muted"
               >
-                Início
+                <a href="#home">Início</a>
               </button>
               <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Categorias
@@ -400,9 +407,8 @@ export default function App() {
                 <button
                   key={cat.value}
                   onClick={() => selectCategory(cat.value)}
-                  className={`w-full text-left px-3 py-2.5 text-sm rounded-lg transition-colors ${
-                    activeCategory === cat.value ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
-                  }`}
+                  className={`w-full text-left px-3 py-2.5 text-sm rounded-lg transition-colors ${activeCategory === cat.value ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted"
+                    }`}
                 >
                   {cat.label}
                 </button>
@@ -437,11 +443,11 @@ export default function App() {
 
       {/* ── Banner strip ───────────────────────────────────────────────────── */}
       <div className="bg-primary text-primary-foreground py-2.5 text-center text-xs font-medium tracking-wide flex items-center justify-center gap-6">
-        <span className="flex items-center gap-1.5"><Leaf className="w-3.5 h-3.5" /> Moda sustentável</span>
+        <span className="flex items-center gap-1.5"><SignpostBig className="w-4 h-4" /> FÉ</span>
         <span className="opacity-40">·</span>
-        <span className="flex items-center gap-1.5"><Star className="w-3.5 h-3.5" /> Peças únicas selecionadas</span>
+        <span className="flex items-center gap-1.5"><Truck className="w-4.5 h-4.5" /> Frete grátis acima de R$200,00</span>
         <span className="opacity-40">·</span>
-        <span className="flex items-center gap-1.5"><Truck className="w-3.5 h-3.5" /> Entrega para todo o Brasil</span>
+        <span className="flex items-center gap-1.5">Propósito <Sprout className="w-4 h-4" /></span>
       </div>
 
       {/* ── Main layout ────────────────────────────────────────────────────── */}
@@ -454,18 +460,17 @@ export default function App() {
               {/* Size filter */}
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
-                  <Tag className="w-3.5 h-3.5" /> Tamanho
+                  <Tag className="w-3.5 h-3.5" /> Tamanhos
                 </h3>
                 <div className="grid grid-cols-3 gap-2">
                   {ALL_SIZES.map((size) => (
                     <button
                       key={size}
                       onClick={() => toggleSize(size)}
-                      className={`h-10 rounded-lg text-sm font-semibold border-2 transition-all duration-150 ${
-                        selectedSizes.includes(size)
-                          ? "bg-primary text-primary-foreground border-primary scale-95 shadow-sm"
-                          : "bg-card text-foreground border-border hover:border-primary/50 hover:bg-muted"
-                      }`}
+                      className={`h-10 rounded-lg text-sm font-semibold border-2 transition-all duration-150 ${selectedSizes.includes(size)
+                        ? "bg-primary text-primary-foreground border-primary scale-95 shadow-sm"
+                        : "bg-card text-foreground border-border hover:border-primary/50 hover:bg-muted"
+                        }`}
                     >
                       {size}
                     </button>
@@ -489,11 +494,10 @@ export default function App() {
                 <div className="space-y-0.5">
                   <button
                     onClick={() => setActiveCategory("todos")}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
-                      activeCategory === "todos"
-                        ? "bg-primary/10 text-primary font-medium"
-                        : "hover:bg-muted text-foreground"
-                    }`}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${activeCategory === "todos"
+                      ? "bg-primary/10 text-primary font-medium"
+                      : "hover:bg-muted text-foreground"
+                      }`}
                   >
                     Todos
                   </button>
@@ -501,11 +505,10 @@ export default function App() {
                     <button
                       key={cat.value}
                       onClick={() => setActiveCategory(cat.value)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${
-                        activeCategory === cat.value
-                          ? "bg-primary/10 text-primary font-medium"
-                          : "hover:bg-muted text-foreground"
-                      }`}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-all ${activeCategory === cat.value
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "hover:bg-muted text-foreground"
+                        }`}
                     >
                       {cat.label}
                     </button>
@@ -535,11 +538,10 @@ export default function App() {
                   <button
                     key={size}
                     onClick={() => toggleSize(size)}
-                    className={`h-8 px-2.5 rounded-md text-xs font-semibold border transition-all ${
-                      selectedSizes.includes(size)
-                        ? "bg-primary text-primary-foreground border-primary"
-                        : "border-border hover:border-primary/50"
-                    }`}
+                    className={`h-8 px-2.5 rounded-md text-xs font-semibold border transition-all ${selectedSizes.includes(size)
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border hover:border-primary/50"
+                      }`}
                   >
                     {size}
                   </button>
@@ -586,19 +588,19 @@ export default function App() {
           <div className="grid md:grid-cols-3 gap-10">
             <div>
               <div className="flex items-baseline gap-1.5 mb-3">
-                <span className="font-serif text-xl font-bold text-primary">Brechó</span>
-                <span className="font-serif text-xl font-normal text-foreground/60 italic">Chic</span>
+                <span className="font-cloister text-xl font-bold text-primary leading-none">Holy War</span>
+                <span className="font-serif text-x2 font-normal text-foreground/60 italic leading-none">7</span>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Moda sustentável e acessível. Peças únicas com história, cuidadosamente selecionadas para você.
+                Vestindo fé. Carregando propósito.
               </p>
             </div>
             <div>
               <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Contato</h4>
               <ul className="space-y-2 text-sm text-foreground/80">
-                <li>📍 São Paulo, SP — Brasil</li>
-                <li>✉️ contato@brechochic.com.br</li>
-                <li>📱 (11) 99999-9999</li>
+                <li>📍 Curitiba, PR — Brasil</li>
+                <li>✉️ contato@holywar7.com.br</li>
+                <li>📱 (41) 99999-9999</li>
               </ul>
             </div>
             <div>
@@ -611,7 +613,7 @@ export default function App() {
             </div>
           </div>
           <div className="mt-10 pt-6 border-t border-border text-xs text-muted-foreground text-center">
-            © 2025 Brechó Chic. Todos os direitos reservados. Feito com ♡ e sustentabilidade.
+            © 2026 Holy War 7 - Todos os direitos reservados.
           </div>
         </div>
       </footer>
@@ -705,11 +707,10 @@ function ProductCard({
             <button
               key={size}
               onClick={() => setSelectedSize((s) => (s === size ? null : size))}
-              className={`text-xs px-2 py-1 rounded-md border font-medium transition-all ${
-                selectedSize === size
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "border-border hover:border-primary/40 hover:bg-muted"
-              }`}
+              className={`text-xs px-2 py-1 rounded-md border font-medium transition-all ${selectedSize === size
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-border hover:border-primary/40 hover:bg-muted"
+                }`}
             >
               {size}
             </button>
@@ -720,13 +721,12 @@ function ProductCard({
         <button
           onClick={handleAdd}
           disabled={!selectedSize}
-          className={`mt-auto w-full py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${
-            added
-              ? "bg-accent text-accent-foreground"
-              : selectedSize
+          className={`mt-auto w-full py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${added
+            ? "bg-accent text-accent-foreground"
+            : selectedSize
               ? "bg-primary text-primary-foreground hover:opacity-90 active:scale-95"
               : "bg-muted text-muted-foreground cursor-not-allowed"
-          }`}
+            }`}
         >
           {added ? "✓ Adicionado!" : selectedSize ? "Adicionar ao carrinho" : "Selecione o tamanho"}
         </button>
@@ -1029,8 +1029,8 @@ function AuthModal({
               {loading
                 ? "Aguarde..."
                 : mode === "login"
-                ? "Entrar"
-                : "Criar conta"}
+                  ? "Entrar"
+                  : "Criar conta"}
             </button>
 
             <p className="text-center text-xs text-muted-foreground pt-1">
