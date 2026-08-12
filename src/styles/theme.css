@@ -43,41 +43,44 @@
   --sidebar-ring: #C4573C;
 }
 
-.dark {
-  --background: #1A0F07;
-  --foreground: #F5EFE6;
-  --card: #231508;
-  --card-foreground: #F5EFE6;
-  --popover: #231508;
-  --popover-foreground: #F5EFE6;
-  --primary: #E07A5F;
-  --primary-foreground: #FFFFFF;
-  --secondary: #3A2518;
-  --secondary-foreground: #F5EFE6;
-  --muted: #2E1C10;
-  --muted-foreground: #B09A88;
-  --accent: #7FA860;
-  --accent-foreground: #FFFFFF;
-  --destructive: #E05270;
+:root {
+  --font-size: 16px;
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-serif: "Playfair Display", Georgia, serif;
+  --background: #0D0D0D;
+  --foreground: #F5F2EB;
+  --card: #171717;
+  --card-foreground: #F5F2EB;
+  --popover: #171717;
+  --popover-foreground: #F5F2EB;
+  --primary: #C9A227;
+  --primary-foreground: #0D0D0D;
+  --secondary: #242424;
+  --secondary-foreground: #F5F2EB;
+  --muted: #1D1D1D;
+  --muted-foreground: #B9B2A6;
+  --accent: #D4AF37;
+  --accent-foreground: #0D0D0D;
+  --destructive: #C94C4C;
   --destructive-foreground: #FFFFFF;
-  --border: rgba(245, 239, 230, 0.12);
-  --input: rgba(245, 239, 230, 0.08);
-  --ring: #E07A5F;
+  --border: rgba(201, 162, 39, 0.18);
+  --input: rgba(255, 255, 255, 0.05);
+  --ring: #D4AF37;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --chart-1: #E07A5F;
-  --chart-2: #7FA860;
-  --chart-3: #C4A98C;
-  --chart-4: #E8A87C;
-  --chart-5: #8B9E6D;
-  --sidebar: #1E1208;
-  --sidebar-foreground: #F5EFE6;
-  --sidebar-primary: #E07A5F;
-  --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #2E1C10;
-  --sidebar-accent-foreground: #F5EFE6;
-  --sidebar-border: rgba(245, 239, 230, 0.12);
-  --sidebar-ring: #E07A5F;
+  --chart-1: #C9A227;
+  --chart-2: #D4AF37;
+  --chart-3: #A67C00;
+  --chart-4: #8A8A8A;
+  --chart-5: #5C5C5C;
+  --sidebar: #111111;
+  --sidebar-foreground: #F5F2EB;
+  --sidebar-primary: #C9A227;
+  --sidebar-primary-foreground: #0D0D0D;
+  --sidebar-accent: #1E1E1E;
+  --sidebar-accent-foreground: #F5F2EB;
+  --sidebar-border: rgba(201, 162, 39, 0.18);
+  --sidebar-ring: #D4AF37;
 }
 
 @theme inline {

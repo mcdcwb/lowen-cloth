@@ -3,7 +3,7 @@ import {
   ShoppingCart, X, ChevronDown, Plus, Minus, Trash2,
   User, LogOut, Menu, Heart, Tag, Leaf, Truck, Star,
   LeafyGreen,
-  GemIcon, Sprout,
+  GemIcon, Sprout, MessageCircle
 } from "lucide-react";
 import { SignpostBig } from "./components/icons/SignpostBig";
 
@@ -47,6 +47,10 @@ const CATEGORIES: { value: Category; label: string }[] = [
   { value: "unissex", label: "Unissex" },
   { value: "infantil", label: "Infantil" },
 ];
+
+const clearCart = () => {
+  setItems([]);
+};
 
 const PRODUCTS: Product[] = [
   {
@@ -240,6 +244,10 @@ export default function App() {
     setCartItems((prev) => prev.filter((i) => !(i.product.id === productId && i.size === size)));
   }
 
+  function clearCart() {
+    setCartItems([]);
+  }
+
   function changeQty(productId: number, size: Size, delta: number) {
     setCartItems((prev) =>
       prev
@@ -284,11 +292,14 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <button
-              onClick={() => selectCategory("todos")}
+            <button onClick={() => {
+              window.scrollTo({
+                top: 0,
+              });
+            }}
               className="flex items-baseline gap-1.5 group"
             >
-              <span className="font-cloister text-3xl font-bold text-primary leading-none">Holy War</span>
+              <span className="font-cloister text-3xl font-bold text-primary leading-none tracking-widest">Holy War</span>
               <span className="font-serif text-4xl font-normal text-foreground/70 leading-none italic">7</span>
             </button>
 
@@ -340,6 +351,9 @@ export default function App() {
                 Contato
               </a>
             </nav>
+
+
+
 
             {/* Right actions */}
             <div className="flex items-center gap-2">
@@ -398,7 +412,7 @@ export default function App() {
                 onClick={() => selectCategory("todos")}
                 className="w-full text-left px-3 py-2.5 text-sm font-medium rounded-lg hover:bg-muted"
               >
-                <a href="#home">Início</a>
+                <a href="#home">Todas as Peças</a>
               </button>
               <div className="px-3 pt-2 pb-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
                 Categorias
@@ -441,13 +455,46 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── Banner strip ───────────────────────────────────────────────────── */}
-      <div className="bg-primary text-primary-foreground py-2.5 text-center text-xs font-medium tracking-wide flex items-center justify-center gap-6">
-        <span className="flex items-center gap-1.5"><SignpostBig className="w-4 h-4" /> FÉ</span>
-        <span className="opacity-40">·</span>
-        <span className="flex items-center gap-1.5"><Truck className="w-4.5 h-4.5" /> Frete grátis acima de R$200,00</span>
-        <span className="opacity-40">·</span>
-        <span className="flex items-center gap-1.5">Propósito <Sprout className="w-4 h-4" /></span>
+      {/* Desktop */}
+      <div className="hidden sm:grid bg-primary text-primary-foreground px-3 py-2.5 text-xs font-medium tracking-wide grid-cols-[1fr_auto_1fr_auto_1fr] items-center">
+        <span className="flex items-center gap-1.5 justify-self-start">
+          <SignpostBig className="w-4 h-4" />
+          Fé
+        </span>
+
+        <span className="opacity-80 justify-self-center px-4">
+          ·
+        </span>
+
+        <span className="flex items-center text-base gap-1.5 justify-self-center">
+          <Truck className="w-[18px] h-[18px]" />
+          Frete grátis acima de R$200,00
+        </span>
+
+        <span className="opacity-80 justify-self-center px-4">
+          ·
+        </span>
+
+        <span className="flex items-center gap-1.5 justify-self-end">
+          Propósito
+          <Sprout className="w-4 h-4" />
+        </span>
+      </div>
+
+      {/* Mobile */}
+      <div className="flex sm:hidden bg-primary text-primary-foreground px-3 py-2.5 text-xs font-medium tracking-wide items-center justify-center gap-12">
+        <span className="opacity-80 px-2">
+          ·
+        </span>
+
+        <span className="flex items-center text-sm gap-1.5">
+          <Truck className="w-[18px] h-[18px]" />
+          Frete grátis acima de R$200,00
+        </span>
+
+        <span className="opacity-80 px-2">
+          ·
+        </span>
       </div>
 
       {/* ── Main layout ────────────────────────────────────────────────────── */}
@@ -588,7 +635,7 @@ export default function App() {
           <div className="grid md:grid-cols-3 gap-10">
             <div>
               <div className="flex items-baseline gap-1.5 mb-3">
-                <span className="font-cloister text-xl font-bold text-primary leading-none">Holy War</span>
+                <span className="font-cloister text-xl font-bold text-primary leading-none tracking-widest">Holy War</span>
                 <span className="font-serif text-x2 font-normal text-foreground/60 italic leading-none">7</span>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">
@@ -627,8 +674,21 @@ export default function App() {
           onClose={() => setCartOpen(false)}
           onRemove={removeFromCart}
           onChangeQty={changeQty}
+          onClearCart={clearCart}
           onOpenAuth={() => { setCartOpen(false); setAuthMode("login"); setAuthOpen(true); }}
         />
+      )}
+
+      {!cartOpen && (
+        <a
+          href="https://wa.me/5541999999999"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Falar conosco pelo WhatsApp"
+          className="fixed bottom-5 right-5 z-50 flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[#25D366] text-white shadow-lg hover:scale-105 hover:shadow-x1 active:scale-95 transition-all"
+        >
+          <MessageCircle className="w-7 h-7 sm:w-8 sm:h-8" />
+        </a>
       )}
 
       {/* ── Auth Modal ─────────────────────────────────────────────────────── */}
@@ -744,6 +804,7 @@ function CartDrawer({
   onClose,
   onRemove,
   onChangeQty,
+  onClearCart,
   onOpenAuth,
 }: {
   items: CartItem[];
@@ -753,6 +814,7 @@ function CartDrawer({
   onRemove: (id: number, size: Size) => void;
   onChangeQty: (id: number, size: Size, delta: number) => void;
   onOpenAuth: () => void;
+  onClearCart: () => void;
 }) {
   // Trap focus, close on ESC
   useEffect(() => {
@@ -867,6 +929,12 @@ function CartDrawer({
         {/* Footer */}
         {items.length > 0 && (
           <div className="border-t border-border px-5 py-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <button onClick={onClearCart} className="flex items-center gap-3 py-0 px-0 rounded-x1 border-border text-sm text-destructive font-medium hover:bg-muted transition-colors">
+                <Trash2 className="w-4 h-4" />
+                Limpar Carrinho
+              </button>
+            </div>
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">Subtotal</span>
               <span className="font-bold text-lg text-foreground">{formatPrice(totalPrice)}</span>
@@ -983,7 +1051,7 @@ function AuthModal({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Maria Silva"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
+                  className="w-full px-3.5 py-2.5 rounded-xl text-black bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
                   required
                 />
               </div>
@@ -998,7 +1066,7 @@ function AuthModal({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu@email.com"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
+                className="w-full px-3.5 py-2.5 rounded-xl text-black bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
                 required
               />
             </div>
@@ -1012,7 +1080,7 @@ function AuthModal({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 rounded-xl bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
+                className="w-full px-3.5 py-2.5 rounded-xl text-black bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
                 required
               />
             </div>
