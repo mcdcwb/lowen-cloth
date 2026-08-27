@@ -1,0 +1,12 @@
+node_modules/
+
+# Environment variables
+.env
+
+# Generated Prisma Client
+/src/generated/prisma
+
+# AI agent skills
+/.agents/
+/.claude/
+/.windsurf/
