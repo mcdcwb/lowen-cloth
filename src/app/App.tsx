@@ -6,6 +6,10 @@ import {
   GemIcon, Sprout, MessageCircle
 } from "lucide-react";
 import { SignpostBig } from "./components/icons/SignpostBig";
+import leaoBarrocoAmbas from "./components/img/products/leao-barroco/leao barroco - ambas.png";
+import leaoBarrocoCostas from "./components/img/products/leao-barroco/leao barroco - costas.png";
+import leaoBarrocoDetails from "./components/img/products/leao-barroco/leao barroco - details.png";
+import leaoBarrocoFrente from "./components/img/products/leao-barroco/leao barroco - frente.png";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -19,7 +23,12 @@ interface Product {
   sizes: Size[];
   category: Category;
   imageUrl: string;
+  images?: string[];
   badge?: string;
+  color: {
+    name: string;
+    value: string;
+  };
 }
 
 interface CartItem {
@@ -54,13 +63,24 @@ const clearCart = () => {
 
 const PRODUCTS: Product[] = [
   {
+    id: 0,
+    name: "Camiseta Leão Barroco",
+    price: 180.0,
+    sizes: ["P", "M", "G"],
+    category: "unissex",
+    imageUrl: leaoBarrocoFrente,
+    images: [leaoBarrocoFrente, leaoBarrocoCostas, leaoBarrocoDetails, leaoBarrocoAmbas],
+    badge: "PREMIUM",
+    color: { name: "Offwhite", value: "#f4efe8" },
+  },
+  {
     id: 1,
     name: "Camiseta polo masculina azul marinho",
     price: 45.0,
     sizes: ["M", "G", "GG"],
     category: "masculino",
     imageUrl: "https://images.unsplash.com/photo-1625910513413-c23b8bb81cba?w=480&h=600&fit=crop&auto=format",
-    badge: "Destaque",
+    color: { name: "Azul marinho", value: "#1d4f91" },
   },
   {
     id: 2,
@@ -69,7 +89,7 @@ const PRODUCTS: Product[] = [
     sizes: ["P", "M"],
     category: "feminino",
     imageUrl: "https://images.unsplash.com/photo-1502868354157-ec2edd2a1651?w=480&h=600&fit=crop&auto=format",
-    badge: "Novo",
+    color: { name: "Rosa", value: "#d0a8a4" },
   },
   {
     id: 3,
@@ -78,6 +98,7 @@ const PRODUCTS: Product[] = [
     sizes: ["M", "G", "GG"],
     category: "unissex",
     imageUrl: "https://images.unsplash.com/photo-1555583743-991174c11425?w=480&h=600&fit=crop&auto=format",
+    color: { name: "Azul denim", value: "#6d8aa5" },
   },
   {
     id: 4,
@@ -86,6 +107,7 @@ const PRODUCTS: Product[] = [
     sizes: ["PP", "P"],
     category: "infantil",
     imageUrl: "https://images.unsplash.com/photo-1604303768345-038b79a8c47a?w=480&h=600&fit=crop&auto=format",
+    color: { name: "Terracota", value: "#d78b5c" },
   },
   {
     id: 5,
@@ -94,6 +116,7 @@ const PRODUCTS: Product[] = [
     sizes: ["P", "M", "G"],
     category: "masculino",
     imageUrl: "https://images.unsplash.com/photo-1586363104862-3a5e2ab60d99?w=480&h=600&fit=crop&auto=format",
+    color: { name: "Oliva", value: "#7b8a62" },
   },
   {
     id: 6,
@@ -102,7 +125,7 @@ const PRODUCTS: Product[] = [
     sizes: ["PP", "P", "M"],
     category: "feminino",
     imageUrl: "https://images.unsplash.com/photo-1671848633245-79cc98b0dbe8?w=480&h=600&fit=crop&auto=format",
-    badge: "Raro",
+    color: { name: "Coral", value: "#d88d80" },
   },
   {
     id: 7,
@@ -111,6 +134,7 @@ const PRODUCTS: Product[] = [
     sizes: ["M", "G", "GG"],
     category: "unissex",
     imageUrl: "https://images.unsplash.com/photo-1564557287817-3785e38ec1f5?w=480&h=600&fit=crop&auto=format",
+    color: { name: "Cinza", value: "#a9a9a7" },
   },
   {
     id: 8,
@@ -119,6 +143,7 @@ const PRODUCTS: Product[] = [
     sizes: ["PP", "P"],
     category: "infantil",
     imageUrl: "https://images.unsplash.com/photo-1604482858862-1db908a653e4?w=480&h=600&fit=crop&auto=format",
+    color: { name: "Vermelho", value: "#d84d4d" },
   },
   {
     id: 9,
@@ -127,7 +152,7 @@ const PRODUCTS: Product[] = [
     sizes: ["P", "M", "G"],
     category: "unissex",
     imageUrl: "https://images.unsplash.com/photo-1741941171881-40832346c7fe?w=480&h=600&fit=crop&auto=format",
-    badge: "Único",
+    color: { name: "Azul escuro", value: "#4d648a" },
   },
   {
     id: 10,
@@ -136,6 +161,7 @@ const PRODUCTS: Product[] = [
     sizes: ["PP", "P"],
     category: "infantil",
     imageUrl: "https://images.unsplash.com/photo-1502451885777-16c98b07834a?w=480&h=600&fit=crop&auto=format",
+    color: { name: "Rosa pastel", value: "#f7b5b7" },
   },
   {
     id: 11,
@@ -144,6 +170,7 @@ const PRODUCTS: Product[] = [
     sizes: ["P", "M", "G"],
     category: "feminino",
     imageUrl: "https://images.unsplash.com/photo-1508216310976-c518daae0cdc?w=480&h=600&fit=crop&auto=format",
+    color: { name: "Branco", value: "#f7f2ec" },
   },
   {
     id: 12,
@@ -152,6 +179,7 @@ const PRODUCTS: Product[] = [
     sizes: ["M", "G", "GG"],
     category: "masculino",
     imageUrl: "https://images.unsplash.com/photo-1625910513413-c23b8bb81cba?w=480&h=600&fit=crop&auto=format&sat=-80",
+    color: { name: "Preto", value: "#1d1d1d" },
   },
 ];
 
@@ -186,6 +214,9 @@ export default function App() {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [catDropdownOpen, setCatDropdownOpen] = useState(false);
+  const [featuredIndex, setFeaturedIndex] = useState(0);
+  const [isFeaturedHovering, setIsFeaturedHovering] = useState(false);
+  const [detailProduct, setDetailProduct] = useState<Product | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Load persisted state
@@ -285,6 +316,85 @@ export default function App() {
       ? "Todas as Peças"
       : CATEGORIES.find((c) => c.value === activeCategory)?.label ?? "";
 
+  const featuredProducts = PRODUCTS.slice(0, 4);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const productId = params.get("productId");
+
+    if (!productId) {
+      setDetailProduct(null);
+      return;
+    }
+
+    const found = PRODUCTS.find((item) => item.id === Number(productId));
+    setDetailProduct(found ?? null);
+  }, []);
+
+  useEffect(() => {
+    if (isFeaturedHovering) return;
+
+    const interval = window.setInterval(() => {
+      setFeaturedIndex((prev) => (prev + 1) % featuredProducts.length);
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [featuredProducts.length, isFeaturedHovering]);
+
+  const goToFeaturedSlide = (direction: "prev" | "next") => {
+    setFeaturedIndex((prev) => {
+      if (direction === "next") {
+        return (prev + 1) % featuredProducts.length;
+      }
+      return (prev - 1 + featuredProducts.length) % featuredProducts.length;
+    });
+  };
+
+  if (detailProduct) {
+    return (
+      <>
+        <ProductDetailPage
+          product={detailProduct}
+          user={user}
+          totalItems={totalItems}
+          onBack={() => {
+            setDetailProduct(null);
+            window.history.replaceState({}, "", window.location.pathname);
+          }}
+          onOpenAuth={() => {
+            setAuthMode("login");
+            setAuthOpen(true);
+          }}
+          onLogout={handleLogout}
+          onOpenCart={() => setCartOpen(true)}
+          onAddToCart={addToCart}
+        />
+
+        {cartOpen && (
+          <CartDrawer
+            items={cartItems}
+            totalPrice={totalPrice}
+            user={user}
+            onClose={() => setCartOpen(false)}
+            onRemove={removeFromCart}
+            onChangeQty={changeQty}
+            onClearCart={clearCart}
+            onOpenAuth={() => { setCartOpen(false); setAuthMode("login"); setAuthOpen(true); }}
+          />
+        )}
+
+        {authOpen && (
+          <AuthModal
+            mode={authMode}
+            onClose={() => setAuthOpen(false)}
+            onLogin={handleLogin}
+            onSwitchMode={() => setAuthMode((m) => (m === "login" ? "register" : "login"))}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">
       {/* ── Header ─────────────────────────────────────────────────────────── */}
@@ -299,8 +409,7 @@ export default function App() {
             }}
               className="flex items-baseline gap-1.5 group"
             >
-              <span className="font-cloister text-3xl font-bold text-primary leading-none tracking-widest">Holy War</span>
-              <span className="font-serif text-4xl font-normal text-foreground/70 leading-none italic">7</span>
+              <span className="text-3xl font-bold text-primary leading-none" style={{ fontFamily: '"Bodoni Moda", serif', fontWeight: 500, letterSpacing: '0.25em' }}>LÖWEN</span>
             </button>
 
             {/* Desktop nav */}
@@ -455,6 +564,85 @@ export default function App() {
         </div>
       </header>
 
+      <div className="w-full pt-0">
+        <div className="p-0 sm:p-0">
+          <div
+            className="overflow-hidden rounded-none"
+            onMouseEnter={() => setIsFeaturedHovering(true)}
+            onMouseLeave={() => setIsFeaturedHovering(false)}
+          >
+            <div
+              className="flex transition-transform duration-300 ease-out"
+              style={{ transform: `translateX(-${featuredIndex * 100}%)` }}
+            >
+              {featuredProducts.map((product) => (
+                <article key={product.id} className="w-full shrink-0 p-0">
+                  <div className="group relative overflow-hidden rounded-none">
+                    <img
+                      src={product.id === 0 ? leaoBarrocoAmbas : product.imageUrl}
+                      alt={product.name}
+                      className="h-72 w-full object-cover transition-all duration-300 group-hover:scale-105 sm:h-[420px]"
+                    />
+
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+                    <div className="absolute inset-0 bg-black/0 transition-colors duration-200 group-hover:bg-black/20" />
+
+                    <button
+                      type="button"
+                      onClick={() => goToFeaturedSlide("prev")}
+                      aria-label="Produto anterior"
+                      className="absolute left-3 top-1/2 z-30 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/30 text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:opacity-100"
+                    >
+                      <ChevronDown className="h-4 w-4 rotate-90" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => goToFeaturedSlide("next")}
+                      aria-label="Próximo produto"
+                      className="absolute right-3 top-1/2 z-30 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/30 text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:opacity-100"
+                    >
+                      <ChevronDown className="h-4 w-4 -rotate-90" />
+                    </button>
+
+                    <div className="absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-6">
+                      <button
+                        type="button"
+                        className="translate-y-3 rounded-full border border-white/30 bg-black/30 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:translate-y-0 group-hover:opacity-100"
+                      >
+                        VER MAIS
+                      </button>
+                    </div>
+
+                    <div className="absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-4 sm:p-6">
+                      <div>
+                        <h3 className="max-w-[85%] text-base font-semibold text-white sm:text-2xl">
+                          {product.name}
+                        </h3>
+                      </div>
+                    </div>
+
+                    <div className="absolute inset-x-0 bottom-4 z-10 flex items-center justify-center gap-1.5 sm:bottom-5">
+                      {featuredProducts.map((item, index) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          aria-label={`Ir para o produto ${index + 1}`}
+                          onClick={() => setFeaturedIndex(index)}
+                          className={`h-1.5 rounded-full transition-all ${
+                            featuredIndex === index ? "w-6 bg-white" : "w-1.5 bg-white/45 hover:bg-white/75"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Desktop */}
       <div className="hidden sm:grid bg-primary text-primary-foreground px-3 py-2.5 text-xs font-medium tracking-wide grid-cols-[1fr_auto_1fr_auto_1fr] items-center">
         <span className="flex items-center gap-1.5 justify-self-start">
@@ -468,7 +656,7 @@ export default function App() {
 
         <span className="flex items-center text-base gap-1.5 justify-self-center">
           <Truck className="w-[18px] h-[18px]" />
-          Frete grátis acima de R$200,00
+          Entrega para todo o Brasil
         </span>
 
         <span className="opacity-80 justify-self-center px-4">
@@ -489,7 +677,7 @@ export default function App() {
 
         <span className="flex items-center text-sm gap-1.5">
           <Truck className="w-[18px] h-[18px]" />
-          Frete grátis acima de R$200,00
+          Entrega para todo o Brasil
         </span>
 
         <span className="opacity-80 px-2">
@@ -509,13 +697,13 @@ export default function App() {
                 <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3 flex items-center gap-1.5">
                   <Tag className="w-3.5 h-3.5" /> Tamanhos
                 </h3>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-3 gap-1.5">
                   {ALL_SIZES.map((size) => (
                     <button
                       key={size}
                       onClick={() => toggleSize(size)}
-                      className={`h-10 rounded-lg text-sm font-semibold border-2 transition-all duration-150 ${selectedSizes.includes(size)
-                        ? "bg-primary text-primary-foreground border-primary scale-95 shadow-sm"
+                      className={`h-9 text-sm font-medium border transition-all duration-150 ${selectedSizes.includes(size)
+                        ? "bg-primary text-primary-foreground border-primary"
                         : "bg-card text-foreground border-border hover:border-primary/50 hover:bg-muted"
                         }`}
                     >
@@ -580,12 +768,12 @@ export default function App() {
               </div>
 
               {/* Mobile size filter */}
-              <div className="lg:hidden flex gap-1.5 flex-wrap justify-end">
+              <div className="lg:hidden flex gap-1 flex-wrap justify-end">
                 {ALL_SIZES.map((size) => (
                   <button
                     key={size}
                     onClick={() => toggleSize(size)}
-                    className={`h-8 px-2.5 rounded-md text-xs font-semibold border transition-all ${selectedSizes.includes(size)
+                    className={`h-8 px-2.5 text-xs font-medium border transition-all ${selectedSizes.includes(size)
                       ? "bg-primary text-primary-foreground border-primary"
                       : "border-border hover:border-primary/50"
                       }`}
@@ -596,7 +784,7 @@ export default function App() {
                 {selectedSizes.length > 0 && (
                   <button
                     onClick={() => setSelectedSizes([])}
-                    className="h-8 px-2 rounded-md text-xs text-muted-foreground border border-border hover:text-primary"
+                    className="h-8 px-2 text-xs text-muted-foreground border border-border hover:text-primary"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -635,8 +823,7 @@ export default function App() {
           <div className="grid md:grid-cols-3 gap-10">
             <div>
               <div className="flex items-baseline gap-1.5 mb-3">
-                <span className="font-cloister text-xl font-bold text-primary leading-none tracking-widest">Holy War</span>
-                <span className="font-serif text-x2 font-normal text-foreground/60 italic leading-none">7</span>
+                <span className="text-xl font-bold text-primary leading-none" style={{ fontFamily: '"Bodoni Moda", serif', fontWeight: 500, letterSpacing: '0.25em' }}>LÖWEN</span>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">
                 Vestindo fé. Carregando propósito.
@@ -646,7 +833,7 @@ export default function App() {
               <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Contato</h4>
               <ul className="space-y-2 text-sm text-foreground/80">
                 <li>📍 Curitiba, PR — Brasil</li>
-                <li>✉️ contato@holywar7.com.br</li>
+                <li>✉️ contato@lowen.com.br</li>
                 <li>📱 (41) 99999-9999</li>
               </ul>
             </div>
@@ -660,7 +847,7 @@ export default function App() {
             </div>
           </div>
           <div className="mt-10 pt-6 border-t border-border text-xs text-muted-foreground text-center">
-            © 2026 Holy War 7 - Todos os direitos reservados.
+            © 2026 Löwen - Todos os direitos reservados.
           </div>
         </div>
       </footer>
@@ -704,6 +891,206 @@ export default function App() {
   );
 }
 
+function ProductDetailPage({
+  product,
+  user,
+  totalItems,
+  onBack,
+  onOpenAuth,
+  onLogout,
+  onOpenCart,
+  onAddToCart,
+}: {
+  product: Product;
+  user: AuthUser | null;
+  totalItems: number;
+  onBack: () => void;
+  onOpenAuth: () => void;
+  onLogout: () => void;
+  onOpenCart: () => void;
+  onAddToCart: (p: Product, s: Size) => void;
+}) {
+  const productImages = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [selectedSize, setSelectedSize] = useState<Size | null>(null);
+  const [added, setAdded] = useState(false);
+
+  return (
+    <div className="min-h-screen bg-background text-foreground">
+      <header className="sticky top-0 z-50 bg-card/95 backdrop-blur border-b border-border shadow-sm">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex items-center justify-between h-16">
+            <button
+              onClick={() => {
+                window.location.href = window.location.origin;
+              }}
+              className="flex items-baseline gap-1.5 group"
+            >
+              <span className="text-3xl font-bold text-primary leading-none" style={{ fontFamily: '"Bodoni Moda", serif', fontWeight: 500, letterSpacing: '0.25em' }}>LÖWEN</span>
+            </button>
+
+            <nav className="hidden md:flex items-center gap-7">
+              <button
+                onClick={() => {
+                  window.location.href = window.location.origin;
+                }}
+                className="text-sm font-medium cursor-pointer transition-colors hover:text-primary"
+              >
+                Início
+              </button>
+              <a href="/#contato" className="text-sm font-medium hover:text-primary transition-colors">Contato</a>
+            </nav>
+
+            <div className="flex items-center gap-2">
+              {user ? (
+                <div className="hidden md:flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted">
+                    <User className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-xs font-medium text-muted-foreground">{user.name.split(" ")[0]}</span>
+                  </div>
+                  <button
+                    onClick={onLogout}
+                    title="Sair"
+                    className="p-2 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={onOpenAuth}
+                  className="hidden md:flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:text-primary transition-all"
+                >
+                  <User className="w-4 h-4" />
+                  Entrar
+                </button>
+              )}
+
+              <button
+                onClick={onOpenCart}
+                className="relative p-2 rounded-lg hover:bg-muted transition-colors"
+                aria-label="Abrir carrinho"
+              >
+                <ShoppingCart className="w-5 h-5" />
+                {totalItems > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
+                    {totalItems > 99 ? "99+" : totalItems}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
+        <button
+          type="button"
+          onClick={onBack}
+          className="mb-6 inline-flex items-center text-sm font-medium text-muted-foreground hover:text-primary"
+        >
+          ← Voltar para a loja
+        </button>
+
+        <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-8 items-start">
+          <div className="space-y-4">
+            <div className="overflow-hidden border border-border bg-card">
+              <img
+                src={productImages[activeImageIndex]}
+                alt={product.name}
+                className="w-full h-[520px] object-contain bg-muted"
+              />
+            </div>
+
+            {productImages.length > 1 && (
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {productImages.map((image, index) => (
+                  <button
+                    key={`${product.id}-${index}`}
+                    type="button"
+                    onClick={() => setActiveImageIndex(index)}
+                    className={`relative h-20 w-20 shrink-0 overflow-hidden border transition-all ${
+                      activeImageIndex === index ? "border-primary" : "border-border"
+                    }`}
+                  >
+                    <img src={image} alt={`${product.name} ${index + 1}`} className="h-full w-full object-contain bg-muted" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground mb-2">
+                {product.category}
+              </p>
+              <h1 className="font-serif text-3xl sm:text-4xl font-bold leading-tight text-foreground">
+                {product.name}
+              </h1>
+            </div>
+
+            <div className="text-2xl font-bold text-primary">{formatPrice(product.price)}</div>
+
+            <div>
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-3">
+                Tamanhos
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {product.sizes.map((size) => (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => setSelectedSize((current) => (current === size ? null : size))}
+                    className={`min-w-[48px] border px-3 py-2 text-sm font-medium text-center transition-all ${
+                      selectedSize === size
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border hover:border-primary/40 hover:bg-muted"
+                    }`}
+                  >
+                    {size}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={!selectedSize}
+              onClick={() => {
+                if (!selectedSize) return;
+                onAddToCart(product, selectedSize);
+                setAdded(true);
+                setTimeout(() => setAdded(false), 1800);
+              }}
+              className={`w-full py-3 text-sm font-semibold uppercase tracking-[0.18em] transition ${
+                added
+                  ? "bg-accent text-accent-foreground"
+                  : selectedSize
+                    ? "bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98]"
+                    : "bg-muted text-muted-foreground cursor-not-allowed"
+              }`}
+            >
+              {added ? "✓ Adicionado!" : selectedSize ? "Adicionar ao carrinho" : "Selecione o tamanho"}
+            </button>
+
+            <div className="border-t border-border pt-6">
+              <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-3">
+                Detalhes
+              </p>
+              <p className="text-sm leading-relaxed text-foreground/80">
+                Peça exclusiva com acabamento premium, ideal para compor looks com personalidade e identidade.
+                Disponível em tamanhos selecionados e com visual versátil para uso casual ou statement.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  );
+}
+
 // ─── Product Card ─────────────────────────────────────────────────────────────
 
 function ProductCard({
@@ -716,6 +1103,10 @@ function ProductCard({
   const [selectedSize, setSelectedSize] = useState<Size | null>(null);
   const [added, setAdded] = useState(false);
   const [liked, setLiked] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+
+  const productImages = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
+  const hasMultipleImages = productImages.length > 1;
 
   function handleAdd() {
     if (!selectedSize) return;
@@ -724,16 +1115,74 @@ function ProductCard({
     setTimeout(() => setAdded(false), 1800);
   }
 
+  function showPrevImage() {
+    setCurrentImageIndex((prev) => (prev - 1 + productImages.length) % productImages.length);
+  }
+
+  function showNextImage() {
+    setCurrentImageIndex((prev) => (prev + 1) % productImages.length);
+  }
+
   return (
-    <div className="bg-card rounded-2xl overflow-hidden border border-border hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group flex flex-col">
+    <div className="bg-card border border-border hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group flex flex-col overflow-hidden rounded-b-2xl">
       {/* Image */}
-      <div className="relative aspect-[4/5] bg-muted overflow-hidden">
-        <img
-          src={product.imageUrl}
-          alt={product.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-          loading="lazy"
-        />
+      <div className="relative aspect-[4/5] bg-muted overflow-hidden rounded-none">
+        <a
+          href={`?productId=${product.id}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block h-full w-full"
+        >
+          <img
+            src={productImages[currentImageIndex]}
+            alt={product.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 cursor-pointer"
+            loading="lazy"
+          />
+        </a>
+
+        {hasMultipleImages && (
+          <>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                showPrevImage();
+              }}
+              aria-label="Imagem anterior"
+              className="absolute left-2 top-1/2 z-10 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-[8px] border border-white/35 bg-white/25 text-black shadow-[0_0_0_1px_rgba(255,255,255,0.35)] backdrop-blur-sm transition hover:bg-white/45"
+            >
+              <ChevronDown className="h-4 w-4 rotate-90" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                showNextImage();
+              }}
+              aria-label="Próxima imagem"
+              className="absolute right-2 top-1/2 z-10 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-[8px] border border-white/35 bg-white/25 text-black shadow-[0_0_0_1px_rgba(255,255,255,0.35)] backdrop-blur-sm transition hover:bg-white/45"
+            >
+              <ChevronDown className="h-4 w-4 -rotate-90" />
+            </button>
+            <div className="absolute inset-x-0 bottom-2 z-10 flex items-center justify-center gap-1.5">
+              {productImages.map((_, index) => (
+                <button
+                  key={`${product.id}-${index}`}
+                  type="button"
+                  aria-label={`Ver imagem ${index + 1}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCurrentImageIndex(index);
+                  }}
+                  className={`h-1.5 rounded-full transition-all ${
+                    currentImageIndex === index ? "w-5 bg-white" : "w-1.5 bg-white/60 hover:bg-white/90"
+                  }`}
+                />
+              ))}
+            </div>
+          </>
+        )}
         {/* Badge */}
         {product.badge && (
           <span className="absolute top-2.5 left-2.5 text-[10px] font-bold uppercase tracking-wide bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
@@ -743,22 +1192,33 @@ function ProductCard({
         {/* Wishlist */}
         <button
           onClick={() => setLiked((v) => !v)}
-          className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-card/80 backdrop-blur hover:bg-card transition-colors"
+          className="absolute top-2.5 right-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-transparent text-black transition hover:bg-white/10"
           aria-label="Favoritar"
         >
           <Heart
-            className={`w-4 h-4 transition-colors ${liked ? "fill-primary text-primary" : "text-muted-foreground"}`}
+            className={`w-3.5 h-3.5 transition-colors ${liked ? "fill-primary/80 text-primary/80" : "fill-transparent text-black"}`}
           />
         </button>
       </div>
 
       {/* Info */}
-      <div className="p-3 flex flex-col gap-2 flex-1">
+      <div className="p-3 flex flex-col gap-2 flex-1 rounded-t-2xl bg-card">
         <div>
           <p className="text-sm font-medium leading-snug text-foreground line-clamp-2 min-h-[2.5rem]">
             {product.name}
           </p>
           <p className="mt-1 text-base font-bold text-primary">{formatPrice(product.price)}</p>
+        </div>
+
+        {/* Color swatch */}
+        <div className="flex gap-1.5 flex-wrap">
+          <button
+            type="button"
+            title={product.color.name}
+            aria-label={product.color.name}
+            className="h-5 w-5 border border-border rounded-none shadow-sm transition hover:border-primary/50"
+            style={{ backgroundColor: product.color.value }}
+          />
         </div>
 
         {/* Size buttons */}
@@ -767,7 +1227,7 @@ function ProductCard({
             <button
               key={size}
               onClick={() => setSelectedSize((s) => (s === size ? null : size))}
-              className={`text-xs px-2 py-1 rounded-md border font-medium transition-all ${selectedSize === size
+              className={`text-xs px-2 py-1 border font-medium transition-all rounded-none ${selectedSize === size
                 ? "bg-primary text-primary-foreground border-primary"
                 : "border-border hover:border-primary/40 hover:bg-muted"
                 }`}
@@ -781,7 +1241,7 @@ function ProductCard({
         <button
           onClick={handleAdd}
           disabled={!selectedSize}
-          className={`mt-auto w-full py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${added
+          className={`mt-auto w-full py-2 text-sm font-semibold transition-all duration-200 rounded-none ${added
             ? "bg-accent text-accent-foreground"
             : selectedSize
               ? "bg-primary text-primary-foreground hover:opacity-90 active:scale-95"
@@ -939,13 +1399,13 @@ function CartDrawer({
               <span className="text-sm text-muted-foreground">Subtotal</span>
               <span className="font-bold text-lg text-foreground">{formatPrice(totalPrice)}</span>
             </div>
-            <button className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-semibold hover:opacity-90 active:scale-[0.98] transition-all">
+            <button className="w-full py-3 rounded-none bg-primary text-primary-foreground font-semibold hover:opacity-90 active:scale-[0.98] transition-all">
               Finalizar compra
             </button>
             {!user && (
               <button
                 onClick={onOpenAuth}
-                className="w-full py-2.5 rounded-xl border border-border text-sm font-medium hover:bg-muted transition-colors"
+                className="w-full py-2.5 rounded-none border border-border text-sm font-medium hover:bg-muted transition-colors"
               >
                 Entrar para salvar carrinho
               </button>

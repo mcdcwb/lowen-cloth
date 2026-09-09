@@ -13,7 +13,7 @@ app.get("/", async (req, res) => {
     try {
         await prisma.$queryRaw`SELECT 1`;
 
-        res.send("API do Holy War 7 funcionando e conectada ao PostgreSQL!");
+        res.send("API do Löwen funcionando e conectada ao PostgreSQL!");
     } catch (error) {
         console.error(error);
         res.status(500).send("Erro ao conectar ao banco de dados.");
