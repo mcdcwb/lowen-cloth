@@ -350,6 +350,13 @@ export default function App() {
     });
   };
 
+  const openProductDetail = (product: Product) => {
+    setDetailProduct(product);
+    const url = new URL(window.location.href);
+    url.searchParams.set("productId", String(product.id));
+    window.history.pushState({}, "", url);
+  };
+
   if (detailProduct) {
     return (
       <>
@@ -608,6 +615,7 @@ export default function App() {
                     <div className="absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-6">
                       <button
                         type="button"
+                        onClick={() => openProductDetail(product)}
                         className="translate-y-3 rounded-full border border-white/30 bg-black/30 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:translate-y-0 group-hover:opacity-100"
                       >
                         VER MAIS
