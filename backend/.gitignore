@@ -1,12 +1,10 @@
 node_modules/
+/backend/desktop.ini
 
-# Environment variables
 .env
 
-# Generated Prisma Client
 /src/generated/prisma
 
-# AI agent skills
 /.agents/
 /.claude/
 /.windsurf/

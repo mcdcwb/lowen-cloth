@@ -2,3 +2,9 @@ node_modules
 dist
 .env
 .vscode
+# Browser test artifacts
+/test-results/
+/playwright-report/
+
+# Windows
+desktop.ini

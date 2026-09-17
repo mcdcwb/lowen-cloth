@@ -12,8 +12,49 @@ model Product {
   name        String
   description String?
   price       Decimal
-  stock       Int
+
+  public      String
+  category    String
+
   imageUrl    String?
+  images      String[]
+  badge       String?
+
+  colorName   String?
+  colorValue  String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  variants ProductVariant[]
+}
+
+model ProductVariant {
+  id        Int     @id @default(autoincrement())
+  value     String
+  stock     Int     @default(0)
+
+  productId Int
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, value])
+}
+
+model Admin {
+  id Int @id @default(autoincrement())
+  email String @unique
+  passwordHash String
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id Int @id @default(autoincrement())
+  name String
+  email String @unique
+  passwordHash String
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
