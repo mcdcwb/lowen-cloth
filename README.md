@@ -100,3 +100,42 @@ imagens, criação de contas administrativas ou funcionalidades de pedidos nesta
 Os testes de manager cobrem CRUD real no PostgreSQL, variantes, bloqueio de USER,
 sessão em validação, 401/403, falhas de gravação e responsividade. Produtos criados
 pelos testes são removidos ao terminar.
+
+## Favoritos e carrinho persistentes
+
+Para USER autenticado, o PostgreSQL é a fonte de favoritos e carrinho. O hook
+`src/app/hooks/useShopping.ts` carrega os dados via API após validar a sessão e
+só atualiza a interface após confirmação da gravação. Logout limpa a visão da
+conta, preservando seus registros no banco; respostas de sessões anteriores
+são ignoradas. Um novo login, inclusive em outro navegador, recupera os dados.
+
+Visitantes continuam usando `brecho_cart_v1` no localStorage. No login, esse
+carrinho é mesclado ao da conta: variantes diferentes são mantidas e variantes
+iguais usam a maior quantidade, respeitando estoque. A interface informa a
+regra e eventuais indisponibilidades. O carrinho local só é limpo depois da
+confirmação; falhas permitem tentar novamente sem duplicar quantidades.
+Corações de visitantes abrem o login; `/favoritos` mostra os produtos da conta.
+
+Os testes em `tests/shopping.spec.ts` usam API e PostgreSQL reais para verificar
+persistência, outro contexto de navegador, sincronização e falhas de gravação.
+Execute `npm test`, `npm run test:e2e`, `npm run typecheck` e `npm run build`.
+Os endpoints e comandos de migration estão documentados em `backend/README.md`.
+
+## Minha Conta
+
+`/minha-conta` exibe o nome real somente para leitura e permite salvar e-mail,
+endereço principal opcional e alterar senha. Após salvar, o e-mail é atualizado
+na sessão atual sem novo login. O formulário rejeita endereços parciais, permite
+limpar todo o endereço e mantém complemento opcional.
+
+A consulta automática usa o [ViaCEP](https://viacep.com.br/) diretamente por HTTPS,
+sem chave. Aguarda 350ms após completar oito dígitos, cancela consultas anteriores
+e limita a espera a seis segundos. Preenche somente rua, bairro, cidade e UF;
+número/complemento e correções digitadas durante a consulta são preservados.
+Endereços salvos não são sobrescritos por consultas ao abrir a página. Falhas e
+CEP inexistente deixam todos os campos disponíveis para preenchimento manual.
+
+`tests/account.spec.ts` intercepta o ViaCEP para testar os fluxos sem depender
+da disponibilidade externa. As gravações de perfil e senha usam a API real e
+contas temporárias, removidas após a suíte. O backend cobre também isolamento,
+e-mail duplicado entre User/Admin e concorrência com criação de administrador.

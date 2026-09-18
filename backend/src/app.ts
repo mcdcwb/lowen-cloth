@@ -4,6 +4,8 @@ import { getJwtKey } from "./config/auth.js";
 import { createAuthRoutes } from "./routes/auth.routes.js";
 import { prisma } from "./lib/prisma.js";
 import productRoutes from "./routes/product.routes.js";
+import shoppingRoutes from "./routes/shopping.routes.js";
+import accountRoutes from "./routes/account.routes.js";
 
 export function createApp() {
     getJwtKey();
@@ -12,6 +14,8 @@ export function createApp() {
     app.use(express.json());
     app.use("/produtos", productRoutes);
     app.use("/auth", createAuthRoutes());
+    app.use("/conta", accountRoutes);
+    app.use(shoppingRoutes);
 
     app.get("/", async (req, res) => {
         try {

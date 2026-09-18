@@ -31,5 +31,5 @@ export function useAuth() {
     const success = await auth.login(email, password, signal);
     return success ? auth.getSnapshot().session?.account ?? null : null;
   };
-  return { user, accessToken: session?.accessToken, validating, sessionError: error, login, register, logout: auth.logout };
+  return { user, accessToken: session?.accessToken, validating, sessionError: error, login, register, logout: auth.logout, updateAccount: auth.updateAccount };
 }

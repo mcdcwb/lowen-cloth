@@ -18,6 +18,7 @@ export interface ProductDraft {
 }
 export const totalStock = (product: Pick<ProductInput, "variants">) => product.variants.reduce((sum, variant) => sum + variant.stock, 0);
 export const stockStatus = (stock: number) => stock === 0 ? "Sem estoque" : stock <= LOW_STOCK_LIMIT ? "Estoque baixo" : "Disponível";
+export const normalizeHex = (value: string) => /^#[0-9a-f]{6}$/i.test(value.trim()) ? value.trim().toUpperCase() : null;
 export function productStats(products: ManagedProduct[]) {
   return {
     products: products.length,
@@ -31,12 +32,13 @@ export function toDraft(product?: ManagedProduct): ProductDraft {
     name: product?.name ?? "", description: product?.description ?? "", price: product ? String(product.price) : "",
     public: product?.public ?? "unissex", category: product?.category ?? "camisetas",
     imageUrl: product?.imageUrl ?? "", images: product?.images.join("\n") ?? "",
-    badge: product?.badge ?? "", colorName: product?.colorName ?? "", colorValue: product?.colorValue ?? "",
+    badge: product?.badge ?? "", colorName: product?.colorName ?? "", colorValue: normalizeHex(product?.colorValue ?? "") ?? product?.colorValue ?? "",
     variants: product?.variants.map(v => ({ value: v.value, stock: String(v.stock) })) ?? [{ value: "", stock: "0" }]
   };
 }
 export function validateDraft(draft: ProductDraft): string[] {
   const errors: string[] = [];
+  if (draft.colorValue.trim() && !normalizeHex(draft.colorValue)) errors.push("Informe o valor da cor no formato HEX #RRGGBB, por exemplo #1F2937.");
   if (draft.name.trim().length < 3) errors.push("O nome deve ter pelo menos 3 caracteres.");
   if (!draft.price.trim() || !Number.isFinite(Number(draft.price)) || Number(draft.price) <= 0) errors.push("Informe um preço maior que zero.");
   if (!draft.public.trim() || !draft.category.trim()) errors.push("Informe o público e a categoria.");
@@ -55,7 +57,7 @@ export function toInput(draft: ProductDraft): ProductInput {
   return {
     name: draft.name.trim(), description: draft.description, price: Number(draft.price), public: draft.public, category: draft.category,
     imageUrl: draft.imageUrl.trim(), images: draft.images.split(/\r?\n/).map(image => image.trim()).filter(Boolean),
-    badge: draft.badge.trim() || null, colorName: draft.colorName.trim() || null, colorValue: draft.colorValue.trim() || null,
+    badge: draft.badge.trim() || null, colorName: draft.colorName.trim() || null, colorValue: normalizeHex(draft.colorValue),
     // Full replacement is intentional, including [] when all variants are removed.
     variants: draft.variants.map(v => ({ value: v.value.trim(), stock: Number(v.stock) }))
   };

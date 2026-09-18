@@ -16,14 +16,14 @@ function isTransactionConflict(error: unknown) {
 // Both registration paths read both tables in the same serializable transaction.
 // Retrying serialization conflicts prevents concurrent cross-table duplicates.
 export async function registerUniqueEmail<T>(
-    email: string, create: (tx: Prisma.TransactionClient) => Promise<T>
+    email: string, create: (tx: Prisma.TransactionClient) => Promise<T>, excludeUserId?: number
 ): Promise<T> {
     for (let attempt = 0; ; attempt++) {
         try {
             return await prisma.$transaction(async tx => {
                 const admin = await tx.admin.findUnique({ where: { email }, select: { id: true } });
                 const user = await tx.user.findUnique({ where: { email }, select: { id: true } });
-                if (admin || user) throw new EmailInUseError();
+                if (admin || (user && user.id !== excludeUserId)) throw new EmailInUseError();
                 return create(tx);
             }, { isolationLevel: "Serializable" });
         } catch (error) {

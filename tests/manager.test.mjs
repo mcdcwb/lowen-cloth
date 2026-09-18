@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createManagerApi } from "../src/app/manager/api.ts";
-import { productStats, toDraft, toInput, validateDraft, LOW_STOCK_LIMIT } from "../src/app/manager/products.ts";
+import { productStats, toDraft, toInput, validateDraft, normalizeHex, LOW_STOCK_LIMIT } from "../src/app/manager/products.ts";
 
 test("dashboard sums variants and separates empty from low stock", () => {
   const products = [[], [0], [2, 3], [LOW_STOCK_LIMIT + 1]].map(stocks => ({ variants: stocks.map(stock => ({ value: String(stock), stock })) }));
@@ -52,4 +52,20 @@ test("administrative API distinguishes denied access, validation and network err
   }
   const api = createManagerApi("token", "/api", async () => { throw new TypeError("offline"); });
   await assert.rejects(api.remove(1), { status: 0 });
+});
+
+test("product color validates six-digit HEX, normalizes and stays optional without changing its name", () => {
+  const draft = { ...toDraft(), name: "Produto cor", price: "10", variants: [], colorName: "Off White" };
+  for (const colorValue of ["#1f2937", " #abcdef ", "#000000", "#FFFFFF"]) {
+    assert.deepEqual(validateDraft({ ...draft, colorValue }), []);
+    assert.equal(toInput({ ...draft, colorValue }).colorValue, colorValue.trim().toUpperCase());
+    assert.equal(toInput({ ...draft, colorValue }).colorName, "Off White");
+    assert.equal(toDraft({ ...toInput({ ...draft, colorValue }), id: 1 }).colorValue, colorValue.trim().toUpperCase());
+  }
+  for (const colorValue of ["#123", "123456", "red", "#GG0000", "#12345678", "rgb(1,2,3)"]) {
+    assert.equal(normalizeHex(colorValue), null);
+    assert.match(validateDraft({ ...draft, colorValue }).join(), /#RRGGBB/);
+  }
+  assert.deepEqual(validateDraft(draft), []);
+  assert.equal(toInput(draft).colorValue, null);
 });

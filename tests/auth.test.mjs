@@ -99,3 +99,20 @@ test("login persists only token and expiry", async () => {
   assert.equal(await auth.login(account.email, "x"), true);
   assert.deepEqual(JSON.parse(storage.getItem(AUTH_STORAGE_KEY)), { accessToken: token, expiresAt: session.expiresAt });
 });
+
+test("profile updates refresh the current identity without accepting stale or foreign sessions", async () => {
+  const storage = memoryStorage();
+  const auth = createAuthSession({ login: async () => session }, () => storage, () => memoryStorage());
+  await auth.login(account.email, "x");
+  const updated = { ...account, email: "changed@example.test" };
+  auth.updateAccount("another-token", updated);
+  auth.updateAccount(token, { ...updated, id: account.id + 1 });
+  auth.updateAccount(token, { ...updated, role: "ADMIN" });
+  assert.deepEqual(auth.getSnapshot().session.account, account);
+  auth.updateAccount(token, updated);
+  assert.deepEqual(auth.getSnapshot().session.account, updated);
+  assert.deepEqual(JSON.parse(storage.getItem(AUTH_STORAGE_KEY)), { accessToken: token, expiresAt: session.expiresAt });
+  auth.logout();
+  auth.updateAccount(token, updated);
+  assert.equal(auth.getSnapshot().session, null);
+});

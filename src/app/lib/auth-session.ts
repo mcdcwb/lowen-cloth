@@ -1,4 +1,4 @@
-import type { AuthSession, createAuthApi } from "./auth";
+import type { Account, AuthSession, createAuthApi } from "./auth";
 
 export const AUTH_STORAGE_KEY = "lowen-cloth_auth_v1";
 export const LEGACY_USER_KEY = "brecho_user_v1";
@@ -95,6 +95,11 @@ export function createAuthSession(
 
   return {
     login, restore, logout,
+    updateAccount(accessToken: string, account: Account) {
+      const session = state.session;
+      if (!session || session.accessToken !== accessToken || session.account.id !== account.id || session.account.role !== account.role) return;
+      publish({ ...session, account });
+    },
     getSnapshot: () => state,
     cancelPending: () => { generation++; },
     subscribe(listener: () => void) {

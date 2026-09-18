@@ -27,9 +27,11 @@ model Product {
   updatedAt   DateTime @updatedAt
 
   variants ProductVariant[]
+  favorites Favorite[]
 }
 
 model ProductVariant {
+  cartItems CartItem[]
   id        Int     @id @default(autoincrement())
   value     String
   stock     Int     @default(0)
@@ -50,6 +52,9 @@ model Admin {
 }
 
 model User {
+  address UserAddress?
+  favorites Favorite[]
+  cartItems CartItem[]
   id Int @id @default(autoincrement())
   name String
   email String @unique
@@ -57,4 +62,35 @@ model User {
   active Boolean @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model UserAddress {
+  userId Int @id
+  cep String
+  street String
+  number String
+  complement String @default("")
+  neighborhood String
+  city String
+  state String
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Favorite {
+  userId Int
+  productId Int
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  @@id([userId, productId])
+  @@index([productId])
+}
+
+model CartItem {
+  userId Int
+  variantId Int
+  quantity Int
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  @@id([userId, variantId])
+  @@index([variantId])
 }

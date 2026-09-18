@@ -140,3 +140,59 @@ Os testes usam HTTP real, chaves JWT temporárias e PostgreSQL. Criam contas e p
 Cobertura: cadastro e duplicidade de e-mail, hash da senha, login, validação de configuração, limite de tentativas, JWT adulterado/expirado e com algoritmo ou claims incorretos, conta inativa/removida, GET público e CRUD autenticado com respostas 400/404.
 
 Dependências adicionadas: `argon2`, `jose` e `express-rate-limit`.
+
+## Favoritos e carrinho da conta
+
+As rotas abaixo exigem Bearer JWT de USER ativo. A identidade vem exclusivamente
+do token verificado pelo middleware existente. ADMIN recebe 403 nestas rotas.
+
+| Método | Rota | Operação |
+| --- | --- | --- |
+| GET | `/favoritos` | Lista favoritos com os produtos e variantes atuais |
+| PUT | `/favoritos/:productId` | Adiciona sem duplicar |
+| DELETE | `/favoritos/:productId` | Remove favorito |
+| GET | `/carrinho` | Carrega e ajusta quantidades ao estoque atual |
+| POST | `/carrinho` | Soma quantidade de uma variante |
+| PATCH | `/carrinho` | Define a quantidade de uma variante |
+| DELETE | `/carrinho/item` | Remove uma variante |
+| DELETE | `/carrinho` | Esvazia o carrinho da conta |
+| POST | `/carrinho/sincronizar` | Mescla o carrinho visitante |
+
+POST/PATCH recebem `{ "productId": 1, "size": "P", "quantity": 2 }`.
+DELETE de item recebe `{ "productId": 1, "size": "P" }`.
+A sincronização recebe `{ "items": [...] }` com o mesmo formato do POST.
+O servidor resolve produto/tamanho para `ProductVariant.id`; o banco impõe
+unicidade de favorito por usuário/produto e de item por usuário/variante.
+
+As respostas de carrinho contêm `{ items, notices }`. A mesclagem usa a maior
+quantidade entre visitante e conta, limitada ao estoque; repeti-la não soma
+itens novamente. Variantes indisponíveis e cortes de quantidade geram avisos.
+Alterações normais acima do estoque retornam 409. Transações serializáveis,
+com repetição em conflitos, protegem operações concorrentes. Carrinho não
+reserva nem debita estoque. Produtos/variantes excluídos removem suas relações.
+
+Migration: `20260917222856_persist_user_shopping`. Para outro ambiente, execute
+`npx prisma migrate deploy` e `npx prisma generate` em `backend`, usando Prisma 7.9.1.
+
+## Minha Conta
+
+As rotas `/conta` exigem o JWT de um USER ativo, com a mesma autenticação de
+`/auth/me`. ADMIN recebe 403. A identidade não é recebida no corpo nem na URL.
+
+- `GET /conta`: retorna `{ account: { id, name, email, role }, address }`.
+- `PATCH /conta`: recebe `{ email, address }`. `address: null` remove o endereço.
+  Um endereço preenchido contém `cep`, `street`, `number`, `neighborhood`, `city`
+  e `state`; `complement` é opcional. O CEP é salvo com oito dígitos e a UF em
+  maiúsculas. O e-mail é normalizado pelo schema existente e sua exclusividade
+  entre User e Admin usa a mesma transação serializável do cadastro. Duplicidade
+  retorna 409. Nome, `userId`, role e demais campos desconhecidos são rejeitados.
+- `PUT /conta/senha`: recebe `currentPassword`, `newPassword` e `confirmPassword`.
+  Verifica a senha atual com Argon2, exige confirmação igual e nova senha de
+  5 a 128 caracteres, conforme o cadastro existente. Erros de senha retornam
+  400; falhas repetidas são limitadas por conta. Nenhuma senha/hash é retornada
+  ou registrada em logs. O mecanismo JWT permanece igual, com a validade atual
+  dos tokens; mudar a senha não revoga tokens já emitidos.
+
+A migration `20260917230132_add_user_address` cria `UserAddress`, uma relação
+opcional de um endereço por User, sem alterar registros de usuários existentes.
+Favoritos e carrinho continuam vinculados ao mesmo ID após mudar e-mail/senha.

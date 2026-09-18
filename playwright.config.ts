@@ -6,10 +6,11 @@ process.env.E2E_ADMIN_PASSWORD ??= randomBytes(3).toString("hex").slice(0, 5);
 process.env.E2E_USER_EMAIL ??= "customer-" + randomUUID() + "@example.test";
 process.env.E2E_USER_PASSWORD ??= randomBytes(3).toString("hex").slice(0, 5);
 process.env.E2E_REGISTER_EMAIL ??= "register-" + randomUUID() + "@example.test";
+process.env.E2E_PROFILE_PREFIX ??= "profile-" + randomUUID();
 
 export default defineConfig({
   testDir: "./tests",
-  testMatch: /(?:auth|filters|manager)\.spec\.ts/,
+  testMatch: /(?:auth|filters|manager|shopping|account)\.spec\.ts/,
   globalSetup: "./tests/browser-setup.ts",
   workers: 1,
   use: {

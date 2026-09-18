@@ -14,6 +14,100 @@ async function token(page: Page) {
   return page.evaluate(() => JSON.parse(sessionStorage.getItem("lowen-cloth_auth_v1")!).accessToken as string);
 }
 
+test("color picker and image eyedropper synchronize HEX and persist during creation and editing", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "EyeDropper", { configurable: true, value: class {
+      async open() {
+        const image = document.querySelector('img[alt="Prévia do produto"]')!;
+        const bounds = image.getBoundingClientRect();
+        if (bounds.top < 0 || bounds.bottom > innerHeight || getComputedStyle(image.closest("fieldset")!).opacity !== "1") throw new Error("Preview must be visible and undimmed");
+        return { sRGBHex: "#a1b2c3" };
+      }
+    } });
+  });
+  await page.route("**/color-fixture.svg", route => route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="300" height="300" fill="#a1b2c3"/></svg>' }));
+  await login(page);
+  const headers = { Authorization: `Bearer ${await token(page)}` };
+  let id: number | undefined;
+  try {
+    await page.getByRole("link", { name: "Produtos", exact: true }).click();
+    await page.getByRole("link", { name: "Novo produto" }).click();
+    await expect(page.getByRole("button", { name: "Selecionar na imagem" })).toBeDisabled();
+    const name = "Color fixture " + randomUUID();
+    await page.getByLabel("Nome", { exact: true }).fill(name);
+    await page.getByLabel("Preço (R$)", { exact: true }).fill("25");
+    await page.getByLabel("Variante 1", { exact: true }).fill("P");
+    await page.getByLabel("Nome da cor", { exact: true }).fill("Off White");
+    await page.getByLabel("Imagem principal", { exact: true }).fill("/color-fixture.svg");
+    const picker = page.getByLabel("Seletor de cor", { exact: true });
+    const hex = page.getByLabel("Valor da cor", { exact: true });
+    await picker.fill("#112233");
+    await expect(hex).toHaveValue("#112233");
+    await hex.fill("#ab12ef");
+    await expect(hex).toHaveValue("#AB12EF");
+    await expect(picker).toHaveValue("#ab12ef");
+    await hex.fill("not-hex");
+    await page.getByRole("button", { name: "Salvar produto" }).click();
+    await expect(page.getByRole("alert")).toContainText("#RRGGBB");
+    await page.getByRole("button", { name: "Selecionar na imagem" }).click();
+    await expect(hex).toHaveValue("#A1B2C3");
+    await expect(picker).toHaveValue("#a1b2c3");
+    await expect(page.getByLabel("Nome da cor", { exact: true })).toHaveValue("Off White");
+    const created = page.waitForResponse(r => r.url().endsWith("/api/produtos") && r.request().method() === "POST");
+    await page.getByRole("button", { name: "Salvar produto" }).click();
+    const response = await created;
+    expect(response.status()).toBe(201);
+    expect(response.request().postDataJSON().colorValue).toBe("#A1B2C3");
+    const product = await response.json(); id = product.id;
+    expect(product.colorValue).toBe("#A1B2C3");
+    await page.getByRole("article", { name, exact: true }).getByRole("link", { name: "Editar" }).click();
+    await expect(picker).toHaveValue("#a1b2c3");
+    await picker.fill("#123456");
+    await page.getByRole("button", { name: "Selecionar na imagem" }).click();
+    await expect(hex).toHaveValue("#A1B2C3");
+    await picker.fill("#654321");
+    const updated = page.waitForResponse(r => r.url().endsWith(`/api/produtos/${id}`) && r.request().method() === "PUT");
+    await page.getByRole("button", { name: "Salvar produto" }).click();
+    const saved = await updated;
+    expect(saved.status()).toBe(200);
+    expect(saved.request().postDataJSON().colorValue).toBe("#654321");
+    expect((await saved.json()).colorValue).toBe("#654321");
+  } finally { if (id) await page.request.delete(`/api/produtos/${id}`, { headers }); }
+});
+
+for (const behavior of ["unsupported", "cancelled", "failed"]) {
+  test(`image eyedropper ${behavior} preserves color and the responsive form remains usable`, async ({ page }) => {
+    await page.addInitScript(behavior => {
+      Object.defineProperty(window, "EyeDropper", { configurable: true, value: behavior === "unsupported" ? undefined : class {
+        async open() { throw new DOMException("test", behavior === "cancelled" ? "AbortError" : "OperationError"); }
+      } });
+    }, behavior);
+    await login(page);
+    await page.getByRole("link", { name: "Produtos", exact: true }).click();
+    await page.getByRole("link", { name: "Novo produto" }).click();
+    await page.getByLabel("Imagens adicionais", { exact: true }).fill("/color-fixture.svg");
+    await page.getByLabel("Valor da cor", { exact: true }).fill("#abcdef");
+    const button = page.getByRole("button", { name: "Selecionar na imagem" });
+    if (behavior === "unsupported") {
+      await expect(button).toBeDisabled();
+      await expect(page.getByText(/Conta-gotas indisponível neste navegador/)).toBeVisible();
+    } else {
+      await button.click();
+      await expect(page.getByRole("status")).toContainText(behavior === "cancelled" ? "Seleção cancelada" : "Não foi possível selecionar");
+      await expect(button).toBeEnabled();
+    }
+    await expect(page.getByLabel("Valor da cor", { exact: true })).toHaveValue("#ABCDEF");
+    await expect(page.getByLabel("Seletor de cor", { exact: true })).toHaveValue("#abcdef");
+    await page.getByLabel("Seletor de cor", { exact: true }).fill("#102030");
+    await expect(page.getByLabel("Valor da cor", { exact: true })).toHaveValue("#102030");
+    await expect(page.getByRole("button", { name: "Salvar produto" })).toBeEnabled();
+    for (const width of [320, 390, 768, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+  });
+}
+
 test("anonymous and USER accounts cannot access administrative routes or mutate products", async ({ page }) => {
   await page.goto("/manager/produtos/novo");
   await expect(page.getByRole("heading", { name: "Acesso administrativo" })).toBeVisible();

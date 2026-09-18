@@ -7,6 +7,100 @@ const userPassword = process.env.E2E_USER_PASSWORD!;
 const registerEmail = process.env.E2E_REGISTER_EMAIL!;
 const storageKey = "lowen-cloth_auth_v1";
 
+for (const viewport of [{ width: 1440, height: 1200 }, { width: 390, height: 844 }]) {
+  test(`login/register invisible safety zone follows all edges at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/minha-conta");
+    for (const register of [false, true]) {
+      for (const edge of ["left", "right", "top", "bottom"] as const) {
+        await page.getByRole("button", { name: "Entrar", exact: true }).first().click();
+        if (register) await page.getByRole("button", { name: "Cadastre-se", exact: true }).click();
+        const heading = page.getByRole("heading", { name: register ? "Criar conta" : "Entrar", exact: true });
+        const panel = page.locator("div.shadow-2xl").filter({ has: heading });
+        await heading.click();
+        await expect(panel).toBeVisible();
+        const box = (await panel.boundingBox())!;
+        const gap = edge === "left" ? box.x : edge === "right" ? viewport.width - box.x - box.width
+          : edge === "top" ? box.y : viewport.height - box.y - box.height;
+        const safe = Math.min(100, gap / 2);
+        expect(safe).toBeGreaterThan(1);
+        if (viewport.width === 1440) expect(safe).toBe(100);
+        const point = (distance: number) => ({
+          x: edge === "left" ? box.x - distance : edge === "right" ? box.x + box.width + distance : box.x + box.width / 2,
+          y: edge === "top" ? box.y - distance : edge === "bottom" ? box.y + box.height + distance : box.y + box.height / 2
+        });
+        for (const distance of [safe - 1, safe]) {
+          const p = point(distance);
+          await page.mouse.click(p.x, p.y);
+          await expect(panel).toBeVisible();
+        }
+        const outside = point(safe + 1);
+        await page.mouse.click(outside.x, outside.y);
+        await expect(panel).toHaveCount(0);
+        // Switching mode persists until the next explicit switch.
+        if (register) {
+          await page.getByRole("button", { name: "Entrar", exact: true }).first().click();
+          await page.getByRole("button", { name: "Entrar", exact: true }).last().click();
+          await page.keyboard.press("Escape");
+        }
+      }
+    }
+  });
+}
+
+test("modal safety zone follows resize and preserves keyboard and close controls", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1200 });
+  await page.goto("/minha-conta");
+  await page.getByRole("button", { name: "Entrar", exact: true }).first().click();
+  const close = page.getByRole("button", { name: "Fechar login ou cadastro" });
+  await page.getByLabel("E-mail", { exact: true }).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByLabel("Senha", { exact: true })).toBeFocused();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const panel = page.locator("div.shadow-2xl").filter({ has: close });
+  const box = (await panel.boundingBox())!;
+  await page.mouse.click(box.x - box.x / 2, box.y + box.height / 2);
+  await expect(close).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(close).toHaveCount(0);
+  await page.getByRole("button", { name: "Entrar", exact: true }).first().click();
+  await close.click();
+  await expect(close).toHaveCount(0);
+});
+
+for (const width of [1440, 500, 390]) {
+  test(`cart left safety zone and close controls at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/");
+    const open = page.getByRole("button", { name: "Abrir carrinho" });
+    const close = page.getByRole("button", { name: "Fechar carrinho" });
+    await open.click();
+    const heading = page.getByRole("heading", { name: "Seu Carrinho", exact: true });
+    const panel = page.locator("div.shadow-2xl").filter({ has: heading });
+    await heading.click();
+    await expect(panel).toBeVisible();
+    const box = (await panel.boundingBox())!;
+    if (width > 448) {
+      const safe = Math.min(100, box.x / 2);
+      expect(safe).toBe(width === 1440 ? 100 : box.x / 2);
+      for (const distance of [safe - 1, safe]) {
+        await page.mouse.click(box.x - distance, 400);
+        await expect(panel).toBeVisible();
+      }
+      await page.mouse.click(box.x - safe - 1, 400);
+      await expect(panel).toHaveCount(0);
+      await open.click();
+    } else {
+      expect(box.x).toBe(0); // Existing full-width mobile drawer exposes no overlay.
+    }
+    await page.keyboard.press("Escape");
+    await expect(panel).toHaveCount(0);
+    await open.click();
+    await close.click();
+    await expect(panel).toHaveCount(0);
+  });
+}
+
 async function loginCustomer(page: Page) {
   await openLogin(page);
   await page.getByLabel("E-mail", { exact: true }).fill(userEmail);

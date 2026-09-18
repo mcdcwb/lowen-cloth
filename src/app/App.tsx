@@ -3,6 +3,7 @@ import { useProducts } from "./hooks/useProducts";
 import { ProductImage } from "./components/ProductImage";
 import { Manager } from "./manager/Manager";
 import { catalogSizes, isNumericSize, stockFor, type Product, type Size } from "./lib/products";
+import { useShopping, type CartItem } from "./hooks/useShopping";
 import { useAuth } from "./hooks/useAuth";
 import { useLocation, useNavigate } from "react-router";
 import { AccountMenu } from "./components/AccountMenu";
@@ -22,12 +23,6 @@ import { SignpostBig } from "./components/icons/SignpostBig";
 type Public = "masculino" | "feminino" | "unissex" | "infantil";
 type Category = "camisetas" | "jaquetas" | "calcas" | "bermudas" | "calcados" | "vestidos";
 
-interface CartItem {
-  product: Product;
-  size: Size;
-  quantity: number;
-}
-
 interface AuthUser {
   id: number;
   name: string;
@@ -37,7 +32,7 @@ interface AuthUser {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const LS_CART_KEY = "brecho_cart_v1";
+
 
 const CATEGORIES: { value: Category; label: string }[] = [
   { value: "camisetas", label: "Camisetas / Camisas" },
@@ -59,21 +54,6 @@ function formatPrice(val: number) {
   return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function loadFromStorage<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function saveToStorage(key: string, data: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* Cart remains usable without storage. */ }
-}
-
-// ─── App ──────────────────────────────────────────────────────────────────────
-
 export default function App() {
   const { products, loading: productsLoading, error: productsError, retry: retryProducts } = useProducts();
   const allSizes = catalogSizes(products);
@@ -84,8 +64,7 @@ export default function App() {
   const [activePublic, setActivePublic] = useState<Public | "todos">("todos");
   const [activeCategory, setActiveCategory] = useState<Category | null>(null);
   const [selectedSizes, setSelectedSizes] = useState<Size[]>([]);
-  const [cartItems, setCartItems] = useState<CartItem[]>([]);
-  const { user, accessToken, validating, sessionError, login, register, logout } = useAuth();
+  const { user, accessToken, validating, sessionError, login, register, logout, updateAccount } = useAuth();
   const [cartOpen, setCartOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -98,28 +77,19 @@ export default function App() {
   const publicDropdownRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const cartHydrated = useRef(false);
-  // Hydrate only after the API responds; never trust persisted prices or stock.
-  useEffect(() => {
-    if (productsLoading || productsError) return;
-    const saved = loadFromStorage<CartItem[]>(LS_CART_KEY, []);
-    const source = cartHydrated.current ? null : (Array.isArray(saved) ? saved : []);
-    cartHydrated.current = true;
-    setCartItems(previous => (source ?? previous).reduce<CartItem[]>((items, item) => {
-      if (!item?.product || typeof item.size !== "string" || !Number.isSafeInteger(item.quantity) || item.quantity <= 0) return items;
-      const product = products.find(p => p.id === item.product.id);
-      if (!product) return items;
-      const existing = items.find(i => i.product.id === product.id && i.size === item.size);
-      const quantity = Math.min((existing?.quantity ?? 0) + item.quantity, stockFor(product, item.size));
-      if (existing) existing.quantity = quantity;
-      else if (quantity > 0) items.push({ product, size: item.size, quantity });
-      return items;
-    }, []));
-  }, [products, productsLoading, productsError]);
-
-  useEffect(() => {
-    if (!user && cartHydrated.current) saveToStorage(LS_CART_KEY, cartItems);
-  }, [cartItems, user]);
+  const shopping = useShopping(products, user?.role === "USER" ? accessToken : undefined, validating);
+  const { items: cartItems, add: addToCart, remove: removeFromCart, clear: clearCart, changeQty } = shopping;
+  const shoppingStatus = (shopping.busy || shopping.error || shopping.notice) && (
+    <div className="fixed bottom-4 left-4 right-4 z-[100] mx-auto max-w-xl rounded-lg border bg-card p-3 shadow-lg" role={shopping.error ? "alert" : "status"}>
+      {shopping.busy ? "Sincronizando favoritos e carrinho..." : shopping.error || shopping.notice}
+      {shopping.notice && !shopping.busy && !shopping.error && <button className="ml-3 underline" onClick={shopping.dismissNotice}>Fechar aviso</button>}
+      {shopping.error && <button className="ml-3 underline" onClick={shopping.retry}>Tentar novamente</button>}
+    </div>
+  );
+  function toggleFavorite(productId: number) {
+    if (!user) { setAuthMode("login"); setAuthOpen(true); return; }
+    if (user.role === "USER") void shopping.toggleFavorite(productId);
+  }
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -151,49 +121,13 @@ export default function App() {
   }
 
   function availableStock(product: Product, size: Size) {
-    if (productsLoading || productsError) return 0;
+    if (productsLoading || productsError || !shopping.ready || shopping.busy) return 0;
     return Math.max(0, stockFor(product, size) - cartItems.filter(item => item.product.id === product.id && item.size === size).reduce((sum, item) => sum + item.quantity, 0));
-  }
-
-  function addToCart(product: Product, size: Size) {
-    if (availableStock(product, size) <= 0) return false;
-    setCartItems((prev) => {
-      const idx = prev.findIndex((i) => i.product.id === product.id && i.size === size);
-      if (idx >= 0) {
-        return prev.map((item, i) =>
-          i === idx ? { ...item, quantity: Math.min(stockFor(product, size), item.quantity + 1) } : item
-        );
-      }
-      return [...prev, { product, size, quantity: 1 }];
-    });
-    return true;
-  }
-
-  function removeFromCart(productId: number, size: Size) {
-    setCartItems((prev) => prev.filter((i) => !(i.product.id === productId && i.size === size)));
-  }
-
-  function clearCart() {
-    setCartItems([]);
-  }
-
-  function changeQty(productId: number, size: Size, delta: number) {
-    if (productsLoading || productsError) return;
-    setCartItems((prev) =>
-      prev
-        .map((item) =>
-          item.product.id === productId && item.size === size
-            ? { ...item, quantity: Math.min(stockFor(item.product, size), item.quantity + delta) }
-            : item
-        )
-        .filter((item) => item.quantity > 0)
-    );
   }
 
   async function handleLogin(email: string, password: string, signal: AbortSignal) {
     const success = await login(email, password, signal);
     if (success) {
-      localStorage.removeItem(LS_CART_KEY);
       setAuthOpen(false);
       if (success.role === "ADMIN") navigate("/manager");
     }
@@ -206,7 +140,6 @@ export default function App() {
 
   function handleLogout() {
     logout();
-    setCartItems([]);
     if (location.pathname.startsWith("/manager")) navigate("/");
   }
 
@@ -294,6 +227,7 @@ export default function App() {
   if (detailProduct && !isAccountPage) {
     return (
       <>
+        {shoppingStatus}
         <ProductDetailPage
           key={detailProduct.id}
           product={detailProduct}
@@ -314,6 +248,7 @@ export default function App() {
 
         {cartOpen && (
           <CartDrawer
+            busy={shopping.busy || !shopping.ready}
             items={cartItems}
             totalPrice={totalPrice}
             user={user}
@@ -341,6 +276,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">
+      {shoppingStatus}
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 bg-card/95 [&_button]:text-[15px] backdrop-blur border-b border-border shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
@@ -491,7 +427,12 @@ export default function App() {
         </div>
       </header>
 
-      {isAccountPage ? <AccountPage user={user} favorites={accountPath === "/favoritos"} onLogin={() => setAuthOpen(true)} /> : <>
+      {isAccountPage ? <AccountPage accessToken={accessToken} onUpdated={updateAccount} user={user} favorites={accountPath === "/favoritos"} onLogin={() => setAuthOpen(true)}>
+        {shopping.ready && !shopping.favorites.length && <p className="mt-4">Nenhum favorito salvo.</p>}
+        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+          {shopping.favorites.map(product => <ProductCard key={product.id} product={product} liked onFavorite={() => toggleFavorite(product.id)} favoriteBusy={shopping.busy} availableStock={availableStock} onAddToCart={addToCart} />)}
+        </div>
+      </AccountPage> : <>
         <div className="w-full pt-0">
           <div className="p-0 sm:p-0">
             <div
@@ -708,7 +649,7 @@ export default function App() {
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                   {filteredProducts.map((product) => (
-                    <ProductCard key={product.id} product={product} availableStock={availableStock} onAddToCart={addToCart} />
+                    <ProductCard key={product.id} liked={shopping.favorites.some(p => p.id === product.id)} onFavorite={() => toggleFavorite(product.id)} favoriteBusy={shopping.busy || validating || user?.role === "ADMIN"} product={product} availableStock={availableStock} onAddToCart={addToCart} />
                   ))}
                 </div>
               )}
@@ -755,6 +696,7 @@ export default function App() {
       {/* ── Cart Drawer ────────────────────────────────────────────────────── */}
       {cartOpen && (
         <CartDrawer
+            busy={shopping.busy || !shopping.ready}
           items={cartItems}
           totalPrice={totalPrice}
           user={user}
@@ -811,7 +753,7 @@ function ProductDetailPage({
   onOpenAuth: () => void;
   onLogout: () => void;
   onOpenCart: () => void;
-  onAddToCart: (p: Product, s: Size) => boolean;
+  onAddToCart: (p: Product, s: Size) => Promise<boolean>;
   availableStock: (p: Product, s: Size) => number;
 }) {
   const productImages = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
@@ -946,9 +888,9 @@ function ProductDetailPage({
             <button
               type="button"
               disabled={!selectedSize || availableStock(product, selectedSize) <= 0}
-              onClick={() => {
+              onClick={async () => {
                 if (!selectedSize) return;
-                if (!onAddToCart(product, selectedSize)) return;
+                if (!await onAddToCart(product, selectedSize)) return;
                 setAdded(true);
                 setTimeout(() => setAdded(false), 1800);
               }}
@@ -981,25 +923,26 @@ function ProductDetailPage({
 // ─── Product Card ─────────────────────────────────────────────────────────────
 
 function ProductCard({
+  liked, onFavorite, favoriteBusy,
   product,
   onAddToCart,
   availableStock,
 }: {
+  liked: boolean; onFavorite: () => void; favoriteBusy: boolean;
   product: Product;
-  onAddToCart: (p: Product, s: Size) => boolean;
+  onAddToCart: (p: Product, s: Size) => Promise<boolean>;
   availableStock: (p: Product, s: Size) => number;
 }) {
   const [selectedSize, setSelectedSize] = useState<Size | null>(null);
   const [added, setAdded] = useState(false);
-  const [liked, setLiked] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const productImages = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
   const hasMultipleImages = productImages.length > 1;
 
-  function handleAdd() {
+  async function handleAdd() {
     if (!selectedSize) return;
-    if (!onAddToCart(product, selectedSize)) return;
+    if (!await onAddToCart(product, selectedSize)) return;
     setAdded(true);
     setTimeout(() => setAdded(false), 1800);
   }
@@ -1079,9 +1022,11 @@ function ProductCard({
         )}
         {/* Wishlist */}
         <button
-          onClick={() => setLiked((v) => !v)}
+          onClick={onFavorite}
+          disabled={favoriteBusy}
+          aria-pressed={liked}
           className="absolute top-2.5 right-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-transparent text-black transition hover:bg-white/10"
-          aria-label="Favoritar"
+          aria-label={liked ? "Remover dos favoritos" : "Favoritar"}
         >
           <Heart
             className={`w-3.5 h-3.5 transition-colors ${liked ? "fill-primary/80 text-primary/80" : "fill-transparent text-black"}`}
@@ -1148,6 +1093,7 @@ function ProductCard({
 // ─── Cart Drawer ──────────────────────────────────────────────────────────────
 
 function CartDrawer({
+  busy,
   items,
   totalPrice,
   user,
@@ -1157,6 +1103,7 @@ function CartDrawer({
   onClearCart,
   onOpenAuth,
 }: {
+  busy: boolean;
   items: CartItem[];
   totalPrice: number;
   user: AuthUser | null;
@@ -1166,6 +1113,7 @@ function CartDrawer({
   onOpenAuth: () => void;
   onClearCart: () => void;
 }) {
+  const drawerRef = useRef<HTMLDivElement>(null);
   // Trap focus, close on ESC
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -1184,11 +1132,17 @@ function CartDrawer({
       {/* Backdrop */}
       <div
         className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm"
-        onClick={onClose}
+        onClick={(event) => {
+          const bounds = drawerRef.current?.getBoundingClientRect();
+          if (!bounds) return;
+          // Leave at least half the exposed overlay available on narrow screens.
+          const safeWidth = Math.min(100, Math.max(0, bounds.left) / 2);
+          if (event.clientX < bounds.left - safeWidth) onClose();
+        }}
       />
 
       {/* Drawer */}
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-card shadow-2xl flex flex-col">
+      <div ref={drawerRef} className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-card shadow-2xl flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div>
@@ -1202,7 +1156,7 @@ function CartDrawer({
               </p>
             )}
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors">
+          <button aria-label="Fechar carrinho" onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -1251,6 +1205,8 @@ function CartDrawer({
                   {/* Qty controls */}
                   <div className="flex items-center gap-2 mt-auto">
                     <button
+                      disabled={busy}
+                      aria-label="Diminuir quantidade"
                       onClick={() => onChangeQty(item.product.id, item.size, -1)}
                       className="w-7 h-7 rounded-lg border border-border flex items-center justify-center hover:bg-muted transition-colors"
                     >
@@ -1258,7 +1214,7 @@ function CartDrawer({
                     </button>
                     <span className="w-6 text-center text-sm font-semibold">{item.quantity}</span>
                     <button
-                      disabled={item.quantity >= stockFor(item.product, item.size)}
+                      disabled={busy || item.quantity >= stockFor(item.product, item.size)}
                       aria-label="Aumentar quantidade"
                       onClick={() => onChangeQty(item.product.id, item.size, 1)}
                       className="w-7 h-7 rounded-lg border border-border flex items-center justify-center hover:bg-muted transition-colors"
@@ -1266,6 +1222,8 @@ function CartDrawer({
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                     <button
+                      disabled={busy}
+                      aria-label="Remover item"
                       onClick={() => onRemove(item.product.id, item.size)}
                       className="ml-auto p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                     >
@@ -1282,7 +1240,7 @@ function CartDrawer({
         {items.length > 0 && (
           <div className="border-t border-border px-5 py-4 space-y-3">
             <div className="flex items-center justify-between">
-              <button onClick={onClearCart} className="flex items-center gap-3 py-0 px-0 rounded-x1 border-border text-sm text-destructive font-medium hover:bg-muted transition-colors">
+              <button disabled={busy} onClick={onClearCart} className="flex items-center gap-3 py-0 px-0 rounded-x1 border-border text-sm text-destructive font-medium hover:bg-muted transition-colors">
                 <Trash2 className="w-4 h-4" />
                 Limpar Carrinho
               </button>
@@ -1333,6 +1291,7 @@ function AuthModal({
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const pending = useRef<AbortController | null>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => () => pending.current?.abort(), []);
 
@@ -1382,12 +1341,24 @@ function AuthModal({
     <>
       <div
         className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4"
-        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        onClick={(event) => {
+          if (event.target !== event.currentTarget) return;
+          const bounds = modalRef.current?.getBoundingClientRect();
+          if (!bounds) return;
+          const overlay = event.currentTarget.getBoundingClientRect();
+          // Adapt each edge independently, preserving a clickable outer strip.
+          const safeGap = (gap: number) => Math.min(100, Math.max(0, gap) / 2);
+          if (event.clientX < bounds.left - safeGap(bounds.left - overlay.left) ||
+              event.clientX > bounds.right + safeGap(overlay.right - bounds.right) ||
+              event.clientY < bounds.top - safeGap(bounds.top - overlay.top) ||
+              event.clientY > bounds.bottom + safeGap(overlay.bottom - bounds.bottom)) onClose();
+        }}
       >
-        <div className="bg-card w-full max-w-sm rounded-2xl shadow-2xl border border-border overflow-hidden">
+        <div ref={modalRef} className="bg-card w-full max-w-sm rounded-2xl shadow-2xl border border-border overflow-hidden">
           {/* Header */}
           <div className="relative px-6 pt-6 pb-4">
             <button
+              aria-label="Fechar login ou cadastro"
               onClick={onClose}
               className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-muted transition-colors text-muted-foreground"
             >
