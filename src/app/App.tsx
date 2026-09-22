@@ -670,7 +670,7 @@ export default function App() {
                 Vestindo fé. Carregando propósito.
               </p>
             </div>
-            <div>
+            <div className="md:text-center">
               <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Contato</h4>
               <ul className="space-y-2 text-sm text-foreground/80">
                 <li>📍 Curitiba, PR — Brasil</li>
@@ -678,7 +678,7 @@ export default function App() {
                 <li>📱 (41) 9 9745-8063</li>
               </ul>
             </div>
-            <div>
+            <div className="md:text-right">
               <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Horário loja física</h4>
               <ul className="space-y-2 text-sm text-foreground/80">
                 <li>Segunda a Sexta: 9h – 18h</li>
