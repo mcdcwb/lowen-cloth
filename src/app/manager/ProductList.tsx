@@ -28,14 +28,14 @@ export function ProductList({ products, busy, error, onDelete }: { products: Man
     <p className="mb-3 text-sm text-muted-foreground">{visible.length} produto(s)</p>
     <div className="space-y-3">
       {visible.map(product => <article key={product.id} aria-label={product.name} className="flex flex-wrap gap-4 rounded-xl border border-border bg-card p-4 sm:p-5 items-center">
-        <ProductImage src={product.imageUrl || product.images[0]} alt={product.name} className="h-24 w-20 object-cover rounded-lg bg-muted shrink-0" />
+        <ProductImage src={product.colors[0]?.imageUrl || product.colors[0]?.images[0]} alt={product.name} className="h-24 w-20 object-cover rounded-lg bg-muted shrink-0" />
         <div className="min-w-0 flex-1 basis-40">
           <h2 className="font-semibold break-words">{product.name}</h2>
           <p className="text-sm text-muted-foreground mt-1">{labels[product.category] ?? product.category} · {labels[product.public] ?? product.public}</p>
           <p className="font-semibold mt-1">{product.price.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
         </div>
         <div className="flex-1 min-w-0 basis-44 space-y-2">
-          <div className="flex flex-wrap gap-1.5">{product.variants.map(variant => <span key={variant.value} className="text-xs rounded border border-border px-2 py-1 break-all">{variant.value}: {variant.stock}</span>)}{!product.variants.length && <span className="text-sm text-muted-foreground">Sem variantes</span>}</div>
+          <div className="flex flex-wrap gap-1.5">{product.colors.flatMap(color => color.variants.map(variant => <span key={`${color.id}-${variant.value}`} className="text-xs rounded border border-border px-2 py-1 break-all">{color.colorName} · {variant.value}: {variant.stock}</span>))}{!product.colors.some(c => c.variants.length) && <span className="text-sm text-muted-foreground">Sem variantes</span>}</div>
           <div className="flex gap-2 items-center flex-wrap"><span className="text-sm">Estoque: {totalStock(product)}</span><StockBadge stock={totalStock(product)} /></div>
         </div>
         <div className="flex gap-2">

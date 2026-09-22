@@ -8,11 +8,11 @@ export class ManagerApiError extends Error {
 function normalize(value: unknown): ManagedProduct {
   const product = adaptProduct(value);
   const raw = value as Record<string, unknown>;
-  return {
-    ...product, imageUrl: typeof raw.imageUrl === "string" ? raw.imageUrl : "", images: raw.images as string[],
-    badge: typeof raw.badge === "string" ? raw.badge : null,
-    colorName: typeof raw.colorName === "string" ? raw.colorName : null,
-    colorValue: typeof raw.colorValue === "string" ? raw.colorValue : null
+  return { id: product.id, name: product.name, description: product.description, price: product.price, public: product.public,
+    category: product.category, badge: product.badge ?? null,
+    colors: (raw.colors as Array<Record<string, unknown>>).map((color, i) => ({
+      ...product.colors[i], imageUrl: typeof color.imageUrl === "string" ? color.imageUrl : "", images: color.images as string[]
+    }))
   };
 }
 export function createManagerApi(token: string, baseUrl = "/api", fetcher: typeof fetch = fetch) {

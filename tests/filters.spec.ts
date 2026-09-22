@@ -1,8 +1,8 @@
 ﻿import { test, expect } from "@playwright/test";
 
 const product = (id: number, name: string, audience: string, category: string, variants: { value: string; stock: number }[]) => ({
-  id, name, public: audience, category, variants, price: "129.9", description: "Descrição real do catálogo",
-  images: [], imageUrl: null, badge: null, colorName: null, colorValue: null
+  id, name, public: audience, category, price: "129.9", description: "Descrição real do catálogo",
+  badge: null, colors: [{ id: id * 10, images: [], imageUrl: null, colorName: "Preto", colorValue: "#111111", variants: variants.map((v, i) => ({ ...v, id: id * 100 + i })) }]
 });
 const products = [
   product(901, "Camiseta API", "masculino", "camisetas", [{ value: "P", stock: 1 }, { value: "M", stock: 0 }]),

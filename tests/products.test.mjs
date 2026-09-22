@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adaptProduct, catalogSizes, stockFor, productImagePlaceholder } from "../src/app/lib/products.ts";
+import { adaptProduct as adaptNested, selectProductColor, catalogSizes, stockFor, productImagePlaceholder } from "../src/app/lib/products.ts";
+
+const adaptProduct = ({ images, imageUrl, colorName, colorValue, variants, ...product } = {}) => adaptNested({ ...product,
+  colors: [{ id: 10, images, imageUrl, colorName: colorName ?? "Cor não informada", colorValue: colorValue ?? "#000000", variants: variants?.map((v, i) => ({ id: i + 1, ...v })) }] });
 
 const input = {
   id: 1, name: "Produto real", price: "129.90", public: "unissex", category: "camisetas",
@@ -51,4 +54,18 @@ test("catalog sizes exclude sold-out variants, deduplicate and retain unknown si
   const soldOut = adaptProduct({ ...input, variants: [{ value: "36", stock: 0 }] });
   assert.deepEqual(catalogSizes([product, product, soldOut]), ["PP", "P", "M", "G", "GG", "XG", "A2", "Sob medida", "8", "9", "10"]);
   assert.deepEqual(catalogSizes([soldOut]), []);
+});
+
+test("color projections isolate images and stock while filters span all positive variants", () => {
+  const base = adaptProduct(input);
+  const product = adaptNested({ ...input, colors: [
+    { id: 10, colorName: "Preto", colorValue: "#111111", images: ["/black.jpg"], variants: [{ id: 1, value: "P", stock: 3 }, { id: 2, value: "GG", stock: 0 }] },
+    { id: 11, colorName: "Branco", colorValue: "#FFFFFF", images: ["/white.jpg"], variants: [{ id: 3, value: "P", stock: 0 }, { id: 4, value: "GG", stock: 1 }] }
+  ] });
+  const white = selectProductColor(product, 11);
+  assert.equal(stockFor(product, "P"), 3); assert.equal(stockFor(white, "P"), 0); assert.equal(stockFor(white, "GG"), 1);
+  assert.equal(white.imageUrl, "/white.jpg"); assert.equal(product.imageUrl, "/black.jpg");
+  assert.equal(white.price, product.price); assert.deepEqual(catalogSizes([product]), ["P", "GG"]);
+  assert.throws(() => selectProductColor(product, 999));
+  assert.throws(() => adaptNested({ ...input, colors: [] }));
 });

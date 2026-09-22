@@ -19,7 +19,7 @@ test("public reading and administrative authorization", async (t) => {
     try {
         const admin = await createAdmin({ email, password });
         const product = await prisma.product.create({
-            data: { name: "Authorization test", price: 12, public: "unissex", category: "camisetas", images: [], variants: { create: [{ value: "Unico", stock: 3 }] } }
+            data: { name: "Authorization test", price: 12, public: "unissex", category: "camisetas", colors: { create: { colorName: "Preto", colorValue: "#111111", images: [], variants: { create: [{ value: "Unico", stock: 3 }] } } } }
         });
         productId = product.id;
         const login = await http.request("/auth/login", "POST", { email, password });
@@ -79,8 +79,8 @@ test("public reading and administrative authorization", async (t) => {
             await prisma.admin.delete({ where: { id: admin.id } });
             await assertDenied(accessToken, 401);
         });
-        const unchanged = await prisma.product.findUniqueOrThrow({ where: { id: product.id }, include: { variants: true } });
-        assert.equal(unchanged.variants[0].stock, 3);
+        const unchanged = await prisma.product.findUniqueOrThrow({ where: { id: product.id }, include: { colors: { include: { variants: true } } } });
+        assert.equal(unchanged.colors[0].variants[0].stock, 3);
     } finally {
         try {
             if (productId !== undefined) await prisma.product.deleteMany({ where: { id: productId } });

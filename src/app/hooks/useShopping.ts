@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { adaptProduct, stockFor, type Product } from "../lib/products";
+import { adaptProduct, selectProductColor, stockFor, type Product } from "../lib/products";
 
-export interface CartItem { product: Product; size: string; quantity: number }
+export interface CartItem { product: Product; colorId: number; size: string; quantity: number }
 const key = "brecho_cart_v1";
 function readGuest(): CartItem[] {
   try {
@@ -34,7 +34,7 @@ export function useShopping(products: Product[], token: string | undefined, vali
     if (!response.ok) throw new Error(data.error || "Não foi possível sincronizar. Tente novamente.");
     return data;
   }
-  const adaptCart = (data: { items: CartItem[] }) => data.items.map(i => ({ ...i, product: adaptProduct(i.product) }));
+  const adaptCart = (data: { items: CartItem[] }) => data.items.map(i => ({ ...i, product: selectProductColor(adaptProduct(i.product), i.colorId) }));
   useEffect(() => {
     const current = ++generation.current;
     locked.current = false;
@@ -49,7 +49,7 @@ export function useShopping(products: Product[], token: string | undefined, vali
     void (async () => {
       try {
         const [cart, favorites] = await Promise.all([
-          pendingGuest.length ? request("/carrinho/sincronizar", "POST", { items: pendingGuest.map(i => ({ productId: i.product.id, size: i.size, quantity: i.quantity })) }) : request("/carrinho"),
+          pendingGuest.length ? request("/carrinho/sincronizar", "POST", { items: pendingGuest.map(i => ({ productId: i.product.id, colorId: i.colorId, size: i.size, quantity: i.quantity })) }) : request("/carrinho"),
           request("/favoritos")
         ]);
         if (current !== generation.current || identity.current !== token) return;
@@ -69,12 +69,15 @@ export function useShopping(products: Product[], token: string | undefined, vali
   }, [token, validating, revision]);
 
   const guestItems = guest.reduce<CartItem[]>((items, item) => {
-    const product = products.find(p => p.id === item.product.id);
-    if (!product) return items;
-    const previous = items.find(i => i.product.id === product.id && i.size === item.size);
+    const base = products.find(p => p.id === item.product.id);
+    if (!base) return items;
+    const colorId = item.colorId ?? base.colors[0].id;
+    if (!base.colors.some(c => c.id === colorId)) return items;
+    const product = selectProductColor(base, colorId);
+    const previous = items.find(i => i.product.id === product.id && i.colorId === colorId && i.size === item.size);
     const quantity = Math.min(stockFor(product, item.size), (previous?.quantity ?? 0) + item.quantity);
     if (previous) previous.quantity = quantity;
-    else if (quantity > 0) items.push({ product, size: item.size, quantity });
+    else if (quantity > 0) items.push({ product, colorId, size: item.size, quantity });
     return items;
   }, []);
   const ready = !validating && (!token || account?.token === token);
@@ -110,24 +113,24 @@ export function useShopping(products: Product[], token: string | undefined, vali
   function updateGuest(next: CartItem[]) { setGuest(next); saveGuest(next); }
   async function add(product: Product, size: string) {
     if (!ready || locked.current) return false;
-    if (token) return mutate("/carrinho", "POST", { productId: product.id, size, quantity: 1 });
-    const previous = guestItems.find(i => i.product.id === product.id && i.size === size);
+    if (token) return mutate("/carrinho", "POST", { productId: product.id, colorId: product.colorId, size, quantity: 1 });
+    const previous = guestItems.find(i => i.product.id === product.id && i.colorId === product.colorId && i.size === size);
     if ((previous?.quantity ?? 0) >= stockFor(product, size)) return false;
-    updateGuest(previous ? guestItems.map(i => i === previous ? { ...i, quantity: i.quantity + 1 } : i) : [...guestItems, { product, size, quantity: 1 }]);
+    updateGuest(previous ? guestItems.map(i => i === previous ? { ...i, quantity: i.quantity + 1 } : i) : [...guestItems, { product, colorId: product.colorId, size, quantity: 1 }]);
     return true;
   }
-  function remove(productId: number, size: string) {
+  function remove(productId: number, size: string, colorId: number) {
     if (!ready || locked.current) return;
-    if (token) return void mutate("/carrinho/item", "DELETE", { productId, size });
-    updateGuest(guestItems.filter(i => i.product.id !== productId || i.size !== size));
+    if (token) return void mutate("/carrinho/item", "DELETE", { productId, colorId, size });
+    updateGuest(guestItems.filter(i => i.product.id !== productId || i.colorId !== colorId || i.size !== size));
   }
-  function changeQty(productId: number, size: string, delta: number) {
+  function changeQty(productId: number, size: string, delta: number, colorId: number) {
     if (!ready || locked.current) return;
-    const item = items.find(i => i.product.id === productId && i.size === size);
+    const item = items.find(i => i.product.id === productId && i.colorId === colorId && i.size === size);
     if (!item) return;
     const quantity = item.quantity + delta;
-    if (quantity <= 0) return remove(productId, size);
-    if (token) return void mutate("/carrinho", "PATCH", { productId, size, quantity });
+    if (quantity <= 0) return remove(productId, size, colorId);
+    if (token) return void mutate("/carrinho", "PATCH", { productId, colorId, size, quantity });
     updateGuest(guestItems.map(i => i === item ? { ...i, quantity: Math.min(stockFor(i.product, size), quantity) } : i));
   }
   function clear() {

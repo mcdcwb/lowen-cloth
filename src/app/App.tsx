@@ -2,7 +2,7 @@ import { Fragment, useState, useEffect, useRef } from "react";
 import { useProducts } from "./hooks/useProducts";
 import { ProductImage } from "./components/ProductImage";
 import { Manager } from "./manager/Manager";
-import { catalogSizes, isNumericSize, stockFor, type Product, type Size } from "./lib/products";
+import { catalogSizes, isNumericSize, selectProductColor, stockFor, type Product, type Size } from "./lib/products";
 import { useShopping, type CartItem } from "./hooks/useShopping";
 import { useAuth } from "./hooks/useAuth";
 import { useLocation, useNavigate } from "react-router";
@@ -107,7 +107,7 @@ export default function App() {
   const filteredProducts = products.filter((p) => {
     const publicMatch = activePublic === "todos" || p.public === activePublic ||
       ((activePublic === "masculino" || activePublic === "feminino") && p.public === "unissex");
-    const sizeMatch = selectedSizes.length === 0 || p.variants.some((v) => v.stock > 0 && selectedSizes.includes(v.value));
+    const sizeMatch = selectedSizes.length === 0 || p.colors.some(c => c.variants.some(v => v.stock > 0 && selectedSizes.includes(v.value)));
     return publicMatch && sizeMatch && (!activeCategory || p.category === activeCategory);
   });
 
@@ -122,7 +122,7 @@ export default function App() {
 
   function availableStock(product: Product, size: Size) {
     if (productsLoading || productsError || !shopping.ready || shopping.busy) return 0;
-    return Math.max(0, stockFor(product, size) - cartItems.filter(item => item.product.id === product.id && item.size === size).reduce((sum, item) => sum + item.quantity, 0));
+    return Math.max(0, stockFor(product, size) - cartItems.filter(item => item.product.id === product.id && item.colorId === product.colorId && item.size === size).reduce((sum, item) => sum + item.quantity, 0));
   }
 
   async function handleLogin(email: string, password: string, signal: AbortSignal) {
@@ -735,8 +735,19 @@ export default function App() {
   );
 }
 
+function ColorSelector({ product, onSelect }: { product: Product; onSelect: (id: number) => void }) {
+  return <div className="space-y-2"><p className="text-sm">Cor: <span className="font-medium">{product.color.name}</span></p>
+    <div className="flex gap-2 flex-wrap" role="group" aria-label="Selecionar cor">
+      {product.colors.map(color => <button key={color.id} type="button" title={color.colorName} aria-label={color.colorName}
+        aria-pressed={product.colorId === color.id} onClick={() => onSelect(color.id)}
+        className={`h-7 w-7 border rounded-none shadow-sm ${product.colorId === color.id ? "ring-2 ring-primary ring-offset-2 border-primary" : "border-border"}`}
+        style={{ backgroundColor: color.colorValue }} />)}
+    </div>
+  </div>;
+}
+
 function ProductDetailPage({
-  product,
+  product: baseProduct,
   user,
   totalItems,
   onBack,
@@ -756,6 +767,9 @@ function ProductDetailPage({
   onAddToCart: (p: Product, s: Size) => Promise<boolean>;
   availableStock: (p: Product, s: Size) => number;
 }) {
+  const [selectedColorId, setSelectedColorId] = useState(() => { const id = Number(new URLSearchParams(window.location.search).get("colorId")); return baseProduct.colors.some(c => c.id === id) ? id : baseProduct.colorId; });
+  const product = selectProductColor(baseProduct, baseProduct.colors.some(c => c.id === selectedColorId) ? selectedColorId : baseProduct.colors[0].id);
+
   const productImages = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState<Size | null>(null);
@@ -861,6 +875,11 @@ function ProductDetailPage({
             </div>
 
             <div className="text-2xl font-bold text-primary">{formatPrice(product.price)}</div>
+            <ColorSelector product={product} onSelect={id => {
+              const next = selectProductColor(baseProduct, id);
+              setSelectedColorId(id); setActiveImageIndex(0); setAdded(false);
+              if (selectedSize && availableStock(next, selectedSize) <= 0) setSelectedSize(null);
+            }} />
 
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-3">
@@ -870,6 +889,7 @@ function ProductDetailPage({
                 {product.sizes.map((size) => (
                   <button
                     key={size}
+              aria-pressed={selectedSize === size}
                     disabled={availableStock(product, size) <= 0}
                     title={stockFor(product, size) === 0 ? "Esgotado" : undefined}
                     type="button"
@@ -924,7 +944,7 @@ function ProductDetailPage({
 
 function ProductCard({
   liked, onFavorite, favoriteBusy,
-  product,
+  product: baseProduct,
   onAddToCart,
   availableStock,
 }: {
@@ -933,6 +953,9 @@ function ProductCard({
   onAddToCart: (p: Product, s: Size) => Promise<boolean>;
   availableStock: (p: Product, s: Size) => number;
 }) {
+  const [selectedColorId, setSelectedColorId] = useState(baseProduct.colorId);
+  const product = selectProductColor(baseProduct, baseProduct.colors.some(c => c.id === selectedColorId) ? selectedColorId : baseProduct.colors[0].id);
+
   const [selectedSize, setSelectedSize] = useState<Size | null>(null);
   const [added, setAdded] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -960,7 +983,7 @@ function ProductCard({
       {/* Image */}
       <div className="relative aspect-[4/5] bg-muted overflow-hidden rounded-none">
         <a
-          href={`?productId=${product.id}`}
+          href={`?productId=${product.id}&colorId=${product.colorId}`}
           target="_blank"
           rel="noopener noreferrer"
           className="block h-full w-full"
@@ -1043,22 +1066,18 @@ function ProductCard({
           <p className="mt-1 text-base font-bold text-primary">{formatPrice(product.price)}</p>
         </div>
 
-        {/* Color swatch */}
-        <div className="flex gap-1.5 flex-wrap">
-          <button
-            type="button"
-            title={product.color.name}
-            aria-label={product.color.name}
-            className="h-5 w-5 border border-border rounded-none shadow-sm transition hover:border-primary/50"
-            style={{ backgroundColor: product.color.value }}
-          />
-        </div>
+        <ColorSelector product={product} onSelect={id => {
+              const next = selectProductColor(baseProduct, id);
+              setSelectedColorId(id); setCurrentImageIndex(0); setAdded(false);
+              if (selectedSize && availableStock(next, selectedSize) <= 0) setSelectedSize(null);
+            }} />
 
         {/* Size buttons */}
         <div className="flex gap-1 flex-wrap">
           {product.sizes.map((size) => (
             <button
               key={size}
+              aria-pressed={selectedSize === size}
               disabled={availableStock(product, size) <= 0}
               title={stockFor(product, size) === 0 ? "Esgotado" : undefined}
               onClick={() => setSelectedSize((s) => (s === size ? null : size))}
@@ -1108,8 +1127,8 @@ function CartDrawer({
   totalPrice: number;
   user: AuthUser | null;
   onClose: () => void;
-  onRemove: (id: number, size: Size) => void;
-  onChangeQty: (id: number, size: Size, delta: number) => void;
+  onRemove: (id: number, size: Size, colorId: number) => void;
+  onChangeQty: (id: number, size: Size, delta: number, colorId: number) => void;
   onOpenAuth: () => void;
   onClearCart: () => void;
 }) {
@@ -1182,7 +1201,7 @@ function CartDrawer({
           ) : (
             items.map((item) => (
               <div
-                key={`${item.product.id}-${item.size}`}
+                key={`${item.product.id}-${item.colorId}-${item.size}`}
                 className="flex gap-3 p-3 rounded-xl bg-muted/40 border border-border/60"
               >
                 {/* Thumb */}
@@ -1199,7 +1218,7 @@ function CartDrawer({
                     {item.product.name}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Tamanho: <span className="font-semibold text-foreground">{item.size}</span>
+                    Cor: <span className="font-semibold text-foreground">{item.product.color.name}</span>{" · "}Tamanho: <span className="font-semibold text-foreground">{item.size}</span>
                   </p>
                   <p className="text-sm font-bold text-primary">{formatPrice(item.product.price)}</p>
                   {/* Qty controls */}
@@ -1207,7 +1226,7 @@ function CartDrawer({
                     <button
                       disabled={busy}
                       aria-label="Diminuir quantidade"
-                      onClick={() => onChangeQty(item.product.id, item.size, -1)}
+                      onClick={() => onChangeQty(item.product.id, item.size, -1, item.colorId)}
                       className="w-7 h-7 rounded-lg border border-border flex items-center justify-center hover:bg-muted transition-colors"
                     >
                       <Minus className="w-3.5 h-3.5" />
@@ -1216,7 +1235,7 @@ function CartDrawer({
                     <button
                       disabled={busy || item.quantity >= stockFor(item.product, item.size)}
                       aria-label="Aumentar quantidade"
-                      onClick={() => onChangeQty(item.product.id, item.size, 1)}
+                      onClick={() => onChangeQty(item.product.id, item.size, 1, item.colorId)}
                       className="w-7 h-7 rounded-lg border border-border flex items-center justify-center hover:bg-muted transition-colors"
                     >
                       <Plus className="w-3.5 h-3.5" />
@@ -1224,7 +1243,7 @@ function CartDrawer({
                     <button
                       disabled={busy}
                       aria-label="Remover item"
-                      onClick={() => onRemove(item.product.id, item.size)}
+                      onClick={() => onRemove(item.product.id, item.size, item.colorId)}
                       className="ml-auto p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                     >
                       <Trash2 className="w-4 h-4" />

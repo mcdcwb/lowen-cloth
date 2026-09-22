@@ -75,42 +75,98 @@ Envie `Authorization: Bearer <accessToken>` nas rotas protegidas. `GET /auth/me`
 - Credenciais incorretas ou conta inativa no login: `401` com a mesma mensagem.
 - Login malformado: `400`; excesso de tentativas: `429`.
 - Clientes autenticados recebem `403` nas operações administrativas de produtos.
-- O CRUD mantém seus corpos de resposta e validações anteriores para administradores autenticados.
+- O CRUD usa o contrato de cores abaixo, preservando a autorização de administradores ativos.
 - Não há renovação automática nem endpoint de logout; após expirar o token, faça login novamente. A desativação da conta bloqueia imediatamente seus tokens.
 
 Use HTTPS em produção. O limitador mantém contagens na memória de cada processo; reinícios zeram as contagens. A configuração atual considera conexão direta ao Express. Em uma implantação com proxy ou várias instâncias, configure os proxies confiáveis e um armazenamento compartilhado para o limitador.
 
-## Variantes de produtos
+## Produtos, cores e variantes
 
-`POST /produtos` exige `variants`, que pode ser uma lista vazia:
+A modelagem é `Product → ProductColor → ProductVariant`. Nome, descrição, preço,
+badge, público e categoria continuam no produto. Cada cor tem ID, `productId`,
+`colorName`, `colorValue`, `imageUrl`, `images`, posição de exibição e variantes.
+Cada variante pertence a uma cor (`colorId`); o tamanho é único dentro dessa cor.
+O preço é único para todas as cores. Favoritos continuam por produto.
+
+`POST /produtos` exige ao menos uma cor com nome não vazio, HEX de seis dígitos,
+lista de imagens e lista de variantes (esta pode ser vazia):
 
 ```json
 {
   "name": "Camiseta Löwen",
   "description": "Camiseta oversized",
-  "price": 129.90,
+  "price": 99.90,
   "public": "unissex",
   "category": "camisetas",
-  "images": ["https://placehold.co/800x1000"],
   "badge": "Novo",
-  "colorName": "Preto",
-  "colorValue": "#171717",
-  "imageUrl": "/images/camiseta.jpg",
-  "variants": [
-    { "value": "P", "stock": 2 },
-    { "value": "M", "stock": 5 },
-    { "value": "G", "stock": 3 }
+  "colors": [
+    {
+      "colorName": "Preto",
+      "colorValue": "#171717",
+      "imageUrl": "/images/preto-frente.jpg",
+      "images": ["/images/preto-costas.jpg"],
+      "variants": [{ "value": "P", "stock": 3 }, { "value": "GG", "stock": 0 }]
+    },
+    {
+      "colorName": "Branco",
+      "colorValue": "#FFFFFF",
+      "images": ["/images/branco.jpg"],
+      "variants": [{ "value": "P", "stock": 0 }, { "value": "GG", "stock": 1 }]
+    }
   ]
 }
 ```
 
-`value` aceita texto livre não vazio (por exemplo, `38` como string ou `Personalizado`), remove espaços nas extremidades e deve ser único no produto, diferenciando maiúsculas e minúsculas. `stock` é obrigatório em cada variante e deve ser inteiro entre 0 e 2147483647, limite do campo PostgreSQL. Campos desconhecidos no produto são rejeitados.
+As respostas GET/POST/PUT incluem `colors[]` com IDs e `variants[]` com IDs e
+`colorId`. O formato antigo com cor, imagens e variantes na raiz foi substituído.
+HEX é normalizado para maiúsculas; estoque é inteiro entre 0 e 2147483647, com
+CHECK no banco contra negativos. Campos desconhecidos são rejeitados também nas
+cores/variantes; não é possível atribuir preço ou badge a uma cor.
 
-`PUT /produtos/:id` aceita campos parciais. Quando `variants` é omitido, as variantes são preservadas. Quando enviado, representa a lista completa desejada: atualiza estoques por `value`, preservando IDs existentes, cria novos valores e remove os ausentes, atomicamente. Enviar `variants: []` remove todas.
+`PUT /produtos/:id` continua parcial para os campos gerais. Omitir `colors`
+preserva todas as cores. Enviar `colors` representa a lista completa desejada:
+mande os IDs das cores existentes e omita IDs em cores novas. Cada cor enviada
+contém seus campos e a lista completa de variantes. IDs de variantes preservam
+identidade mesmo ao renomear tamanhos; sem ID, o tamanho identifica uma variante
+existente dentro da cor. IDs de outro produto/outra cor são rejeitados com 400.
+Todas as alterações são atômicas e edições do mesmo produto são serializadas.
 
-`GET /produtos` e as respostas de criação/atualização incluem `variants` com `id`, `productId`, `value` e `stock`. Excluir um produto remove suas variantes pela relação `onDelete: Cascade`.
+Cores omitidas são removidas com suas variantes. Variantes omitidas também são
+removidas. O cascade remove somente os itens de carrinho referenciando essas
+variantes; os demais itens e favoritos permanecem. Reduções de estoque são
+reconciliadas na leitura do carrinho, com aviso. O Manager pede confirmação para
+remover cores persistidas ou preenchidas e impede remover a última cor; a API
+também rejeita `colors: []`.
 
-`public` e `category` são strings não vazias; `images` é uma lista de strings não vazias e aceita `[]`. Os três campos são obrigatórios na criação e opcionais na atualização. `badge`, `colorName` e `colorValue` são strings opcionais e aceitam `null` para limpar o valor. Todos são retornados na listagem, criação e atualização. Enviar `images` substitui a galeria completa; omitir preserva a galeria.
+No Manager, **+ Adicionar cor** cria uma aba independente com nome, HEX, Color
+Picker/EyeDropper, URLs de imagens e variantes/estoques. Trocar de aba preserva o
+rascunho das demais. A captura pendente é cancelada ao trocar de cor ou desmontar
+o formulário. O armazenamento de imagens permanece por URL/caminho, sem uploads
+ou serviços adicionais. Catálogo e detalhes mudam galeria e tamanhos pela cor,
+voltam à primeira imagem e limpam um tamanho que ficou indisponível.
+
+### Migration de dados existentes
+
+`20260922000000_product_colors` é uma nova migration transacional, sem alterações
+nas anteriores. Cria uma cor para cada produto, copia as imagens e os valores de
+cor existentes e move as variantes mantendo seus IDs e estoques. `CartItem`
+continua referenciando `variantId`: seus registros e quantidades não são recriados.
+User, Admin, UserAddress e Favorite não são alterados.
+
+Nomes/HEX legados não nulos são copiados literalmente. Quando eram nulos, a cor
+recebe `Cor não informada` e `#000000`, respectivamente; galerias nulas tornam-se
+`[]`. Valores legados inválidos são preservados para correção pelo administrador;
+novos cadastros/edições exigem nome e HEX válidos. O banco recusa estoques negativos
+em vez de corrigi-los silenciosamente. Não execute reset ou seed para migrar.
+
+```sh
+npx prisma migrate deploy
+npx prisma generate
+npx prisma validate
+```
+
+Prisma permanece **7.9.1**. Aplique a migration e publique frontend/backend juntos,
+pois o contrato público de produtos passou a ser aninhado.
 
 ## Seed de desenvolvimento
 
@@ -158,11 +214,18 @@ do token verificado pelo middleware existente. ADMIN recebe 403 nestas rotas.
 | DELETE | `/carrinho` | Esvazia o carrinho da conta |
 | POST | `/carrinho/sincronizar` | Mescla o carrinho visitante |
 
-POST/PATCH recebem `{ "productId": 1, "size": "P", "quantity": 2 }`.
-DELETE de item recebe `{ "productId": 1, "size": "P" }`.
+POST/PATCH recebem `{ "productId": 1, "colorId": 10, "size": "P", "quantity": 2 }`.
+DELETE de item recebe `{ "productId": 1, "colorId": 10, "size": "P" }`.
 A sincronização recebe `{ "items": [...] }` com o mesmo formato do POST.
-O servidor resolve produto/tamanho para `ProductVariant.id`; o banco impõe
+O servidor verifica a relação produto/cor e resolve cor/tamanho para `ProductVariant.id`; o banco impõe
 unicidade de favorito por usuário/produto e de item por usuário/variante.
+
+As respostas de carrinho contêm `{ items, notices }`; cada item inclui `product`,
+`colorId`, `variantId`, `size` e `quantity`. O carrinho visitante também guarda
+`colorId`, diferenciando duas cores do mesmo produto/tamanho. Itens legados sem
+`colorId` são associados à primeira cor do produto (a cor original após a
+migration), inclusive na sincronização; itens que já têm ID de cor removida não
+são redirecionados para outra cor.
 
 As respostas de carrinho contêm `{ items, notices }`. A mesclagem usa a maior
 quantidade entre visitante e conta, limitada ao estoque; repeti-la não soma
@@ -196,3 +259,21 @@ As rotas `/conta` exigem o JWT de um USER ativo, com a mesma autenticação de
 A migration `20260917230132_add_user_address` cria `UserAddress`, uma relação
 opcional de um endereço por User, sem alterar registros de usuários existentes.
 Favoritos e carrinho continuam vinculados ao mesmo ID após mudar e-mail/senha.
+
+## Validação isolada de regressões
+
+Para executar as suítes sem modificar produtos/carrinhos locais, use os helpers
+abaixo a partir de `backend`. Eles criam um banco temporário com nome aleatório,
+aplicam as migrations e o removem ao terminar. A conexão configurada precisa ter
+permissão de criar/remover bancos; nenhuma tabela do banco original é apagada.
+
+```sh
+node tests/helpers/run-isolated.mjs
+node tests/helpers/run-isolated.mjs browser
+```
+
+O primeiro executa todos os testes backend, incluindo uma migration sobre dados
+legados com carrinho preenchido. O segundo executa toda a suíte Playwright com
+fixtures próprias. Para filtrar: `node tests/helpers/run-isolated.mjs browser tests/colors.spec.ts`.
+No frontend execute também `npm test`, `npm run typecheck` e `npm run build`;
+no backend, `npm run build`. Finalize com `git diff --check`.

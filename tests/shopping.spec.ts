@@ -19,7 +19,7 @@ test.beforeAll(async ({ request }) => {
   const response = await request.post("/api/auth/login", { data: { email: process.env.E2E_ADMIN_EMAIL, password: process.env.E2E_ADMIN_PASSWORD } });
   adminToken = (await response.json()).accessToken;
   const created = await request.post("/api/produtos", { headers: { Authorization: `Bearer ${adminToken}` }, data: {
-    name: "Persistencia Browser", price: 31, public: "unissex", category: "camisetas", images: [], variants: [{ value: "P", stock: 3 }, { value: "M", stock: 2 }]
+    name: "Persistencia Browser", price: 31, public: "unissex", category: "camisetas", colors: [{ colorName: "Preto", colorValue: "#111111", images: [], variants: [{ value: "P", stock: 3 }, { value: "M", stock: 2 }] }]
   } });
   expect(created.status()).toBe(201);
   product = await created.json();

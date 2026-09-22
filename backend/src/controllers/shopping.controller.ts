@@ -3,7 +3,7 @@ import { z } from "zod";
 import * as service from "../services/shopping.service.js";
 
 const id = z.number().int().positive().max(2147483647);
-const selection = z.object({ productId: id, size: z.string().trim().min(1).max(100), quantity: id }).strict();
+const selection = z.object({ productId: id, colorId: id.optional(), size: z.string().trim().min(1).max(100), quantity: id }).strict();
 export function shopping(action: "favorites" | "favorite" | "unfavorite" | "read" | "add" | "set" | "remove" | "clear" | "merge") {
     return async (req: Request, res: Response) => {
         try {

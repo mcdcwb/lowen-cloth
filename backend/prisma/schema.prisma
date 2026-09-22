@@ -16,30 +16,36 @@ model Product {
   public      String
   category    String
 
-  imageUrl    String?
-  images      String[]
   badge       String?
-
-  colorName   String?
-  colorValue  String?
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  variants ProductVariant[]
+  colors ProductColor[]
   favorites Favorite[]
 }
 
-model ProductVariant {
-  cartItems CartItem[]
-  id        Int     @id @default(autoincrement())
-  value     String
-  stock     Int     @default(0)
-
+model ProductColor {
+  id Int @id @default(autoincrement())
   productId Int
-  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  colorName String
+  colorValue String
+  imageUrl String?
+  images String[]
+  position Int @default(0)
+  variants ProductVariant[]
+  @@index([productId])
+}
 
-  @@unique([productId, value])
+model ProductVariant {
+  id Int @id @default(autoincrement())
+  value String
+  stock Int @default(0)
+  colorId Int
+  color ProductColor @relation(fields: [colorId], references: [id], onDelete: Cascade)
+  cartItems CartItem[]
+  @@unique([colorId, value])
 }
 
 model Admin {

@@ -10,7 +10,7 @@ process.env.E2E_PROFILE_PREFIX ??= "profile-" + randomUUID();
 
 export default defineConfig({
   testDir: "./tests",
-  testMatch: /(?:auth|filters|manager|shopping|account)\.spec\.ts/,
+  testMatch: /(?:auth|filters|manager|shopping|account|colors)\.spec\.ts/,
   globalSetup: "./tests/browser-setup.ts",
   workers: 1,
   use: {

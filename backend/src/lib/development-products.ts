@@ -28,12 +28,12 @@ export const developmentProducts = catalog.map((product, index) => {
         `https://placehold.co/800x1000/${product.colorValue.slice(1)}/222222?text=${encodeURIComponent(product.name + " - " + view)}`
     );
     return createProductSchema.parse({
-        ...product,
+        name: product.name, price: product.price, public: product.public, category: product.category,
         description: seedMarker + product.description,
         badge: product.badge ?? null,
-        imageUrl: images[0],
+        colors: [{ colorName: product.colorName, colorValue: product.colorValue, imageUrl: images[0],
         images,
-        variants: sizes.map((value, sizeIndex) => ({ value, stock: (index + sizeIndex * 3) % 13 }))
+        variants: sizes.map((value, sizeIndex) => ({ value, stock: (index + sizeIndex * 3) % 13 })) }]
     });
 });
 
@@ -41,9 +41,9 @@ export async function seedDevelopmentProducts() {
     return prisma.$transaction(async tx => {
         // Cascade removes only variants belonging to these explicitly marked products.
         await tx.product.deleteMany({ where: seedWhere });
-        for (const { variants, ...product } of developmentProducts) {
-            await tx.product.create({ data: { ...product, variants: { create: variants } } });
+        for (const { colors, ...product } of developmentProducts) {
+            await tx.product.create({ data: { ...product, colors: { create: colors.map(({ variants, ...color }, position) => ({ ...color, position, variants: { create: variants } })) } } });
         }
-        return tx.product.findMany({ where: seedWhere, include: { variants: true } });
+        return tx.product.findMany({ where: seedWhere, include: { colors: { include: { variants: true } } } });
     });
 }

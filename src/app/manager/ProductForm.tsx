@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Pipette, Plus, Trash2 } from "lucide-react";
 import { ProductImage } from "../components/ProductImage";
-import { audiences, categories, labels, normalizeHex, toDraft, toInput, validateDraft, type ManagedProduct, type ProductDraft, type ProductInput } from "./products";
+import { audiences, categories, labels, normalizeHex, toDraft, toInput, validateDraft, type ManagedProduct, colorDraft, type ColorDraft, type ProductDraft, type ProductInput } from "./products";
 
 type EyeDropperConstructor = new () => { open: (options?: { signal: AbortSignal }) => Promise<{ sRGBHex: string }> };
 
@@ -10,6 +10,18 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
   product?: ManagedProduct; busy: boolean; onSave: (input: ProductInput) => Promise<void>; onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(() => toDraft(product));
+  const [activeKey, setActiveKey] = useState(draft.colors[0].key);
+  const active = draft.colors.find(c => c.key === activeKey) ?? draft.colors[0];
+  const [removing, setRemoving] = useState<string | null>(null);
+  const changeColor = (key: keyof Omit<ColorDraft, "key" | "id">, value: string | ColorDraft["variants"]) =>
+    setDraft(previous => ({ ...previous, colors: previous.colors.map(c => c.key === active.key ? { ...c, [key]: value } : c) }));
+  function selectColor(key: string) {
+    selection.current?.abort(); selection.current = null; setPicking(false); setColorNotice(""); setActiveKey(key);
+  }
+  function removeColor(key: string) {
+    const next = draft.colors.filter(c => c.key !== key);
+    setDraft({ ...draft, colors: next }); selectColor(next[0].key); setRemoving(null);
+  }
   const [errors, setErrors] = useState<string[]>([]);
   const colorId = useId();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -18,10 +30,10 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
   const [colorNotice, setColorNotice] = useState("");
   const EyeDropper = (window as Window & { EyeDropper?: EyeDropperConstructor }).EyeDropper;
   const supportsEyeDropper = typeof EyeDropper === "function";
-  const imageSource = draft.imageUrl.trim() || draft.images.split(/\r?\n/).find(value => value.trim())?.trim();
-  const hex = normalizeHex(draft.colorValue);
+  const imageSource = active.imageUrl.trim() || active.images.split(/\r?\n/).find(value => value.trim())?.trim();
+  const hex = normalizeHex(active.colorValue);
   useEffect(() => () => selection.current?.abort(), []);
-  const change = (key: keyof Omit<ProductDraft, "variants">, value: string) => setDraft(previous => ({ ...previous, [key]: value }));
+  const change = (key: keyof Omit<ProductDraft, "colors">, value: string) => setDraft(previous => ({ ...previous, [key]: value }));
   async function pickFromImage() {
     if (!supportsEyeDropper || busy || selection.current || !imageSource) return;
     const controller = new AbortController();
@@ -35,7 +47,7 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
       if (controller.signal.aborted) return;
       const selected = normalizeHex(result.sRGBHex);
       if (!selected) throw new Error("Invalid color");
-      change("colorValue", selected);
+      changeColor("colorValue", selected);
       setColorNotice(`Cor selecionada: ${selected}.`);
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -46,10 +58,9 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
       if (!controller.signal.aborted) { selection.current = null; setPicking(false); }
     }
   }
-  const variant = (index: number, key: "value" | "stock", value: string) => setDraft(previous => ({ ...previous,
-    variants: previous.variants.map((item, i) => i === index ? { ...item, [key]: value } : item)
-  }));
-  const field = (label: string, key: keyof Omit<ProductDraft, "variants">, type = "text") => (
+  const variant = (index: number, key: "value" | "stock", value: string) => changeColor("variants", active.variants.map((item, i) => i === index ? { ...item, [key]: value } : item));
+  const colorField = (label: string, key: "colorName" | "imageUrl") => <label className="block space-y-2 text-sm font-medium">{label}<input className={inputClass} value={active[key]} onChange={event => changeColor(key, event.target.value)} /></label>;
+  const field = (label: string, key: keyof Omit<ProductDraft, "colors">, type = "text") => (
     <label className="block space-y-2 text-sm font-medium">{label}
       <input className={inputClass} value={draft[key]} onChange={event => change(key, event.target.value)} type={type}
         {...(key === "price" ? { min: "0.01", step: "any" } : {})} />
@@ -78,16 +89,36 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
             <label className="block space-y-2 text-sm font-medium">Categoria<select aria-label="Categoria" className={inputClass} value={draft.category} onChange={event => change("category", event.target.value)}>
               {[...new Set([...categories, draft.category])].map(value => <option key={value} value={value}>{labels[value] ?? value}</option>)}
             </select></label>
-            {field("Nome da cor", "colorName")}
+            </div>
+        </section>
+        <section className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-5">
+          <h2 className="font-semibold text-lg">Cores do produto</h2>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Cores do produto">
+            {draft.colors.map((color, index) => <button key={color.key} type="button" aria-pressed={color.key === active.key}
+              onClick={() => selectColor(color.key)} className={`max-w-full break-words rounded-lg border px-3 py-2 ${color.key === active.key ? "bg-primary text-primary-foreground border-primary" : "border-border"}`}>
+              {color.colorName || `Cor ${index + 1}`}
+            </button>)}
+            <button type="button" onClick={() => { const color = colorDraft(); setDraft(p => ({ ...p, colors: [...p.colors, color] })); selectColor(color.key); }} className="rounded-lg border border-border px-3 py-2">+ Adicionar cor</button>
+          </div>
+          <button type="button" disabled={draft.colors.length === 1} className="text-sm text-destructive disabled:opacity-40" onClick={() => {
+            if (active.id || active.colorName || active.colorValue || active.imageUrl || active.images || active.variants.some(v => v.value || Number(v.stock))) setRemoving(active.key);
+            else removeColor(active.key);
+          }}>Remover cor</button>
+          {removing && <div role="alertdialog" aria-label="Remover cor?" className="rounded-lg border border-destructive p-4 space-y-3">
+            <p>Remover esta cor, suas imagens e variantes? Ao salvar, os itens dessa cor também serão removidos dos carrinhos.</p>
+            <div className="flex flex-wrap gap-4"><button type="button" onClick={() => setRemoving(null)}>Cancelar remoção</button><button type="button" className="text-destructive" onClick={() => removeColor(removing)}>Confirmar remoção da cor</button></div>
+          </div>}
+          <div className="grid gap-4 sm:grid-cols-2">
+            {colorField("Nome da cor", "colorName")}
             <div className="min-w-0 space-y-2 text-sm font-medium">
               <label htmlFor={colorId}>Valor da cor</label>
               <div className="flex items-center gap-2">
                 <input type="color" aria-label="Seletor de cor" value={hex ?? "#000000"}
-                  onChange={event => { change("colorValue", normalizeHex(event.target.value)!); setColorNotice(""); }}
+                  onChange={event => { changeColor("colorValue", normalizeHex(event.target.value)!); setColorNotice(""); }}
                   className="h-11 w-11 shrink-0 cursor-pointer rounded-lg border border-border bg-card p-1" />
-                <input id={colorId} className={inputClass + " min-w-0 font-mono"} placeholder="#1F2937" value={draft.colorValue}
-                  aria-describedby={`${colorId}-hint`} aria-invalid={Boolean(draft.colorValue.trim() && !hex)}
-                  onChange={event => { change("colorValue", normalizeHex(event.target.value) ?? event.target.value); setColorNotice(""); }} />
+                <input id={colorId} className={inputClass + " min-w-0 font-mono"} placeholder="#1F2937" value={active.colorValue}
+                  aria-describedby={`${colorId}-hint`} aria-invalid={Boolean(active.colorValue.trim() && !hex)}
+                  onChange={event => { changeColor("colorValue", normalizeHex(event.target.value) ?? event.target.value); setColorNotice(""); }} />
               </div>
               <button type="button" onClick={pickFromImage} disabled={picking || !supportsEyeDropper || !imageSource}
                 className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed">
@@ -102,22 +133,22 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
         </section>
         <section className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-4">
           <div className="flex flex-wrap justify-between gap-3 items-center"><h2 className="font-semibold text-lg">Variantes e estoque</h2>
-            <button type="button" onClick={() => setDraft(previous => ({ ...previous, variants: [...previous.variants, { value: "", stock: "0" }] }))} className="inline-flex gap-2 items-center text-sm text-primary font-semibold"><Plus size={16} />Adicionar variante</button>
+            <button type="button" onClick={() => changeColor("variants", [...active.variants, { value: "", stock: "0" }])} className="inline-flex gap-2 items-center text-sm text-primary font-semibold"><Plus size={16} />Adicionar variante</button>
           </div>
           <p className="text-sm text-muted-foreground">Use tamanhos, numerações ou outros valores. Cada variante tem seu próprio estoque.</p>
-          {draft.variants.length === 0 && <p className="text-sm text-muted-foreground">Sem variantes. O produto ficará sem estoque.</p>}
-          {draft.variants.map((item, index) => <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-end">
+          {active.variants.length === 0 && <p className="text-sm text-muted-foreground">Sem variantes. Esta cor ficará sem estoque.</p>}
+          {active.variants.map((item, index) => <div key={index} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-3 items-end">
             <label className="space-y-1 text-sm">Variante {index + 1}<input className={inputClass} value={item.value} onChange={event => variant(index, "value", event.target.value)} placeholder="P, 38, Único..." /></label>
             <label className="space-y-1 text-sm">Estoque {index + 1}<input className={inputClass} type="number" min="0" max="2147483647" step="1" value={item.stock} onChange={event => variant(index, "stock", event.target.value)} /></label>
-            <button type="button" aria-label={`Remover variante ${index + 1}`} className="p-3 text-destructive rounded-lg hover:bg-destructive/10" onClick={() => setDraft(previous => ({ ...previous, variants: previous.variants.filter((_, i) => i !== index) }))}><Trash2 size={18} /></button>
+            <button type="button" aria-label={`Remover variante ${index + 1}`} className="p-3 text-destructive rounded-lg hover:bg-destructive/10" onClick={() => changeColor("variants", active.variants.filter((_, i) => i !== index))}><Trash2 size={18} /></button>
           </div>)}
         </section>
       </div>
       <section className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-5 self-start">
-        <h2 className="font-semibold text-lg">Imagens</h2>
+        <h2 className="font-semibold text-lg">Imagens desta cor</h2>
         <div ref={previewRef}><ProductImage src={imageSource} alt="Prévia do produto" className="w-full h-56 object-contain rounded-lg bg-muted" /></div>
-        {field("Imagem principal", "imageUrl")}
-        <label className="block space-y-2 text-sm font-medium">Imagens adicionais<textarea className={inputClass} rows={5} value={draft.images} onChange={event => change("images", event.target.value)} placeholder="Uma URL ou caminho por linha" /></label>
+        {colorField("Imagem principal", "imageUrl")}
+        <label className="block space-y-2 text-sm font-medium">Imagens adicionais<textarea className={inputClass} rows={5} value={active.images} onChange={event => changeColor("images", event.target.value)} placeholder="Uma URL ou caminho por linha" /></label>
         <p className="text-xs text-muted-foreground">Informe URLs ou caminhos de imagens já disponíveis. Uma imagem adicional por linha.</p>
       </section>
     </fieldset>

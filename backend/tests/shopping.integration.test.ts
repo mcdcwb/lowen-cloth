@@ -26,7 +26,7 @@ test("account shopping persists, isolates users and enforces stock in PostgreSQL
         };
         let a = await login(emails[0]);
         const b = await login(emails[1]), admin = await login(emails[2]);
-        const product = await prisma.product.create({ data: { name: "Shopping fixture", price: 10, public: "unissex", category: "camisetas", images: [], variants: { create: [{ value: "P", stock: 3 }, { value: "M", stock: 2 }] } } });
+        const product = await prisma.product.create({ data: { name: "Shopping fixture", price: 10, public: "unissex", category: "camisetas", colors: { create: { colorName: "Preto", colorValue: "#111111", images: [], variants: { create: [{ value: "P", stock: 3 }, { value: "M", stock: 2 }] } } } } });
         productId = product.id;
         const selection = { productId, size: "P", quantity: 1 };
         const req = (path: string, method = "GET", body?: unknown, token = a) => server.request(path, method, body, token);
@@ -78,7 +78,7 @@ test("account shopping persists, isolates users and enforces stock in PostgreSQL
             const results = await Promise.all(Array.from({ length: 4 }, () => req("/carrinho", "POST", selection)));
             assert.equal(results.filter(r => r.status === 200).length, 2);
             assert.equal(results.filter(r => r.status === 409).length, 2);
-            await prisma.productVariant.update({ where: { productId_value: { productId: product.id, value: "P" } }, data: { stock: 1 } });
+            await prisma.productVariant.updateMany({ where: { color: { productId: product.id }, value: "P" }, data: { stock: 1 } });
             assert.equal((await read())[0].quantity, 1);
         });
         await t.test("remove and clear only affect the current account", async () => {

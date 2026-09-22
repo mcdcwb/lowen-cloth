@@ -11,6 +11,7 @@ export async function getProducts(req: Request, res: Response) {
 
         res.json(products);
     } catch (error) {
+        if (error instanceof productService.ProductError) return res.status(error.status).json({ error: error.message });
         console.error(error);
 
         res.status(500).json({
@@ -34,6 +35,7 @@ export async function createProduct(req: Request, res: Response) {
 
         res.status(201).json(product);
     } catch (error) {
+        if (error instanceof productService.ProductError) return res.status(error.status).json({ error: error.message });
         console.error(error);
 
         res.status(500).json({
@@ -73,6 +75,7 @@ export async function updateProduct(req: Request, res: Response) {
 
         res.json(product);
     } catch (error) {
+        if (error instanceof productService.ProductError) return res.status(error.status).json({ error: error.message });
         console.error(error);
 
         res.status(500).json({
@@ -105,6 +108,7 @@ export async function deleteProduct(req: Request, res: Response) {
             message: "Produto excluído com sucesso."
         });
     } catch (error) {
+        if (error instanceof productService.ProductError) return res.status(error.status).json({ error: error.message });
         console.error(error);
 
         res.status(500).json({
