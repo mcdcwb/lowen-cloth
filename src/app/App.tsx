@@ -54,6 +54,8 @@ function formatPrice(val: number) {
   return val.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+const sizeButtonClass = "inline-flex h-[48px] w-[48px] shrink-0 items-center justify-center p-0 text-center [overflow-wrap:anywhere]";
+
 export default function App() {
   const { products, loading: productsLoading, error: productsError, retry: retryProducts } = useProducts();
   const allSizes = catalogSizes(products);
@@ -567,7 +569,7 @@ export default function App() {
                       {index > 0 && isNumericSize(size) && !isNumericSize(allSizes[index - 1]) && <hr className="col-span-3 border-border my-2" />}
                       <button aria-pressed={selectedSizes.includes(size)}
                         onClick={() => toggleSize(size)}
-                        className={`h-9 text-sm font-medium border transition-colors ${selectedSizes.includes(size) ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border hover:bg-muted"}`}>
+                        className={`${sizeButtonClass} text-sm font-medium border transition-colors ${selectedSizes.includes(size) ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border hover:bg-muted"}`}>
                         {size}
                       </button></Fragment>)}
                   </div>
@@ -601,7 +603,7 @@ export default function App() {
                       key={size}
                       onClick={() => toggleSize(size)}
                       aria-pressed={selectedSizes.includes(size)}
-                      className={`h-8 px-2.5 text-xs font-medium border transition-all ${selectedSizes.includes(size)
+                      className={`${sizeButtonClass} text-xs font-medium border transition-all ${selectedSizes.includes(size)
                         ? "bg-primary text-primary-foreground border-primary"
                         : "border-border hover:border-primary/50"
                         }`}
@@ -894,7 +896,7 @@ function ProductDetailPage({
                     title={stockFor(product, size) === 0 ? "Esgotado" : undefined}
                     type="button"
                     onClick={() => setSelectedSize((current) => (current === size ? null : size))}
-                    className={`disabled:opacity-40 disabled:cursor-not-allowed min-w-[48px] border px-3 py-2 text-sm font-medium text-center transition-all ${selectedSize === size
+                    className={`${sizeButtonClass} disabled:opacity-40 disabled:cursor-not-allowed border text-sm font-medium transition-all ${selectedSize === size
                       ? "bg-primary text-primary-foreground border-primary"
                       : "border-border hover:border-primary/40 hover:bg-muted"
                       }`}
@@ -1081,7 +1083,7 @@ function ProductCard({
               disabled={availableStock(product, size) <= 0}
               title={stockFor(product, size) === 0 ? "Esgotado" : undefined}
               onClick={() => setSelectedSize((s) => (s === size ? null : size))}
-              className={`disabled:opacity-40 disabled:cursor-not-allowed text-xs px-2 py-1 border font-medium transition-all rounded-none ${selectedSize === size
+              className={`${sizeButtonClass} disabled:opacity-40 disabled:cursor-not-allowed text-xs border font-medium transition-all rounded-none ${selectedSize === size
                 ? "bg-primary text-primary-foreground border-primary"
                 : "border-border hover:border-primary/40 hover:bg-muted"
                 }`}
