@@ -6,7 +6,8 @@ import { audiences, categories, labels, normalizeHex, toDraft, toInput, validate
 type EyeDropperConstructor = new () => { open: (options?: { signal: AbortSignal }) => Promise<{ sRGBHex: string }> };
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
-export function ProductForm({ product, busy, onSave, onCancel }: {
+export function ProductForm({ product, busy, onSave, onCancel, onUpload }: {
+  onUpload: (file: File, signal: AbortSignal) => Promise<string>;
   product?: ManagedProduct; busy: boolean; onSave: (input: ProductInput) => Promise<void>; onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(() => toDraft(product));
@@ -19,9 +20,39 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
     selection.current?.abort(); selection.current = null; setPicking(false); setColorNotice(""); setActiveKey(key);
   }
   function removeColor(key: string) {
+    if (uploadJob.current?.key === key) { uploadJob.current.controller.abort(); uploadJob.current = null; setUploading(null); }
+    setUploadNotice(previous => previous?.key === key ? null : previous);
     const next = draft.colors.filter(c => c.key !== key);
     setDraft({ ...draft, colors: next }); selectColor(next[0].key); setRemoving(null);
   }
+  const uploadJob = useRef<{ key: string; controller: AbortController } | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadNotice, setUploadNotice] = useState<{ key: string; error: boolean; message: string } | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  async function uploadImage(file: File) {
+    if (busy || uploadJob.current) return;
+    const key = active.key;
+    const controller = new AbortController();
+    uploadJob.current = { key, controller };
+    setUploading(key); setUploadNotice(null);
+    try {
+      const url = await onUpload(file, controller.signal);
+      if (controller.signal.aborted) return;
+      setDraft(previous => ({ ...previous, colors: previous.colors.map(color => {
+        if (color.key !== key) return color;
+        const images = color.images.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+        if (color.imageUrl.trim() === url || images.includes(url)) return color;
+        return !color.imageUrl.trim() && !images.length ? { ...color, imageUrl: url }
+          : { ...color, images: [...images, url].join("\n") };
+      }) }));
+      setUploadNotice({ key, error: false, message: "Imagem enviada. Salve o produto para confirmar a alteração." });
+    } catch (error) {
+      if (!controller.signal.aborted) setUploadNotice({ key, error: true, message: error instanceof Error ? error.message : "Não foi possível enviar a imagem. Tente novamente." });
+    } finally {
+      if (uploadJob.current?.controller === controller) { uploadJob.current = null; setUploading(null); }
+    }
+  }
+  useEffect(() => () => uploadJob.current?.controller.abort(), []);
   const [errors, setErrors] = useState<string[]>([]);
   const colorId = useId();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -31,6 +62,7 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
   const EyeDropper = (window as Window & { EyeDropper?: EyeDropperConstructor }).EyeDropper;
   const supportsEyeDropper = typeof EyeDropper === "function";
   const imageSource = active.imageUrl.trim() || active.images.split(/\r?\n/).find(value => value.trim())?.trim();
+  const previewImages = [...new Set([active.imageUrl, ...active.images.split(/\r?\n/)].map(value => value.trim()).filter(Boolean))];
   const hex = normalizeHex(active.colorValue);
   useEffect(() => () => selection.current?.abort(), []);
   const change = (key: keyof Omit<ProductDraft, "colors">, value: string) => setDraft(previous => ({ ...previous, [key]: value }));
@@ -68,7 +100,7 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
   );
   return <form noValidate onSubmit={async event => {
     event.preventDefault();
-    if (busy || picking) return;
+    if (busy || picking || uploadJob.current) return;
     const issues = validateDraft(draft);
     setErrors(issues);
     if (!issues.length) await onSave(toInput(draft));
@@ -147,6 +179,22 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
       <section className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-5 self-start">
         <h2 className="font-semibold text-lg">Imagens desta cor</h2>
         <div ref={previewRef}><ProductImage src={imageSource} alt="Prévia do produto" className="w-full h-56 object-contain rounded-lg bg-muted" /></div>
+        {previewImages.length > 1 && <div className="flex flex-wrap gap-2" aria-label="Imagens desta cor">
+          {previewImages.map((src, index) => <ProductImage key={src} src={src} alt={`Imagem ${index + 1} de ${active.colorName || "esta cor"}`} className="h-20 w-20 rounded-lg bg-muted object-contain" />)}
+        </div>}
+        <div className="space-y-2">
+          <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" aria-label="Arquivo de imagem" className="sr-only" tabIndex={-1} disabled={Boolean(uploading)} onChange={event => {
+            const file = event.target.files?.[0]; event.target.value = "";
+            if (file) void uploadImage(file);
+          }} />
+          <button type="button" disabled={Boolean(uploading)} onClick={() => fileInput.current?.click()} className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed">{uploading ? "Enviando imagem..." : "Selecionar imagem"}</button>
+          <p className="text-xs text-muted-foreground">JPEG, PNG ou WebP. Até 5 MiB por imagem.</p>
+          {uploading && <p role="status" className="text-sm text-muted-foreground">Enviando imagem para {draft.colors.find(color => color.key === uploading)?.colorName || "a cor selecionada"}...</p>}
+          {uploadNotice && <p role={uploadNotice.error ? "alert" : "status"} className={`text-sm rounded-lg border p-3 ${uploadNotice.error ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-primary/20 bg-primary/10 text-foreground"}`}>
+            {uploadNotice.key !== active.key && <span className="font-semibold">{draft.colors.find(color => color.key === uploadNotice.key)?.colorName || "Cor do upload"}: </span>}
+            {uploadNotice.message}
+          </p>}
+        </div>
         {colorField("Imagem principal", "imageUrl")}
         <label className="block space-y-2 text-sm font-medium">Imagens adicionais<textarea className={inputClass} rows={5} value={active.images} onChange={event => changeColor("images", event.target.value)} placeholder="Uma URL ou caminho por linha" /></label>
         <p className="text-xs text-muted-foreground">Informe URLs ou caminhos de imagens já disponíveis. Uma imagem adicional por linha.</p>
@@ -154,7 +202,7 @@ export function ProductForm({ product, busy, onSave, onCancel }: {
     </fieldset>
     <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-5">
       <button type="button" disabled={busy} onClick={onCancel} className="px-5 py-2.5 rounded-lg border border-border disabled:opacity-50">Cancelar</button>
-      <button type="submit" disabled={busy || picking} className="px-5 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold disabled:opacity-50">{busy ? "Salvando..." : "Salvar produto"}</button>
+      <button type="submit" disabled={busy || picking || Boolean(uploading)} className="px-5 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold disabled:opacity-50">{busy ? "Salvando..." : "Salvar produto"}</button>
     </div>
   </form>;
 }

@@ -277,3 +277,57 @@ legados com carrinho preenchido. O segundo executa toda a suíte Playwright com
 fixtures próprias. Para filtrar: `node tests/helpers/run-isolated.mjs browser tests/colors.spec.ts`.
 No frontend execute também `npm test`, `npm run typecheck` e `npm run build`;
 no backend, `npm run build`. Finalize com `git diff --check`.
+
+## Upload de imagens por cor
+
+Configure `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` e `CLOUDINARY_API_SECRET`
+somente em `backend/.env` (ignorado pelo Git). O `.env.example` contém apenas os
+nomes vazios. A configuração é centralizada em `src/config/cloudinary.ts`.
+O SDK oficial usa `upload_stream`; não há credenciais Cloudinary no React.
+
+`POST /uploads/produtos` exige Bearer JWT de ADMIN ativo antes de receber o
+arquivo. Visitante recebe 401, USER recebe 403. Envie `multipart/form-data` com
+um único arquivo no campo `file`, sem outros campos. São aceitos JPEG, PNG e
+WebP de até **5 MiB (5.242.880 bytes)**. O backend verifica MIME e assinatura dos
+bytes, e o Cloudinary decodifica a imagem com `allowed_formats`. O buffer fica
+temporariamente em memória; o PostgreSQL continua armazenando somente URLs.
+Há limite de 30 solicitações por ADMIN a cada 15 minutos por instância.
+
+Uploads usam `lowen-cloth/products`, UUID aleatório e `overwrite: false`.
+Sucesso retorna 201 com apenas `{ "url": "https://res.cloudinary.com/..." }`.
+Arquivo ausente/inválido retorna 400, acima do limite 413, excesso de tentativas
+429, configuração ausente 503 e falha do provedor 502. Erros do SDK não são
+registrados nem devolvidos ao cliente. Timeout do provedor: 60 segundos.
+
+No Manager, **Selecionar imagem** abre o seletor local e envia o arquivo via
+backend. Salvar e repetir upload ficam bloqueados durante o envio; trocar de
+cor continua permitido. A URL pertence à cor que iniciou o upload, inclusive
+antes de o produto ter ID. A primeira imagem ocupa o campo principal quando a
+cor ainda está vazia; envios seguintes são anexados às adicionais, mantendo a
+ordem e evitando referências duplicadas. Previews e entradas manuais por URL
+continuam disponíveis. Criar/editar usa o CRUD atual, sem migration ou mudança
+de Prisma (7.9.1).
+
+Remover uma imagem significa limpar sua URL no campo principal/adicionais.
+Cancelar o formulário ou remover a cor ignora resultados pendentes; interromper
+o navegador não garante cancelamento de um upload já recebido pelo provedor.
+**Não há exclusão remota automática**: assets podem continuar referenciados em
+outros produtos, ou o usuário pode cancelar uma edição. Limpeza futura deve
+verificar todas as referências persistidas, uploads pendentes e um período de
+carência antes de excluir assets órfãos.
+
+Testes normais usam um uploader injetado no backend e respostas interceptadas
+no navegador; nenhuma credencial real é necessária. Há também um teste real
+opt-in, que cria dados em banco temporário e deixa **um asset remoto**:
+
+```powershell
+# Em backend, com credenciais Cloudinary locais configuradas:
+$env:E2E_REAL_UPLOAD = "1"
+try { node tests/helpers/run-isolated.mjs browser uploads.spec.ts --grep "real Cloudinary" }
+finally { Remove-Item Env:E2E_REAL_UPLOAD }
+```
+
+Ele usa o seletor de arquivos do navegador via Playwright, envia uma imagem
+local, verifica prévia, criação, edição, reload, isolamento por cor, catálogo e
+detalhes. As capturas e a URL retornada ficam em `test-results` (ignorado).
+O teste real é ignorado por padrão para evitar uploads involuntários.

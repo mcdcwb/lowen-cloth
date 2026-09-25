@@ -100,6 +100,36 @@ test("login persists only token and expiry", async () => {
   assert.deepEqual(JSON.parse(storage.getItem(AUTH_STORAGE_KEY)), { accessToken: token, expiresAt: session.expiresAt });
 });
 
+test("focus revalidation keeps the verified session mounted while checking /auth/me", async () => {
+  const storage = memoryStorage();
+  let finish;
+  const auth = createAuthSession({ login: async () => session, me: () => new Promise(resolve => { finish = resolve; }) }, () => storage, () => memoryStorage());
+  await auth.login(account.email, "x");
+  const states = [];
+  auth.subscribe(() => states.push(auth.getSnapshot()));
+  const pending = auth.restore();
+  assert.equal(auth.getSnapshot().session === session, true);
+  assert.equal(auth.getSnapshot().validating, false);
+  finish(account);
+  await pending;
+  assert.ok(states.every(state => state.session && !state.validating));
+});
+
+test("initial restoration stays hidden and failed focus revalidation still revokes access", async () => {
+  const storage = memoryStorage(); storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  let finish;
+  const auth = createAuthSession({ me: () => new Promise((resolve, reject) => { finish = { resolve, reject }; }) }, () => storage, () => memoryStorage());
+  let pending = auth.restore();
+  assert.equal(auth.getSnapshot().session, null);
+  assert.equal(auth.getSnapshot().validating, true);
+  finish.resolve(account); await pending;
+  pending = auth.restore();
+  finish.reject(new Error("Session revoked")); await pending;
+  assert.equal(auth.getSnapshot().session, null);
+  assert.equal(storage.getItem(AUTH_STORAGE_KEY), null);
+  assert.equal(auth.getSnapshot().error, "Session revoked");
+});
+
 test("profile updates refresh the current identity without accepting stale or foreign sessions", async () => {
   const storage = memoryStorage();
   const auth = createAuthSession({ login: async () => session }, () => storage, () => memoryStorage());

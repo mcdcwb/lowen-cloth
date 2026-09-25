@@ -6,13 +6,16 @@ import { prisma } from "./lib/prisma.js";
 import productRoutes from "./routes/product.routes.js";
 import shoppingRoutes from "./routes/shopping.routes.js";
 import accountRoutes from "./routes/account.routes.js";
+import { createUploadRoutes } from "./routes/upload.routes.js";
+import type { ProductImageUploader } from "./services/upload.service.js";
 
-export function createApp() {
+export function createApp(options: { uploadProductImage?: ProductImageUploader } = {}) {
     getJwtKey();
     const app = express();
 
     app.use(express.json());
     app.use("/produtos", productRoutes);
+    app.use("/uploads", createUploadRoutes(options.uploadProductImage));
     app.use("/auth", createAuthRoutes());
     app.use("/conta", accountRoutes);
     app.use(shoppingRoutes);

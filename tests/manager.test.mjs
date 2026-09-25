@@ -61,3 +61,31 @@ test("HEX normalization accepts exactly six digits and preserves the color name"
   }
   for (const value of ["#123", "123456", "red", "#GG0000", "#12345678", "rgb(1,2,3)"]) assert.equal(normalizeHex(value), null);
 });
+
+test("image upload sends authenticated multipart without forcing a boundary and returns a secure URL", async () => {
+  const url = "https://res.cloudinary.com/test/image/upload/v1/products/image.png";
+  const file = new File(["png"], "image.png", { type: "image/png" });
+  const api = createManagerApi("token", "/api/", async (path, init) => {
+    assert.equal(path, "/api/uploads/produtos"); assert.equal(init.method, "POST");
+    assert.deepEqual(init.headers, { Authorization: "Bearer token" });
+    assert.ok(init.body instanceof FormData); assert.equal(init.body.get("file").name, "image.png");
+    return Response.json({ url });
+  });
+  assert.equal(await api.upload(file), url);
+});
+
+test("upload rejects invalid/large files, unsafe URLs and handles authentication/provider/network errors", async () => {
+  const file = new File(["png"], "image.png", { type: "image/png" });
+  const noNetwork = createManagerApi("token", "/api", async () => { assert.fail("must validate before sending"); });
+  await assert.rejects(noNetwork.upload(new File(["svg"], "image.svg", { type: "image/svg+xml" })), { status: 400 });
+  await assert.rejects(noNetwork.upload(new File([new Uint8Array(5 * 1024 * 1024 + 1)], "large.png", { type: "image/png" })), { status: 413 });
+  for (const url of ["http://res.cloudinary.com/test/image/upload/a.png", "https://evil.test/a.png", "https://res.cloudinary.com/test/image/upload/a.png?secret=x", undefined]) {
+    await assert.rejects(createManagerApi("token", "/api", async () => Response.json({ url })).upload(file), { status: 0 });
+  }
+  for (const status of [401, 403, 400, 413, 502, 503]) {
+    await assert.rejects(createManagerApi("token", "/api", async () => Response.json({ error: "Falha" }, { status })).upload(file), { status });
+  }
+  await assert.rejects(createManagerApi("token", "/api", async () => { throw new Error("offline"); }).upload(file), { status: 0 });
+  const controller = new AbortController(); controller.abort();
+  await assert.rejects(createManagerApi("token", "/api", async (_path, init) => { assert.ok(init.signal.aborted); throw new DOMException("Aborted", "AbortError"); }).upload(file, controller.signal));
+});

@@ -59,7 +59,7 @@ function ManagerWorkspace({ user, token, onLogout, onUnauthorized, onChanged }: 
         <section className="mt-6 bg-card border border-border rounded-xl p-6 sm:p-8"><h2 className="text-lg font-semibold">Seu catálogo, em dia</h2><p className="text-muted-foreground text-sm mt-2">O estoque de cada produto é a soma de suas variantes. Estoque baixo: de 1 a {LOW_STOCK_LIMIT} unidades.</p><Link to="/manager/produtos" className="inline-flex mt-5 text-primary font-semibold items-center gap-2">Gerenciar produtos <ArrowUpRight size={18} /></Link></section>
       </> : path === "/manager/produtos" ? <ProductList products={data.products} busy={data.busy} error={data.error} onDelete={data.remove} /> : isNew || (edit && product) ? <>
         <h1 className="font-serif text-3xl font-bold mb-2">{isNew ? "Novo produto" : "Editar produto"}</h1><p className="text-muted-foreground mb-6">{isNew ? "Adicione uma nova peça ao catálogo." : product?.name}</p>
-        <ProductForm key={product?.id ?? "new"} product={product} busy={data.busy} onCancel={() => navigate("/manager/produtos")} onSave={async input => { if (await data.save(input, product?.id)) navigate("/manager/produtos"); }} />
+        <ProductForm key={product?.id ?? "new"} product={product} busy={data.busy} onUpload={data.upload} onCancel={() => navigate("/manager/produtos")} onSave={async input => { if (await data.save(input, product?.id)) navigate("/manager/produtos"); }} />
       </> : <section className="p-8 bg-card border border-border rounded-xl"><h1 className="text-xl font-semibold">{edit ? "Produto não encontrado" : "Página não encontrada"}</h1><Link to="/manager/produtos" className="inline-block mt-4 text-primary underline">Voltar para produtos</Link></section>}
     </main>
   </div>;

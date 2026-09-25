@@ -44,6 +44,37 @@ export function createManagerApi(token: string, baseUrl = "/api", fetcher: typeo
     }
   }
   return {
+    async upload(file: File, signal?: AbortSignal): Promise<string> {
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new ManagerApiError(400, "Selecione uma imagem JPEG, PNG ou WebP.");
+      if (file.size > 5 * 1024 * 1024) throw new ManagerApiError(413, "A imagem deve ter no máximo 5 MiB.");
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      if (signal?.aborted) abort();
+      signal?.addEventListener("abort", abort, { once: true });
+      const timeout = setTimeout(abort, 75000);
+      try {
+        const body = new FormData();
+        body.append("file", file);
+        const response = await fetcher(baseUrl.replace(/\/$/, "") + "/uploads/produtos", {
+          method: "POST", headers: { Authorization: `Bearer ${token}` }, body, signal: controller.signal
+        });
+        if (response.status === 401) throw new ManagerApiError(401, "Sua sessão expirou. Entre novamente.");
+        if (response.status === 403) throw new ManagerApiError(403, "Acesso administrativo não autorizado.");
+        const data = await response.json().catch(() => null);
+        if (!response.ok) throw new ManagerApiError(response.status, data?.error || "Não foi possível enviar a imagem. Tente novamente.");
+        const url = typeof data?.url === "string" ? new URL(data.url) : null;
+        if (!url || url.protocol !== "https:" || url.hostname !== "res.cloudinary.com" || url.username || url.password || url.port || url.search || url.hash || !/^\/[^/]+\/image\/upload\//.test(url.pathname)) {
+          throw new ManagerApiError(0, "Resposta inválida do upload.");
+        }
+        return data.url;
+      } catch (error) {
+        if (error instanceof ManagerApiError) throw error;
+        throw new ManagerApiError(0, "Não foi possível enviar a imagem. Verifique a conexão e tente novamente.");
+      } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener("abort", abort);
+      }
+    },
     async list(signal?: AbortSignal) {
       const data = await request("", "GET", undefined, signal);
       if (!Array.isArray(data)) throw new ManagerApiError(0, "Resposta inválida do catálogo.");

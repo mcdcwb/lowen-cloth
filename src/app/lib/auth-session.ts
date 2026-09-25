@@ -78,7 +78,10 @@ export function createAuthSession(
       return;
     }
     const current = ++generation;
-    publish(null, null, true);
+    // Returning from a native file picker revalidates on focus. Keep an already
+    // verified session mounted so its form/input and pending upload survive.
+    // Initial restoration still blocks access until /auth/me succeeds.
+    if (!state.session) publish(null, null, true);
     try {
       const account = await api.me(saved.accessToken);
       if (current !== generation) return;

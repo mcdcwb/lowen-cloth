@@ -64,5 +64,12 @@ export function useManagerProducts(token: string, onUnauthorized: (message: stri
     setProducts(previous => previous.filter(product => product.id !== id));
     setNotice("Produto excluído com sucesso.");
   });
-  return { products, loading, loaded, busy, error, notice, save, remove, reload: () => setRevision(value => value + 1) };
+  const upload = async (file: File, signal: AbortSignal) => {
+    try { return await api.upload(file, signal); }
+    catch (reason) {
+      if (!signal.aborted && reason instanceof ManagerApiError && [401, 403].includes(reason.status)) callbacks.current.onUnauthorized(reason.message);
+      throw reason;
+    }
+  };
+  return { upload, products, loading, loaded, busy, error, notice, save, remove, reload: () => setRevision(value => value + 1) };
 }
