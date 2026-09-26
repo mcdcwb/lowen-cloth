@@ -66,7 +66,7 @@ export default function App() {
   const [activePublic, setActivePublic] = useState<Public | "todos">("todos");
   const [activeCategory, setActiveCategory] = useState<Category | null>(null);
   const [selectedSizes, setSelectedSizes] = useState<Size[]>([]);
-  const { user, accessToken, validating, sessionError, login, register, logout, updateAccount } = useAuth();
+  const { user, accessToken, validating, sessionError, login, register, logout, invalidate, updateAccount } = useAuth();
   const [cartOpen, setCartOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
@@ -79,7 +79,11 @@ export default function App() {
   const publicDropdownRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const shopping = useShopping(products, user?.role === "USER" ? accessToken : undefined, validating);
+  useEffect(() => {
+    if (accessToken) setAuthOpen(false);
+  }, [accessToken]);
+
+  const shopping = useShopping(products, accessToken, validating, user);
   const { items: cartItems, add: addToCart, remove: removeFromCart, clear: clearCart, changeQty } = shopping;
   const shoppingStatus = (shopping.busy || shopping.error || shopping.notice) && (
     <div className="fixed bottom-4 left-4 right-4 z-[100] mx-auto max-w-xl rounded-lg border bg-card p-3 shadow-lg" role={shopping.error ? "alert" : "status"}>
@@ -219,7 +223,7 @@ export default function App() {
     return <>
       <Manager user={user} token={accessToken} validating={validating} sessionError={authOpen ? null : sessionError}
         onLogin={() => { setAuthMode("login"); setAuthOpen(true); }} onLogout={handleLogout}
-        onUnauthorized={message => logout(message)} onChanged={retryProducts} />
+        onUnauthorized={message => invalidate(accessToken, message)} onChanged={retryProducts} />
       {authOpen && <AuthModal mode={authMode} onClose={() => setAuthOpen(false)} onLogin={handleLogin}
         onRegister={handleRegister} onSwitchMode={() => setAuthMode(mode => mode === "login" ? "register" : "login")}
         sessionError={sessionError} />}
@@ -448,11 +452,17 @@ export default function App() {
               >
                 {featuredProducts.map((product) => (
                   <article key={product.id} className="w-full shrink-0 p-0">
-                    <div className="group relative overflow-hidden rounded-none">
+                    <div className="group relative h-72 overflow-hidden rounded-none bg-black sm:h-[420px]">
+                      <ProductImage
+                        src={product.imageUrl}
+                        alt=""
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover blur-xl brightness-75"
+                      />
                       <ProductImage
                         src={product.imageUrl}
                         alt={product.name}
-                        className="h-72 w-full object-cover transition-all duration-300 group-hover:scale-105 sm:h-[420px]"
+                        className="relative h-full w-full object-contain"
                       />
 
                       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
@@ -476,11 +486,11 @@ export default function App() {
                         <ChevronDown className="h-4 w-4 -rotate-90" />
                       </button>
 
-                      <div className="absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-6">
+                      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-6">
                         <button
                           type="button"
                           onClick={() => openProductDetail(product)}
-                          className="translate-y-3 rounded-full border border-white/30 bg-black/30 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:translate-y-0 group-hover:opacity-100"
+                          className="pointer-events-auto translate-y-3 rounded-full border border-white/30 bg-black/30 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:translate-y-0 group-hover:opacity-100"
                         >
                           VER MAIS
                         </button>
@@ -698,7 +708,7 @@ export default function App() {
       {/* ── Cart Drawer ────────────────────────────────────────────────────── */}
       {cartOpen && (
         <CartDrawer
-            busy={shopping.busy || !shopping.ready}
+          busy={shopping.busy || !shopping.ready}
           items={cartItems}
           totalPrice={totalPrice}
           user={user}
@@ -891,7 +901,7 @@ function ProductDetailPage({
                 {product.sizes.map((size) => (
                   <button
                     key={size}
-              aria-pressed={selectedSize === size}
+                    aria-pressed={selectedSize === size}
                     disabled={availableStock(product, size) <= 0}
                     title={stockFor(product, size) === 0 ? "Esgotado" : undefined}
                     type="button"
@@ -1069,10 +1079,10 @@ function ProductCard({
         </div>
 
         <ColorSelector product={product} onSelect={id => {
-              const next = selectProductColor(baseProduct, id);
-              setSelectedColorId(id); setCurrentImageIndex(0); setAdded(false);
-              if (selectedSize && availableStock(next, selectedSize) <= 0) setSelectedSize(null);
-            }} />
+          const next = selectProductColor(baseProduct, id);
+          setSelectedColorId(id); setCurrentImageIndex(0); setAdded(false);
+          if (selectedSize && availableStock(next, selectedSize) <= 0) setSelectedSize(null);
+        }} />
 
         {/* Size buttons */}
         <div className="flex gap-1 flex-wrap">
@@ -1370,9 +1380,9 @@ function AuthModal({
           // Adapt each edge independently, preserving a clickable outer strip.
           const safeGap = (gap: number) => Math.min(100, Math.max(0, gap) / 2);
           if (event.clientX < bounds.left - safeGap(bounds.left - overlay.left) ||
-              event.clientX > bounds.right + safeGap(overlay.right - bounds.right) ||
-              event.clientY < bounds.top - safeGap(bounds.top - overlay.top) ||
-              event.clientY > bounds.bottom + safeGap(overlay.bottom - bounds.bottom)) onClose();
+            event.clientX > bounds.right + safeGap(overlay.right - bounds.right) ||
+            event.clientY < bounds.top - safeGap(bounds.top - overlay.top) ||
+            event.clientY > bounds.bottom + safeGap(overlay.bottom - bounds.bottom)) onClose();
         }}
       >
         <div ref={modalRef} className="bg-card w-full max-w-sm rounded-2xl shadow-2xl border border-border overflow-hidden">

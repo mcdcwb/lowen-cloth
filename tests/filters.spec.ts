@@ -1,4 +1,4 @@
-﻿import { test, expect } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
 const product = (id: number, name: string, audience: string, category: string, variants: { value: string; stock: number }[]) => ({
   id, name, public: audience, category, price: "129.9", description: "Descrição real do catálogo",
@@ -87,7 +87,7 @@ test("detail and persisted cart respect variant stock and decimal prices", async
   await page.getByRole("button", { name: "Abrir carrinho" }).click();
   await expect(page.getByRole("button", { name: "Aumentar quantidade" })).toBeDisabled();
   await expect(page.getByText(/R\$\s*129,90/).first()).toBeVisible();
-  await page.evaluate(() => localStorage.setItem("brecho_cart_v1", JSON.stringify([
+  await page.evaluate(() => localStorage.setItem("brecho_guest_cart_v2", JSON.stringify([
     { product: { id: 901, price: 1 }, size: "P", quantity: 99 },
     { product: { id: 901 }, size: "M", quantity: 4 },
     { product: { id: 99999 }, size: "P", quantity: 4 }
@@ -96,7 +96,7 @@ test("detail and persisted cart respect variant stock and decimal prices", async
   await expect(page.getByRole("heading", { name: "Camiseta API", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Abrir carrinho" }).click();
   await expect(page.getByRole("button", { name: "Aumentar quantidade" })).toBeDisabled();
-  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("brecho_cart_v1")!));
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem("brecho_guest_cart_v2")!));
   expect(saved).toHaveLength(1);
   expect(saved[0].quantity).toBe(1);
   expect(saved[0].product.price).toBe(129.9);

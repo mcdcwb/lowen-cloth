@@ -10,7 +10,7 @@ async function login(page: Page, suffix: string) {
   await expect(page.getByLabel("Nome completo", { exact: true })).toHaveValue("Nome Completo Perfil");
 }
 async function profile(page: Page) {
-  const token = await page.evaluate(() => JSON.parse(sessionStorage.getItem("lowen-cloth_auth_v1")!).accessToken);
+  const token = await page.evaluate(() => JSON.parse(localStorage.getItem("lowen-cloth_auth_v1")!).accessToken);
   return (await page.request.get("/api/conta", { headers: { Authorization: `Bearer ${token}` } })).json();
 }
 const viaCep = { cep: "01001-000", logradouro: "Praça da Sé", bairro: "Sé", localidade: "São Paulo", uf: "SP", complemento: "NÃO USAR" };

@@ -15,7 +15,7 @@ test("manager adds second/third colors, isolates picker/images/stock, edits and 
   await images(page);
   await page.addInitScript(() => Object.defineProperty(window, "EyeDropper", { configurable: true, value: class { async open() { return { sRGBHex: "#a1b2c3" }; } } }));
   await page.goto("/manager"); await login(page, true);
-  const headers = { Authorization: `Bearer ${await page.evaluate(() => JSON.parse(sessionStorage.getItem("lowen-cloth_auth_v1")!).accessToken)}` };
+  const headers = { Authorization: `Bearer ${await page.evaluate(() => JSON.parse(localStorage.getItem("lowen-cloth_auth_v1")!).accessToken)}` };
   let id: number | undefined;
   try {
     await page.getByRole("link", { name: "Produtos", exact: true }).click(); await page.getByRole("link", { name: "Novo produto" }).click();
@@ -96,7 +96,7 @@ test("catalog/details switch images and sizes; multi-color guest cart merges and
     await card.getByRole("button", { name: "P", exact: true }).click(); await card.getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
     await page.reload(); await page.getByRole("button", { name: "Abrir carrinho" }).click();
     await expect(page.getByRole("button", { name: "Remover item" })).toHaveCount(2);
-    const local = await page.evaluate(() => JSON.parse(localStorage.getItem("brecho_cart_v1")!));
+    const local = await page.evaluate(() => JSON.parse(localStorage.getItem("brecho_guest_cart_v2")!));
     expect(new Set(local.map((i: any) => i.colorId)).size).toBe(2);
     await page.keyboard.press("Escape"); await login(page);
     await expect(page.getByRole("status")).toContainText("Carrinho de visitante sincronizado");
@@ -141,7 +141,7 @@ test("legacy guest cart gains the original color and all-color size filters keep
     { id: 99992, colorName: "Preto", colorValue: "#111111", images: [], variants: [{ id: 99994, value: "P", stock: 3 }] },
     { id: 99993, colorName: "Branco", colorValue: "#FFFFFF", images: [], variants: [{ id: 99995, value: "GG", stock: 1 }, { id: 99996, value: "36", stock: 0 }] }
   ] };
-  await page.addInitScript(() => { if (!localStorage.getItem("brecho_cart_v1")) localStorage.setItem("brecho_cart_v1", JSON.stringify([{ product: { id: 99991 }, size: "P", quantity: 2 }])); });
+  await page.addInitScript(() => { if (!localStorage.getItem("brecho_guest_cart_v2")) localStorage.setItem("brecho_guest_cart_v2", JSON.stringify([{ product: { id: 99991 }, size: "P", quantity: 2 }])); });
   await page.route("**/api/produtos", route => route.fulfill({ json: [product] }));
   await page.goto("/");
   const sizes = page.locator("aside section").first();
@@ -150,6 +150,6 @@ test("legacy guest cart gains the original color and all-color size filters keep
   await expect(page.getByText("1 peça encontrada", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Abrir carrinho" }).click();
   await expect(page.getByRole("button", { name: "Remover item" })).toHaveCount(1);
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("brecho_cart_v1")!));
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("brecho_guest_cart_v2")!));
   expect(stored[0].colorId).toBe(99992); expect(stored[0].quantity).toBe(2);
 });

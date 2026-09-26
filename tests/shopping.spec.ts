@@ -39,7 +39,7 @@ test("guest cart merges; favorites and variants persist after logout and in anot
   await card(page).getByRole("button", { name: "P", exact: true }).click();
   await card(page).getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
   await page.reload();
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("brecho_cart_v1")!)[0].quantity)).toBe(1);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("brecho_guest_cart_v2")!)[0].quantity)).toBe(1);
   await login(page);
   await expect(page.getByRole("status")).toContainText("Carrinho de visitante sincronizado");
   await page.getByRole("button", { name: "Fechar aviso" }).click();
@@ -90,7 +90,7 @@ test("API failures preserve confirmed state and failed guest merge can be retrie
   await page.route("**/api/carrinho/sincronizar", route => route.fulfill({ status: 503, json: { error: "Sincronizacao indisponivel" } }));
   await login(page);
   await expect(page.getByRole("alert")).toContainText("Sincronizacao indisponivel");
-  expect(await page.evaluate(() => JSON.parse(localStorage.getItem("brecho_cart_v1")!).length)).toBe(1);
+  expect(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith("brecho_guest_pending_v2:USER:")).reduce((count, key) => count + JSON.parse(localStorage.getItem(key)!).length, 0))).toBe(1);
   await page.unroute("**/api/carrinho/sincronizar");
   await page.getByRole("button", { name: "Tentar novamente", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("Carrinho de visitante sincronizado");

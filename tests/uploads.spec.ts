@@ -88,7 +88,7 @@ for (const scenario of ["create", "create-switch", "edit", "real"]) test(`new un
     });
   }
   await start(page);
-  const headers = { Authorization: `Bearer ${await page.evaluate(() => JSON.parse(sessionStorage.getItem("lowen-cloth_auth_v1")!).accessToken)}` };
+  const headers = { Authorization: `Bearer ${await page.evaluate(() => JSON.parse(localStorage.getItem("lowen-cloth_auth_v1")!).accessToken)}` };
   const name = "New color upload " + randomUUID();
   let id: number | undefined;
   try {
@@ -178,7 +178,7 @@ test("uploads follow their source color through create/edit, retain URL images, 
     await route.fulfill({ status: 201, json: { url: image } });
   });
   await start(page);
-  const headers = { Authorization: `Bearer ${await page.evaluate(() => JSON.parse(sessionStorage.getItem("lowen-cloth_auth_v1")!).accessToken)}` };
+  const headers = { Authorization: `Bearer ${await page.evaluate(() => JSON.parse(localStorage.getItem("lowen-cloth_auth_v1")!).accessToken)}` };
   let id: number | undefined;
   const name = "Upload " + randomUUID();
   try {
@@ -264,7 +264,7 @@ for (const status of [401, 403]) test(`upload ${status} revokes manager access`,
   await page.route("**/api/uploads/produtos", route => route.fulfill({ status, json: { error: "Acesso negado" } }));
   await selectFile(page);
   await expect(page.getByRole("heading", { name: "Acesso administrativo", exact: true })).toBeVisible();
-  expect(await page.evaluate(() => sessionStorage.getItem("lowen-cloth_auth_v1"))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("lowen-cloth_auth_v1"))).toBeNull();
 });
 
 // Explicitly opt in: this leaves one remote asset and never runs in the normal suite.
@@ -272,7 +272,7 @@ test("real Cloudinary upload through manager persists after reload and renders i
   test.skip(process.env.E2E_REAL_UPLOAD !== "1", "Requires explicit opt-in and configured backend credentials");
   test.setTimeout(120000);
   await start(page);
-  const headers = { Authorization: `Bearer ${await page.evaluate(() => JSON.parse(sessionStorage.getItem("lowen-cloth_auth_v1")!).accessToken)}` };
+  const headers = { Authorization: `Bearer ${await page.evaluate(() => JSON.parse(localStorage.getItem("lowen-cloth_auth_v1")!).accessToken)}` };
   let id: number | undefined;
   const name = "Cloudinary validation " + randomUUID();
   try {

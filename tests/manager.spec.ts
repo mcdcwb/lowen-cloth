@@ -11,7 +11,7 @@ async function login(page: Page, role: "ADMIN" | "USER" = "ADMIN") {
   else await expect(page.getByRole("heading", { name: "Acesso restrito" })).toBeVisible();
 }
 async function token(page: Page) {
-  return page.evaluate(() => JSON.parse(sessionStorage.getItem("lowen-cloth_auth_v1")!).accessToken as string);
+  return page.evaluate(() => JSON.parse(localStorage.getItem("lowen-cloth_auth_v1")!).accessToken as string);
 }
 
 test("color picker and image eyedropper synchronize HEX and persist during creation and editing", async ({ page }) => {
@@ -249,7 +249,7 @@ for (const status of [401, 403]) test(`administrative ${status} response removes
   await page.getByRole("button", { name: "Salvar produto" }).click();
   await expect(page.getByRole("heading", { name: "Acesso administrativo" })).toBeVisible();
   await expect(page.getByRole("alert")).toContainText(status === 401 ? "sessão expirou" : "não autorizado");
-  expect(await page.evaluate(() => sessionStorage.getItem("lowen-cloth_auth_v1"))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem("lowen-cloth_auth_v1"))).toBeNull();
 });
 
 test("manager remains hidden while /auth/me is validating the restored session", async ({ page }) => {

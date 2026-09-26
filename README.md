@@ -33,18 +33,26 @@ no ambiente do frontend.
 
 ### Sessão e validação
 
-- O token e seu prazo ficam em `sessionStorage`, na chave `lowen-cloth_auth_v1`.
+- O token e seu prazo ficam em `localStorage`, na chave `lowen-cloth_auth_v1`,
+  compartilhados pelas abas da mesma origem. O prazo do JWT não foi alterado.
   Senha e identidade da conta não são persistidas.
 - Recarregar a página ou voltar à aba exige validação com `/auth/me`.
   A identidade exibida vem dessa resposta, não do armazenamento local.
 - O cliente envia `Authorization: Bearer <accessToken>` para `/auth/me`.
 - A chave antiga `brecho_user_v1` é removida e nunca concede acesso.
+- O token antigo em `sessionStorage` é descartado: após atualizar uma sessão
+  antiga, entre novamente uma vez. Ele nunca restaura uma sessão após logout.
+- Eventos `storage` propagam login/logout e troca de conta; foco e visibilidade
+  revalidam a credencial compartilhada. Uma identidade diferente fica oculta
+  até `/auth/me` confirmar. A revalidação da mesma sessão mantém formulários
+  administrativos montados, inclusive durante seleção/upload de arquivo.
+- Um identificador de operação em `lowen-cloth_auth_change_v1` impede que login
+  ou validação atrasados sobrescrevam logout ou login posterior em outra aba.
 - Ao expirar o prazo, sair da conta ou falhar a validação da sessão, o token é removido.
 - Sair limpa a sessão deste navegador; não revoga o JWT no backend.
 - A senha no login aceita de 1 a 128 caracteres; novas contas exigem de 5 a 128.
 - O mesmo formulário identifica clientes e administradores pelo perfil devolvido pelo backend.
   O cadastro público cria somente clientes; administradores não têm cadastro público.
-- Não foi implementada sincronização de carrinho com o backend.
 
 O token é acessível ao JavaScript da página. Não registre tokens em logs nem os
 inclua em URLs; a aplicação deve ser servida por HTTPS em produção.
@@ -109,15 +117,27 @@ só atualiza a interface após confirmação da gravação. Logout limpa a visã
 conta, preservando seus registros no banco; respostas de sessões anteriores
 são ignoradas. Um novo login, inclusive em outro navegador, recupera os dados.
 
-Visitantes continuam usando `brecho_cart_v1` no localStorage. No login, esse
+Visitantes usam `brecho_guest_cart_v2` no localStorage. No login de USER, esse
 carrinho é mesclado ao da conta: variantes diferentes são mantidas e variantes
 iguais usam a maior quantidade, respeitando estoque. A interface informa a
-regra e eventuais indisponibilidades. O carrinho local só é limpo depois da
-confirmação; falhas permitem tentar novamente sem duplicar quantidades.
+regra e eventuais indisponibilidades. Antes da requisição, o snapshot passa para
+`brecho_guest_pending_v2:USER:<id>`; só essa identidade pode repetir a importação.
+A confirmação remove esse snapshot; falhas preservam a tentativa sem misturar
+contas. Web Locks serializa importações entre abas (HTTPS/localhost e navegador
+compatível); sem essa capacidade a importação informa um erro e preserva os dados.
+Eventos `lowen-cloth_shopping_change_v1` e foco recarregam os dados do backend.
+ADMIN tem carrinho apenas em memória, por identidade/sessão/aba, descartado ao
+trocar a sessão ou recarregar; nunca lê/importa o carrinho visitante e não usa
+os endpoints de compras exclusivos de USER. Favoritos continuam exclusivos de USER.
+O antigo `brecho_cart_v1` é ignorado, pois misturava ADMIN e visitante sem registrar
+o proprietário. Seus itens não são importados automaticamente; carrinhos de USER
+já persistidos no banco permanecem intactos.
 Corações de visitantes abrem o login; `/favoritos` mostra os produtos da conta.
 
 Os testes em `tests/shopping.spec.ts` usam API e PostgreSQL reais para verificar
 persistência, outro contexto de navegador, sincronização e falhas de gravação.
+`tests/session-tabs.spec.ts` cobre abas reais na mesma origem, USER/ADMIN, troca
+de conta, logout, token inválido e respostas concorrentes/atrasadas.
 Execute `npm test`, `npm run test:e2e`, `npm run typecheck` e `npm run build`.
 Os endpoints e comandos de migration estão documentados em `backend/README.md`.
 

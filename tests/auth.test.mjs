@@ -146,3 +146,52 @@ test("profile updates refresh the current identity without accepting stale or fo
   auth.updateAccount(token, updated);
   assert.equal(auth.getSnapshot().session, null);
 });
+
+test("shared logout wins over delayed login in another session", async () => {
+  const storage = memoryStorage(); let finish;
+  const a = createAuthSession({ login: () => new Promise(resolve => { finish = resolve; }) }, () => storage, () => memoryStorage());
+  const b = createAuthSession({}, () => storage, () => memoryStorage());
+  const pending = a.login(account.email, "x"); b.logout(); finish(session);
+  assert.equal(await pending, false); await a.restore();
+  assert.equal(a.getSnapshot().session, null); assert.equal(storage.getItem(AUTH_STORAGE_KEY), null);
+});
+
+test("later login wins even when earlier response finishes last", async () => {
+  const storage = memoryStorage(); let finish;
+  const a = createAuthSession({ login: () => new Promise(resolve => { finish = resolve; }) }, () => storage, () => memoryStorage());
+  const other = { ...session, accessToken: randomBytes(24).toString("hex"), account: { ...account, id: 2 } };
+  const b = createAuthSession({ login: async () => other }, () => storage, () => memoryStorage());
+  const pending = a.login(account.email, "x"); await b.login(account.email, "x"); finish(session);
+  assert.equal(await pending, false);
+  assert.equal(JSON.parse(storage.getItem(AUTH_STORAGE_KEY)).accessToken === other.accessToken, true);
+});
+
+for (const failed of [false, true]) test(`stale /me ${failed ? "failure" : "success"} cannot clear or restore another identity`, async () => {
+  const storage = memoryStorage(); let finish;
+  storage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  const other = { ...session, accessToken: randomBytes(24).toString("hex"), account: { ...account, id: 2 } };
+  const a = createAuthSession({ me: received => received === other.accessToken ? Promise.resolve(other.account) : new Promise((resolve, reject) => { finish = { resolve, reject }; }) }, () => storage, () => memoryStorage());
+  const b = createAuthSession({ login: async () => other }, () => storage, () => memoryStorage());
+  const pending = a.restore(); await b.login(account.email, "x");
+  if (failed) finish.reject(new Error("Revoked")); else finish.resolve(account);
+  await pending;
+  assert.equal(a.getSnapshot().session.account.id, 2);
+  assert.equal(JSON.parse(storage.getItem(AUTH_STORAGE_KEY)).accessToken === other.accessToken, true);
+});
+
+test("focus reads shared removal instead of reusing the old in-memory token", async () => {
+  const storage = memoryStorage();
+  const a = createAuthSession({ login: async () => session }, () => storage, () => memoryStorage());
+  await a.login(account.email, "x"); storage.removeItem(AUTH_STORAGE_KEY); await a.restore();
+  assert.equal(a.getSnapshot().session, null);
+});
+
+test("late administrative rejection cannot log out the newer shared USER session", async () => {
+  const storage = memoryStorage();
+  const a = createAuthSession({ login: async () => session, me: async () => ({ ...account, id: 2 }) }, () => storage, () => memoryStorage());
+  await a.login(account.email, "x");
+  storage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ ...session, accessToken: randomBytes(24).toString("hex") }));
+  a.invalidate(token, "Unauthorized old request"); await a.restore();
+  assert.equal(a.getSnapshot().session.account.id, 2);
+  assert.notEqual(storage.getItem(AUTH_STORAGE_KEY), null);
+});
