@@ -3,13 +3,13 @@ import { randomBytes } from "node:crypto";
 import { createServer } from "node:http";
 import { once } from "node:events";
 import test from "node:test";
-import { createAuthApi, validateLogin, validateRegistration } from "../src/app/lib/auth.ts";
-import { createAuthSession, AUTH_STORAGE_KEY, LEGACY_USER_KEY } from "../src/app/lib/auth-session.ts";
+import { AuthError, createAuthApi, validateLogin, validateRegistration } from "../src/app/lib/auth.ts";
+import { sessionRevalidationDelay, createAuthSession, AUTH_STORAGE_KEY, LEGACY_USER_KEY } from "../src/app/lib/auth-session.ts";
 
 const account = { id: 1, name: "Cliente", email: "test@example.test", role: "USER" };
 const token = randomBytes(24).toString("hex");
 const session = { accessToken: token, expiresAt: Date.now() + 900000, account };
-const loginBody = { accessToken: token, tokenType: "Bearer", expiresIn: 900, account };
+const loginBody = { accessToken: token, tokenType: "Bearer", expiresIn: 2592000, expiresAt: Date.now() + 2592000000, account };
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 function memoryStorage() {
   const data = new Map();
@@ -194,4 +194,59 @@ test("late administrative rejection cannot log out the newer shared USER session
   a.invalidate(token, "Unauthorized old request"); await a.restore();
   assert.equal(a.getSnapshot().session.account.id, 2);
   assert.notEqual(storage.getItem(AUTH_STORAGE_KEY), null);
+});
+
+test("login uses the backend expiration unchanged even with a skewed browser clock", async () => {
+  const expiresAt = 1700000000000;
+  const api = createAuthApi("/api", async url => json(url.endsWith("/login") ? { ...loginBody, expiresAt } : { account }));
+  assert.equal((await api.login(account.email, "x")).expiresAt, expiresAt);
+  for (const invalid of [undefined, null, 0, -1, "tomorrow", 1.5]) {
+    await assert.rejects(createAuthApi("/api", async () => json({ ...loginBody, expiresAt: invalid })).login(account.email, "x"), { code: "invalid_response" });
+  }
+});
+
+test("local expired metadata cannot revoke a token accepted by /auth/me", async () => {
+  const storage = memoryStorage(); let calls = 0;
+  storage.setItem(AUTH_STORAGE_KEY, JSON.stringify({ ...session, expiresAt: 1 }));
+  const auth = createAuthSession({ me: async () => { calls++; return account; } }, () => storage, () => memoryStorage());
+  await auth.restore(); await auth.restore();
+  assert.equal(calls, 2);
+  assert.deepEqual(auth.getSnapshot().session.account, account);
+  assert.notEqual(storage.getItem(AUTH_STORAGE_KEY), null);
+});
+
+for (const role of ["USER", "ADMIN"]) test(`${role} only loses credentials on authoritative rejection or explicit logout`, async () => {
+  for (const code of ["unavailable", "rate_limit", "unauthorized", "forbidden"]) {
+    const storage = memoryStorage();
+    const roleSession = { ...session, account: { ...account, role } };
+    let failure = true;
+    const api = { login: async () => roleSession, me: async () => {
+      if (failure) throw new AuthError(code, code);
+      return roleSession.account;
+    } };
+    const auth = createAuthSession(api, () => storage, () => memoryStorage());
+    await auth.login(account.email, "x"); await auth.restore();
+    const transient = ["unavailable", "rate_limit"].includes(code);
+    assert.equal(auth.getSnapshot().session !== null, transient);
+    assert.equal(storage.getItem(AUTH_STORAGE_KEY) !== null, transient);
+    if (transient) {
+      const reopened = createAuthSession(api, () => storage, () => memoryStorage());
+      await reopened.restore();
+      assert.equal(reopened.getSnapshot().session, null);
+      assert.notEqual(storage.getItem(AUTH_STORAGE_KEY), null);
+      failure = false; await reopened.restore();
+      assert.equal(reopened.getSnapshot().session.account.role, role);
+      assert.equal(reopened.getSnapshot().error, null);
+      reopened.logout();
+      assert.equal(storage.getItem(AUTH_STORAGE_KEY), null);
+    }
+  }
+});
+
+test("long-session revalidation never overflows a browser timer or spins on an old deadline", () => {
+  const now = 1700000000000;
+  assert.equal(sessionRevalidationDelay(now + 30 * 86400000, now), 86400000);
+  assert.equal(sessionRevalidationDelay(now + 900000, now), 900000);
+  assert.equal(sessionRevalidationDelay(now, now), 60000);
+  assert.equal(sessionRevalidationDelay(now - 86400000, now), 60000);
 });

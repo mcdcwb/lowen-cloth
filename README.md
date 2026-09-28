@@ -34,7 +34,8 @@ no ambiente do frontend.
 ### Sessão e validação
 
 - O token e seu prazo ficam em `localStorage`, na chave `lowen-cloth_auth_v1`,
-  compartilhados pelas abas da mesma origem. O prazo do JWT não foi alterado.
+  compartilhados pelas abas da mesma origem e preservados ao reabrir o navegador.
+  USER e ADMIN usam JWT com prazo fixo de 30 dias desde o login, sem renovação automática.
   Senha e identidade da conta não são persistidas.
 - Recarregar a página ou voltar à aba exige validação com `/auth/me`.
   A identidade exibida vem dessa resposta, não do armazenamento local.
@@ -48,7 +49,17 @@ no ambiente do frontend.
   administrativos montados, inclusive durante seleção/upload de arquivo.
 - Um identificador de operação em `lowen-cloth_auth_change_v1` impede que login
   ou validação atrasados sobrescrevam logout ou login posterior em outra aba.
-- Ao expirar o prazo, sair da conta ou falhar a validação da sessão, o token é removido.
+- `expiresAt` vem do backend, em milissegundos Unix, e corresponde ao `exp` assinado.
+  Não existe prazo independente no frontend. O timer apenas consulta `/auth/me`,
+  com intervalos entre 60 segundos e 24 horas para evitar overflow de `setTimeout`
+  e repetição imediata com relógio local adiantado. O relógio local não decide a validade.
+- Rejeição por `/auth/me` (401/403) remove a sessão e propaga o logout. O Manager
+  também invalida a sessão em 401/403. Carrinho e perfil exibem erros de requisição;
+  a revalidação compartilhada continua responsável por confirmar a identidade.
+- Falhas de rede, 5xx e 429 em `/auth/me` preservam a credencial para nova tentativa.
+  Uma identidade já validada permanece montada; a restauração inicial não concede
+  acesso sem resposta válida. Foco, visibilidade e recarga tentam novamente.
+- Logout explícito remove a credencial imediatamente de todas as abas.
 - Sair limpa a sessão deste navegador; não revoga o JWT no backend.
 - A senha no login aceita de 1 a 128 caracteres; novas contas exigem de 5 a 128.
 - O mesmo formulário identifica clientes e administradores pelo perfil devolvido pelo backend.
@@ -56,6 +67,22 @@ no ambiente do frontend.
 
 O token é acessível ao JavaScript da página. Não registre tokens em logs nem os
 inclua em URLs; a aplicação deve ser servida por HTTPS em produção.
+
+A validade maior amplia a janela de uso de um token roubado, inclusive de ADMIN.
+Não há refresh token nem revogação individual: logout e troca de senha não invalidam
+uma cópia do JWT. Desativar/excluir a conta bloqueia suas requisições; trocar o segredo
+invalida todos os tokens. Assinatura, expiração, perfil e conta ativa continuam
+sendo verificados pelo backend.
+
+A causa anterior do logout periódico era o prazo fixo de 15 minutos, aplicado a
+`exp`, `maxTokenAge` e `expiresIn`, sem extensão por atividade. O frontend também
+limitava `expiresIn` a 900 segundos, calculava outro vencimento pelo relógio local
+e removia a sessão no timer sem consultar o servidor. Falhas transitórias de
+`/auth/me` também apagavam a credencial. A política atual fica em
+`backend/src/lib/token.ts` (`tokenLifetimeSeconds`) e é usada na emissão e validação;
+`auth.service.ts` devolve a duração e o vencimento exato. Tokens antigos conservam
+seu `exp` original de 15 minutos; os 30 dias se aplicam ao próximo login.
+Publique backend e frontend juntos: o contrato de login agora inclui `expiresAt`.
 
 ### Publicação
 

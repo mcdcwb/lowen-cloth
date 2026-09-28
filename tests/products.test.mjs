@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { adaptProduct as adaptNested, selectProductColor, catalogSizes, stockFor, productImagePlaceholder } from "../src/app/lib/products.ts";
+import { adaptProduct as adaptNested, selectProductColor, catalogCategories, catalogSizes, stockFor, productImagePlaceholder } from "../src/app/lib/products.ts";
 
 const adaptProduct = ({ images, imageUrl, colorName, colorValue, variants, ...product } = {}) => adaptNested({ ...product,
   colors: [{ id: 10, images, imageUrl, colorName: colorName ?? "Cor não informada", colorValue: colorValue ?? "#000000", variants: variants?.map((v, i) => ({ id: i + 1, ...v })) }] });
@@ -68,4 +68,34 @@ test("color projections isolate images and stock while filters span all positive
   assert.equal(white.price, product.price); assert.deepEqual(catalogSizes([product]), ["P", "GG"]);
   assert.throws(() => selectProductColor(product, 999));
   assert.throws(() => adaptNested({ ...input, colors: [] }));
+});
+
+test("category options use only the supplied catalog, positive stock and the configured order", () => {
+  const options = ["jaquetas", "camisetas", "calcas", "calcados", "vestidos"].map(value => ({ value, label: value }));
+  const shirt = adaptProduct({ ...input, category: "camisetas", variants: [{ value: "P", stock: 1 }] });
+  const jacket = { ...shirt, id: 2, category: "jaquetas" };
+  const soldOut = adaptProduct({ ...input, category: "calcados", variants: [{ value: "39", stock: 0 }] });
+  const noVariants = adaptProduct({ ...input, category: "calcas", variants: [] });
+  // There is no publication flag in this model. Records not returned by the
+  // public catalog must not contribute options, even if stored elsewhere.
+  const outsideCatalog = { ...shirt, id: 3, category: "vestidos" };
+  const catalog = [shirt, soldOut, noVariants, jacket, shirt];
+  assert.deepEqual(catalogCategories(catalog, options).map(o => o.value), ["jaquetas", "camisetas"]);
+  assert.equal(catalogCategories(catalog, options).some(o => o.value === outsideCatalog.category), false);
+  assert.deepEqual(catalogCategories([], options), []);
+  assert.equal(options.length, 5);
+});
+
+test("category availability spans every color and reacts to replacement stock/catalog data", () => {
+  const product = adaptNested({ ...input, category: "calcas", colors: [
+    { id: 10, colorName: "Preto", colorValue: "#111111", images: [], variants: [{ id: 1, value: "P", stock: 0 }] },
+    { id: 11, colorName: "Branco", colorValue: "#FFFFFF", images: [], variants: [{ id: 2, value: "GG", stock: 1 }] }
+  ] });
+  const options = [{ value: "calcas", label: "Calças" }];
+  assert.deepEqual(catalogCategories([product], options), options);
+  assert.deepEqual(catalogCategories([selectProductColor(product, 10)], options), options);
+  const soldOut = { ...product, colors: product.colors.map(c => ({ ...c, variants: c.variants.map(v => ({ ...v, stock: 0 })) })) };
+  assert.deepEqual(catalogCategories([soldOut], options), []);
+  assert.deepEqual(catalogCategories([], options), []);
+  assert.deepEqual(catalogCategories([product], options), options);
 });

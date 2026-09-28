@@ -1,8 +1,8 @@
-import { Fragment, useState, useEffect, useRef } from "react";
+import { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import { useProducts } from "./hooks/useProducts";
 import { ProductImage } from "./components/ProductImage";
 import { Manager } from "./manager/Manager";
-import { catalogSizes, isNumericSize, selectProductColor, stockFor, type Product, type Size } from "./lib/products";
+import { catalogCategories, catalogSizes, isNumericSize, selectProductColor, stockFor, type Product, type Size } from "./lib/products";
 import { useShopping, type CartItem } from "./hooks/useShopping";
 import { useAuth } from "./hooks/useAuth";
 import { useLocation, useNavigate } from "react-router";
@@ -11,7 +11,7 @@ import { FilterSection, FilterOptions } from "./components/CatalogFilters";
 import { AccountPage } from "./components/AccountPage";
 import { validateLogin, validateRegistration } from "./lib/auth";
 import {
-  ShoppingCart, X, ChevronDown, Plus, Minus, Trash2,
+  ShoppingCart, X, ChevronDown, ChevronLeft, ChevronRight, Plus, Minus, Trash2,
   User, Menu, Heart, Tag, Leaf, Truck, Star,
   LeafyGreen,
   GemIcon, Sprout, MessageCircle
@@ -59,12 +59,17 @@ const sizeButtonClass = "inline-flex h-[48px] w-[48px] shrink-0 items-center jus
 export default function App() {
   const { products, loading: productsLoading, error: productsError, retry: retryProducts } = useProducts();
   const allSizes = catalogSizes(products);
+  const availableCategories = useMemo(() => catalogCategories(products, CATEGORIES), [products]);
   const location = useLocation();
   const navigate = useNavigate();
   const accountPath = location.pathname.replace(/\/$/, "");
   const isAccountPage = accountPath === "/minha-conta" || accountPath === "/favoritos";
   const [activePublic, setActivePublic] = useState<Public | "todos">("todos");
-  const [activeCategory, setActiveCategory] = useState<Category | null>(null);
+  const [selectedCategory, setActiveCategory] = useState<Category | null>(null);
+  const activeCategory = availableCategories.some(option => option.value === selectedCategory) ? selectedCategory : null;
+  useEffect(() => {
+    if (selectedCategory !== null && activeCategory === null) setActiveCategory(null);
+  }, [selectedCategory, activeCategory]);
   const [selectedSizes, setSelectedSizes] = useState<Size[]>([]);
   const { user, accessToken, validating, sessionError, login, register, logout, invalidate, updateAccount } = useAuth();
   const [cartOpen, setCartOpen] = useState(false);
@@ -338,7 +343,7 @@ export default function App() {
                 </button>
                 {catDropdownOpen && (
                   <div className="absolute top-full left-0 mt-2 w-56 bg-card border border-border rounded-xl shadow-xl overflow-hidden z-50">
-                    <FilterOptions options={CATEGORIES} value={activeCategory} allValue={null} onChange={selectCategory} />
+                    <FilterOptions options={availableCategories} value={activeCategory} allValue={null} onChange={selectCategory} />
                   </div>
                 )}
               </div>
@@ -402,7 +407,7 @@ export default function App() {
               <div className="px-3 pt-2 pb-1 text-[15px] font-semibold uppercase tracking-widest text-muted-foreground">
                 Categorias
               </div>
-              <FilterOptions options={CATEGORIES} value={activeCategory} allValue={null} onChange={selectCategory} />
+              <FilterOptions options={availableCategories} value={activeCategory} allValue={null} onChange={selectCategory} />
               <div className="px-3 pt-2 pb-1 text-[15px] font-semibold uppercase tracking-widest text-muted-foreground">Público</div>
               <FilterOptions options={PUBLICS} value={activePublic} allValue="todos" onChange={value => selectPublic(value ?? "todos")} />
               <a
@@ -588,7 +593,7 @@ export default function App() {
                   <FilterOptions options={PUBLICS} value={activePublic} allValue="todos" onChange={value => selectPublic(value ?? "todos")} />
                 </FilterSection>
                 <FilterSection title="Categoria">
-                  <FilterOptions options={CATEGORIES} value={activeCategory} allValue={null} onChange={selectCategory} />
+                  <FilterOptions options={availableCategories} value={activeCategory} allValue={null} onChange={selectCategory} />
                 </FilterSection>
               </div>
             </aside>
@@ -747,12 +752,14 @@ export default function App() {
   );
 }
 
-function ColorSelector({ product, onSelect }: { product: Product; onSelect: (id: number) => void }) {
+function ColorSelector({ product, onSelect, card = false }: { product: Product; onSelect: (id: number) => void; card?: boolean }) {
   return <div className="space-y-2"><p className="text-sm">Cor: <span className="font-medium">{product.color.name}</span></p>
     <div className="flex gap-2 flex-wrap" role="group" aria-label="Selecionar cor">
       {product.colors.map(color => <button key={color.id} type="button" title={color.colorName} aria-label={color.colorName}
         aria-pressed={product.colorId === color.id} onClick={() => onSelect(color.id)}
-        className={`h-7 w-7 border rounded-none shadow-sm ${product.colorId === color.id ? "ring-2 ring-primary ring-offset-2 border-primary" : "border-border"}`}
+        className={card
+          ? `h-7 w-7 shrink-0 rounded-full border border-black/15 transition-[border-color,box-shadow] duration-150 hover:border-neutral-400 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-600 ${product.colorId === color.id ? "ring-1 ring-neutral-500 ring-offset-2 ring-offset-card" : ""}`
+          : `h-7 w-7 border rounded-none shadow-sm ${product.colorId === color.id ? "ring-2 ring-primary ring-offset-2 border-primary" : "border-border"}`}
         style={{ backgroundColor: color.colorValue }} />)}
     </div>
   </div>;
@@ -1017,9 +1024,11 @@ function ProductCard({
                 showPrevImage();
               }}
               aria-label="Imagem anterior"
-              className="absolute left-2 top-1/2 z-10 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-[8px] border border-white/35 bg-white/25 text-black shadow-[0_0_0_1px_rgba(255,255,255,0.35)] backdrop-blur-sm transition hover:bg-white/45"
+              className="group/image-arrow absolute left-0 top-1/2 z-10 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full text-neutral-800 focus-visible:outline-none"
             >
-              <ChevronDown className="h-4 w-4 rotate-90" />
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/65 backdrop-blur-sm transition-colors duration-200 group-hover/image-arrow:bg-white/90 group-focus-visible/image-arrow:bg-white/90 group-focus-visible/image-arrow:ring-2 group-focus-visible/image-arrow:ring-neutral-700 group-focus-visible/image-arrow:ring-offset-2 group-focus-visible/image-arrow:ring-offset-white/80">
+                <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+              </span>
             </button>
             <button
               type="button"
@@ -1028,9 +1037,11 @@ function ProductCard({
                 showNextImage();
               }}
               aria-label="Próxima imagem"
-              className="absolute right-2 top-1/2 z-10 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-[8px] border border-white/35 bg-white/25 text-black shadow-[0_0_0_1px_rgba(255,255,255,0.35)] backdrop-blur-sm transition hover:bg-white/45"
+              className="group/image-arrow absolute right-0 top-1/2 z-10 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full text-neutral-800 focus-visible:outline-none"
             >
-              <ChevronDown className="h-4 w-4 -rotate-90" />
+              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/65 backdrop-blur-sm transition-colors duration-200 group-hover/image-arrow:bg-white/90 group-focus-visible/image-arrow:bg-white/90 group-focus-visible/image-arrow:ring-2 group-focus-visible/image-arrow:ring-neutral-700 group-focus-visible/image-arrow:ring-offset-2 group-focus-visible/image-arrow:ring-offset-white/80">
+                <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
+              </span>
             </button>
             <div className="absolute inset-x-0 bottom-2 z-10 flex items-center justify-center gap-1.5">
               {productImages.map((_, index) => (
@@ -1078,7 +1089,7 @@ function ProductCard({
           <p className="mt-1 text-base font-bold text-primary">{formatPrice(product.price)}</p>
         </div>
 
-        <ColorSelector product={product} onSelect={id => {
+        <ColorSelector card product={product} onSelect={id => {
           const next = selectProductColor(baseProduct, id);
           setSelectedColorId(id); setCurrentImageIndex(0); setAdded(false);
           if (selectedSize && availableStock(next, selectedSize) <= 0) setSelectedSize(null);

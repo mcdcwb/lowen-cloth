@@ -197,3 +197,61 @@ test("legacy ambiguous cart and per-tab credential are not resurrected", async (
   await cartCount(page, 0); await login(page, "user"); await cartCount(page, 0);
   expect(await page.evaluate(key => sessionStorage.getItem(key) === null, authKey)).toBe(true);
 });
+
+for (const kind of ["user", "admin"] as const) {
+  test(`${kind} persists beyond 15 minutes and restores after closing the browser context`, async ({ browser }) => {
+    const context = await browser.newContext();
+    let saved: Awaited<ReturnType<typeof context.storageState>>;
+    try {
+      const page = await context.newPage();
+      await page.clock.install();
+      await page.goto("/"); await login(page, kind); await page.goto("/");
+      await expect(page.getByRole("button", { name: accounts[kind].name, exact: true })).toBeVisible();
+      // Exercise the real long-session timer without waiting or changing server time.
+      await page.clock.fastForward(16 * 60 * 1000);
+      await expect(page.getByRole("button", { name: accounts[kind].name, exact: true })).toBeVisible();
+      await page.reload();
+      await expect(page.getByRole("button", { name: accounts[kind].name, exact: true })).toBeVisible();
+      saved = await context.storageState();
+    } finally { await context.close(); }
+    // localStorage is what a persistent browser profile carries across restarts.
+    const reopened = await browser.newContext({ storageState: saved! });
+    try {
+      const page = await reopened.newPage();
+      const me = page.waitForResponse(r => r.url().endsWith("/api/auth/me"));
+      await page.goto("/"); expect((await me).status()).toBe(200);
+      await expect(page.getByRole("button", { name: accounts[kind].name, exact: true })).toBeVisible();
+      await page.goto("/manager");
+      await expect(page.getByRole("heading", { name: kind === "admin" ? "Dashboard" : "Acesso restrito", exact: true })).toBeVisible();
+      await page.goto("/");
+      await logout(page, kind);
+      expect(await page.evaluate(key => localStorage.getItem(key) === null, authKey)).toBe(true);
+    } finally { await reopened.close(); }
+  });
+}
+
+test("a passed local deadline revalidates with the backend and temporary failures do not log out", async ({ page }) => {
+  await page.clock.install();
+  await page.goto("/"); await login(page, "user");
+  await page.evaluate(key => {
+    const saved = JSON.parse(localStorage.getItem(key)!);
+    saved.expiresAt = 1;
+    localStorage.setItem(key, JSON.stringify(saved));
+  }, authKey);
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Cliente", exact: true })).toBeVisible();
+  await page.route("**/api/auth/me", route => route.fulfill({ status: 503, json: { error: "Temporarily unavailable" } }));
+  const failed = page.waitForResponse(r => r.url().endsWith("/api/auth/me") && r.status() === 503);
+  await page.clock.fastForward(60000); await failed;
+  await expect(page.getByRole("button", { name: "Cliente", exact: true })).toBeVisible();
+  expect(await page.evaluate(key => localStorage.getItem(key) !== null, authKey)).toBe(true);
+  await page.unroute("**/api/auth/me");
+  const recovered = page.waitForResponse(r => r.url().endsWith("/api/auth/me") && r.status() === 200);
+  await page.clock.fastForward(60000); await recovered;
+  await expect(page.getByRole("button", { name: "Cliente", exact: true })).toBeVisible();
+  // The scheduling metadata cannot override a server-side expiration rejection.
+  await page.route("**/api/auth/me", route => route.fulfill({ status: 401, json: { error: "Token expirado" } }));
+  await page.clock.fastForward(60000);
+  await expect(page.getByRole("button", { name: "Entrar", exact: true }).first()).toBeVisible();
+  expect(await page.evaluate(key => localStorage.getItem(key) === null, authKey)).toBe(true);
+});

@@ -1,4 +1,4 @@
-import type { Account, AuthSession, createAuthApi } from "./auth";
+import { AuthError, type Account, type AuthSession, type createAuthApi } from "./auth.ts";
 
 export const AUTH_STORAGE_KEY = "lowen-cloth_auth_v1";
 export const LEGACY_USER_KEY = "brecho_user_v1";
@@ -98,10 +98,6 @@ export function createAuthSession(
       publish(null, state.error);
       return;
     }
-    if (saved.expiresAt <= Date.now()) {
-      logout("Sua sessão expirou. Entre novamente.");
-      return;
-    }
     // Returning from a native file picker revalidates on focus. Keep an already
     // verified session mounted so its form/input and pending upload survive.
     // Initial restoration still blocks access until /auth/me succeeds.
@@ -110,14 +106,16 @@ export function createAuthSession(
       const account = await api.me(saved.accessToken);
       if (current !== generation) return;
       if (!unchanged(saved, change)) { await restore(); return; }
-      if (saved.expiresAt <= Date.now()) {
-        logout("Sua sessão expirou. Entre novamente.");
-        return;
-      }
       publish({ ...saved, account });
     } catch (error) {
       if (current !== generation) return;
       if (!unchanged(saved, change)) { await restore(); return; }
+      if (error instanceof AuthError && ["unavailable", "rate_limit"].includes(error.code)) {
+        // A transport failure is not revocation. Initial restoration stays
+        // unauthenticated; an already verified identity survives a retryable error.
+        publish(state.session, error.message);
+        return;
+      }
       logout(error instanceof Error ? error.message : "Não foi possível validar a sessão.");
     }
   }
@@ -140,4 +138,10 @@ export function createAuthSession(
       return () => { listeners.delete(listener); };
     }
   };
+}
+
+// Long sessions exceed setTimeout's signed 32-bit limit. This only schedules
+// server validation; an elapsed/local deadline never authorizes a logout.
+export function sessionRevalidationDelay(expiresAt: number, now = Date.now()) {
+  return Math.min(24 * 60 * 60 * 1000, Math.max(60 * 1000, expiresAt - now));
 }

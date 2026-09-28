@@ -4,16 +4,18 @@ import type { AccountRole, TokenIdentity } from "../types/auth.js";
 
 const issuer = "lowen-cloth";
 const audiences = { ADMIN: "lowen-cloth-admin", USER: "lowen-cloth-user" } as const;
-export const tokenLifetimeSeconds = 15 * 60;
+// Fixed lifetime for both USER and ADMIN; login metadata uses this same policy.
+export const tokenLifetimeSeconds = 30 * 24 * 60 * 60;
 
 export function signAccountToken(id: number, role: AccountRole) {
+    const issuedAt = Math.floor(Date.now() / 1000);
     return new SignJWT({ role })
         .setProtectedHeader({ alg: "HS256", typ: "JWT" })
         .setSubject(String(id))
         .setIssuer(issuer)
         .setAudience(audiences[role])
-        .setIssuedAt()
-        .setExpirationTime("15m")
+        .setIssuedAt(issuedAt)
+        .setExpirationTime(issuedAt + tokenLifetimeSeconds)
         .sign(getJwtKey());
 }
 
@@ -27,7 +29,7 @@ export async function verifyAccountToken(token: string): Promise<TokenIdentity> 
         issuer,
         audience: Object.values(audiences),
         requiredClaims: ["sub", "iat", "exp"],
-        maxTokenAge: "15m"
+        maxTokenAge: tokenLifetimeSeconds
     });
     const id = Number(payload.sub);
     if (!/^[1-9]\d*$/.test(payload.sub ?? "") || !Number.isSafeInteger(id) || id > 2147483647) {

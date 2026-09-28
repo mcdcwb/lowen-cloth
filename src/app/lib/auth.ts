@@ -73,11 +73,14 @@ export function createAuthApi(baseUrl = "/api", fetcher: typeof fetch = fetch) {
     const body = await request("/auth/login", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: email.trim().toLowerCase(), password })
-    }, signal) as { accessToken?: unknown; tokenType?: unknown; expiresIn?: unknown; account?: unknown };
+    }, signal) as { accessToken?: unknown; tokenType?: unknown; expiresIn?: unknown; expiresAt?: unknown; account?: unknown };
     if (!body || typeof body.accessToken !== "string" || !body.accessToken.trim() || body.tokenType !== "Bearer" ||
         typeof body.expiresIn !== "number" || !Number.isFinite(body.expiresIn) || body.expiresIn <= 0 ||
-        body.expiresIn > 900 || !isAccount(body.account)) throw invalidResponse();
-    const expiresAt = Date.now() + body.expiresIn * 1000;
+        !Number.isSafeInteger(body.expiresIn) ||
+        typeof body.expiresAt !== "number" || !Number.isSafeInteger(body.expiresAt) || body.expiresAt <= 0 ||
+        !isAccount(body.account)) throw invalidResponse();
+    // Server timestamp mirrors the signed exp claim; the local clock is not an authority.
+    const expiresAt = body.expiresAt;
     const account = await me(body.accessToken, signal);
     if (account.id !== body.account.id || account.email !== body.account.email || account.role !== body.account.role) throw invalidResponse();
     return { accessToken: body.accessToken, expiresAt, account };

@@ -65,11 +65,11 @@ Content-Type: application/json
 {"email":"admin@example.com","password":"sua-senha"}
 ```
 
-Resposta: `{ accessToken, tokenType: "Bearer", expiresIn: 900, account: { id, name, email, role } }`. Para preservar compatibilidade, administradores também recebem `admin: { id, email }`.
+Resposta: `{ accessToken, tokenType: "Bearer", expiresIn: 2592000, expiresAt: <exp em milissegundos Unix>, account: { id, name, email, role } }`. Para preservar compatibilidade, administradores também recebem `admin: { id, email }`.
 
 Envie `Authorization: Bearer <accessToken>` nas rotas protegidas. `GET /auth/me` retorna a conta validada no campo `account`.
 
-- JWT: HS256, validade de 15 minutos, com verificação de emissor, destinatário e expiração.
+- JWT: HS256, validade fixa de 30 dias para USER e ADMIN, com verificação de emissor, destinatário e expiração. A constante `tokenLifetimeSeconds` em `src/lib/token.ts` define a emissão, `expiresIn` e `maxTokenAge`; `expiresAt` corresponde ao `exp` assinado em milissegundos Unix.
 - Sem token, com token inválido/expirado ou conta removida: `401`.
 - Conta desativada após o login: `403`. A situação do cliente ou administrador é consultada em cada requisição protegida.
 - Credenciais incorretas ou conta inativa no login: `401` com a mesma mensagem.

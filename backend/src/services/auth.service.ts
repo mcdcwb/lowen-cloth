@@ -1,3 +1,4 @@
+import { decodeJwt } from "jose";
 import { randomBytes } from "node:crypto";
 import type { z } from "zod";
 import { prisma } from "../lib/prisma.js";
@@ -21,8 +22,10 @@ export async function login(input: z.infer<typeof loginSchema>) {
     const account: Account = admin
         ? { id: admin.id, name: admin.email.split("@")[0]!, email: admin.email, role: "ADMIN" }
         : { id: user!.id, name: user!.name, email: user!.email, role: "USER" };
+    const accessToken = await signAccountToken(account.id, account.role);
     return {
-        accessToken: await signAccountToken(account.id, account.role),
+        accessToken,
+        expiresAt: decodeJwt(accessToken).exp! * 1000,
         tokenType: "Bearer",
         expiresIn: tokenLifetimeSeconds,
         account,

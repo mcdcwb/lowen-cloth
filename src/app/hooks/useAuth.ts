@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { createAuthApi, type RegisterInput } from "../lib/auth";
-import { AUTH_CHANGE_KEY, AUTH_STORAGE_KEY, createAuthSession } from "../lib/auth-session";
+import { AUTH_CHANGE_KEY, AUTH_STORAGE_KEY, createAuthSession, sessionRevalidationDelay } from "../lib/auth-session";
 
 export function useAuth() {
   const [api] = useState(() => createAuthApi(import.meta.env.VITE_API_URL || "/api"));
@@ -28,8 +28,16 @@ export function useAuth() {
 
   useEffect(() => {
     if (!session) return;
-    const timer = window.setTimeout(() => { void auth.restore(); }, Math.max(0, session.expiresAt - Date.now()));
-    return () => window.clearTimeout(timer);
+    let cancelled = false;
+    let timer: number;
+    const schedule = () => {
+      timer = window.setTimeout(async () => {
+        await auth.restore();
+        if (!cancelled) schedule();
+      }, sessionRevalidationDelay(session.expiresAt));
+    };
+    schedule();
+    return () => { cancelled = true; window.clearTimeout(timer); };
   }, [auth, session]);
 
   const user = useMemo(() => session ? session.account : null, [session]);

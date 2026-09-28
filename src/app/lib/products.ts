@@ -74,6 +74,13 @@ export function catalogSizes(products: Product[]) {
   });
 }
 
+// Only the unfiltered public catalog belongs here. Availability follows the
+// same positive-stock rule across all colors as the catalog's size options.
+export function catalogCategories<T extends string>(products: Product[], options: readonly { value: T; label: string }[]) {
+  const available = new Set(products.filter(product => catalogSizes([product]).length > 0).map(product => product.category));
+  return options.filter(option => available.has(option.value));
+}
+
 export async function fetchProducts(baseUrl = "/api", signal?: AbortSignal): Promise<Product[]> {
   const response = await fetch(baseUrl.replace(/\/$/, "") + "/produtos", { signal, cache: "no-store" });
   if (!response.ok) throw new Error("Não foi possível carregar os produtos. Tente novamente.");

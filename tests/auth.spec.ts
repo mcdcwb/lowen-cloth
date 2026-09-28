@@ -146,7 +146,7 @@ test("customer menu stays open across the gap, navigates, restores session and l
   await menu.getByRole("button", { name: "Sair", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Favoritos", exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Área de clientes" })).toBeVisible();
-  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  expect(await page.evaluate(key => localStorage.getItem(key) === null, storageKey)).toBe(true);
   await page.reload();
   await expect(page.getByRole("heading", { name: "Favoritos", exact: true })).toHaveCount(0);
 });
@@ -186,7 +186,7 @@ test("customer private page is hidden while validating and after token rejection
   await page.goto("/minha-conta");
   await expect(page.getByRole("heading", { name: "Minha Conta", exact: true })).toHaveCount(0);
   rejectSession();
-  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  await expect.poll(() => page.evaluate(key => localStorage.getItem(key) === null, storageKey)).toBe(true);
   await expect(page.getByRole("heading", { name: "Área de clientes" })).toBeVisible();
 });
 
@@ -224,7 +224,7 @@ test("ADMIN reuses the account menu on storefront and detail with its own links 
   await trigger.hover();
   await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Painel Administrativo", "Sair"]);
   await menu.getByRole("button", { name: "Sair", exact: true }).click();
-  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  expect(await page.evaluate(key => localStorage.getItem(key) === null, storageKey)).toBe(true);
   await expect(trigger).toHaveCount(0);
 });
 
@@ -292,7 +292,7 @@ test("real login with a five-character password, reload validation and logout", 
   expect((await me).status()).toBe(200);
   await expect(page.getByText(email.split("@")[0], { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Sair", exact: true }).first().click();
-  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  expect(await page.evaluate(key => localStorage.getItem(key) === null, storageKey)).toBe(true);
   await page.reload();
   await expect(page.getByRole("button", { name: "Entrar", exact: true }).first()).toBeVisible();
 });
@@ -302,7 +302,7 @@ test("incorrect password prevents login", async ({ page }) => {
   await page.getByLabel("Senha", { exact: true }).fill(password + "-incorrect");
   await submit(page);
   await expect(page.getByRole("alert")).toHaveText("E-mail ou senha inválidos.");
-  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  expect(await page.evaluate(key => localStorage.getItem(key) === null, storageKey)).toBe(true);
 });
 
 test("connection failure has a different message and never authenticates", async ({ page }) => {
@@ -310,7 +310,7 @@ test("connection failure has a different message and never authenticates", async
   await openLogin(page);
   await submit(page);
   await expect(page.getByRole("alert")).toContainText("conectar ao serviço");
-  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  expect(await page.evaluate(key => localStorage.getItem(key) === null, storageKey)).toBe(true);
 });
 
 test("backend/database failure is not reported as incorrect credentials", async ({ page }) => {
@@ -318,7 +318,7 @@ test("backend/database failure is not reported as incorrect credentials", async 
   await openLogin(page);
   await submit(page);
   await expect(page.getByRole("alert")).toContainText("conectar ao serviço");
-  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  expect(await page.evaluate(key => localStorage.getItem(key) === null, storageKey)).toBe(true);
 });
 
 test("HTTP 200 with an invalid body does not authenticate", async ({ page }) => {
@@ -326,7 +326,7 @@ test("HTTP 200 with an invalid body does not authenticate", async ({ page }) => 
   await openLogin(page);
   await submit(page);
   await expect(page.getByRole("alert")).toContainText("resposta inválida");
-  expect(await page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  expect(await page.evaluate(key => localStorage.getItem(key) === null, storageKey)).toBe(true);
 });
 
 test("old mock identity cannot log in and real public registration is available", async ({ page }) => {
@@ -382,15 +382,19 @@ test("a customer can create a PostgreSQL account and then log in", async ({ page
   await expect(page.getByText("Nova", { exact: true }).first()).toBeVisible();
 });
 
-test("session is not restored when /auth/me is unavailable", async ({ page }) => {
+test("unavailable /auth/me hides identity but preserves credentials for recovery", async ({ page }) => {
   await openLogin(page);
   await submit(page);
   await expect(page.getByText(email.split("@")[0], { exact: true }).first()).toBeVisible();
   await page.route("**/api/auth/me", route => route.abort("connectionrefused"));
   await page.reload();
-  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  await expect(page.getByRole("button", { name: "Entrar", exact: true }).first()).toBeVisible();
+  expect(await page.evaluate(key => localStorage.getItem(key) !== null, storageKey)).toBe(true);
   await page.getByRole("button", { name: "Entrar", exact: true }).first().click();
   await expect(page.getByRole("alert")).toContainText("conectar ao serviço");
+  await page.unroute("**/api/auth/me");
+  await page.reload();
+  await expect(page.getByText(email.split("@")[0], { exact: true }).first()).toBeVisible();
 });
 
 test("expired/rejected token is cleared on reload", async ({ page }) => {
@@ -399,7 +403,7 @@ test("expired/rejected token is cleared on reload", async ({ page }) => {
   await expect(page.getByText(email.split("@")[0], { exact: true }).first()).toBeVisible();
   await page.route("**/api/auth/me", route => route.fulfill({ status: 401, json: { error: "Token inválido ou expirado." } }));
   await page.reload();
-  await expect.poll(() => page.evaluate(key => localStorage.getItem(key), storageKey)).toBeNull();
+  await expect.poll(() => page.evaluate(key => localStorage.getItem(key) === null, storageKey)).toBe(true);
   await page.getByRole("button", { name: "Entrar", exact: true }).first().click();
   await expect(page.getByRole("alert")).toContainText("sessão expirou");
 });

@@ -192,3 +192,106 @@ test("size groups use only available variants, with a divider only between text 
     await expect(sizes.getByRole("separator")).toHaveCount(0);
   }
 });
+
+for (const width of [1440, 390]) {
+  test(`piece types remain global across size, audience, category and color selections at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    const pants = product(920, "Calça multicor", "feminino", "calcas", [{ value: "P", stock: 0 }]);
+    pants.colors.push({ ...pants.colors[0], id: 9201, colorName: "Branco", colorValue: "#FFFFFF", variants: [{ id: 9202, value: "GG", stock: 2 }] });
+    // Products absent from the public API cannot create filter options. This
+    // model has no publication flag; `public` is the intended audience.
+    await page.route("**/api/produtos", route => route.fulfill({ json: [
+      pants, products[0],
+      product(921, "Jaqueta esgotada", "unissex", "jaquetas", [{ value: "M", stock: 0 }]),
+      product(922, "Calçado sem variantes", "infantil", "calcados", [])
+    ] }));
+    await page.goto("/");
+    const mobile = width < 1024;
+    const menu = page.getByRole("button", { name: "Abrir menu de navegação" });
+    const options = mobile
+      ? page.locator("header").getByRole("button", { name: "Camisetas / Camisas", exact: true }).locator("..")
+      : page.locator("aside section").nth(2).locator("div").first();
+    const labels = ["Todos", "Camisetas / Camisas", "Calças"];
+    const checkOptions = async () => {
+      if (mobile) await menu.click();
+      await expect(options.getByRole("button")).toHaveText(labels);
+    };
+    await checkOptions();
+    if (mobile) await menu.click();
+    const pantsCard = page.locator("main div.group").filter({ has: page.getByText("Calça multicor", { exact: true }) });
+    await pantsCard.getByRole("button", { name: "Branco", exact: true }).click();
+    await checkOptions();
+    await options.getByRole("button", { name: "Calças", exact: true }).click();
+    await expect(page.getByText("1 peça encontrada", { exact: true })).toBeVisible();
+    const sizes = mobile ? page.getByRole("group", { name: "Filtrar por tamanho" }) : page.locator("aside section").first();
+    await sizes.getByRole("button", { name: "P", exact: true }).click();
+    await expect(page.getByText("Nenhuma peça encontrada", { exact: true })).toBeVisible();
+    await checkOptions();
+    if (mobile) await menu.click();
+    await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
+    await expect(page.getByText("4 peças encontradas", { exact: true })).toBeVisible();
+    await checkOptions();
+    await expect(options.getByRole("button", { name: "Todos", exact: true })).toHaveAttribute("aria-pressed", "true");
+    const audience = mobile ? page.locator("header") : page.locator("aside section").nth(1);
+    await audience.getByRole("button", { name: "Masculino", exact: true }).click();
+    await expect(page.getByText("2 peças encontradas", { exact: true })).toBeVisible();
+    await checkOptions();
+    await audience.getByRole("button", { name: "Infantil", exact: true }).click();
+    await sizes.getByRole("button", { name: "GG", exact: true }).click();
+    await expect(page.getByText("Nenhuma peça encontrada", { exact: true })).toBeVisible();
+    await checkOptions();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    if (mobile) await menu.click();
+    await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
+    await expect(page.getByText("4 peças encontradas", { exact: true })).toBeVisible();
+  });
+}
+
+for (const change of ["removed", "sold out"] as const) {
+  test(`catalog refresh clears a selected type when its last available product is ${change}`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 1000 });
+    let catalog = [products[0], products[1]];
+    await page.route("**/api/produtos", route => route.fulfill({ json: catalog }));
+    // Exercise the existing onChanged -> useProducts retry flow without DB mutations.
+    await page.route("**/api/produtos/902", async route => {
+      if (route.request().method() === "DELETE") {
+        catalog = [products[0]];
+        await route.fulfill({ status: 204 });
+      } else if (route.request().method() === "PUT") {
+        const updated = { ...products[1], colors: products[1].colors.map(c => ({ ...c, variants: c.variants.map(v => ({ ...v, stock: 0 })) })) };
+        catalog = [products[0], updated];
+        await route.fulfill({ json: updated });
+      } else await route.abort();
+    });
+    await page.goto("/");
+    await page.getByRole("button", { name: "Entrar", exact: true }).first().click();
+    await page.getByLabel("E-mail", { exact: true }).fill(process.env.E2E_ADMIN_EMAIL!);
+    await page.getByLabel("Senha", { exact: true }).fill(process.env.E2E_ADMIN_PASSWORD!);
+    await page.locator('form button[type="submit"]').click();
+    await page.getByRole("link", { name: "Ver loja", exact: true }).click();
+    const category = page.locator("aside section").nth(2);
+    await category.getByRole("button", { name: "Jaquetas / Agasalhos", exact: true }).click();
+    await expect(page.getByText("1 peça encontrada", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: process.env.E2E_ADMIN_EMAIL!.split("@")[0], exact: true }).hover();
+    await page.getByRole("link", { name: "Painel Administrativo", exact: true }).click();
+    await page.getByRole("link", { name: "Produtos", exact: true }).click();
+    const row = page.getByRole("article", { name: "Jaqueta API", exact: true });
+    if (change === "removed") {
+      await row.getByRole("button", { name: "Excluir", exact: true }).click();
+      await page.getByRole("button", { name: "Confirmar exclusão", exact: true }).click();
+      await expect(page.getByRole("alertdialog")).toHaveCount(0);
+    } else {
+      await row.getByRole("link", { name: "Editar", exact: true }).click();
+      await page.getByLabel("Estoque 1", { exact: true }).fill("0");
+      await page.getByLabel("Estoque 2", { exact: true }).fill("0");
+      await page.getByRole("button", { name: "Salvar produto", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Produtos", exact: true })).toBeVisible();
+    }
+    await page.getByRole("link", { name: "Ver loja", exact: true }).click();
+    await expect(category.locator("button[aria-pressed]")).toHaveText(["Todos", "Camisetas / Camisas"]);
+    await expect(category.getByRole("button", { name: "Todos", exact: true })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("button", { name: "Limpar filtros", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Todas as Peças", exact: true })).toBeVisible();
+    await expect(page.locator("main").getByText("Camiseta API", { exact: true })).toBeVisible();
+  });
+}

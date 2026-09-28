@@ -18,7 +18,7 @@ test("JWT configuration rejects missing or malformed secrets", () => {
     assert.equal(getJwtKey({ JWT_SECRET: "ab".repeat(32) }).length, 32);
 });
 
-test("login issues a short-lived JWT and rejects invalid credentials and inactive admins", async (t) => {
+test("login issues a persistent expiring JWT and rejects invalid credentials and inactive admins", async (t) => {
     const email = "login-" + randomUUID() + "@example.test";
     const password = "Test-only-password-" + randomUUID();
     const http = await startTestServer(createApp());
@@ -30,7 +30,7 @@ test("login issues a short-lived JWT and rejects invalid credentials and inactiv
             assert.equal(response.headers.get("cache-control"), "no-store");
             const body = await response.json();
             assert.deepEqual(body.admin, { id: admin.id, email });
-            assert.equal(body.expiresIn, 900);
+            assert.equal(body.expiresIn, 30 * 24 * 60 * 60);
             assert.equal(body.tokenType, "Bearer");
             assert.equal("passwordHash" in body.admin, false);
             const { payload, protectedHeader } = await jwtVerify(body.accessToken, getJwtKey(), {
@@ -38,8 +38,9 @@ test("login issues a short-lived JWT and rejects invalid credentials and inactiv
             });
             assert.equal(protectedHeader.alg, "HS256");
             assert.equal(payload.sub, String(admin.id));
-            assert.equal(payload.exp! - payload.iat!, 900);
+            assert.equal(payload.exp! - payload.iat!, 30 * 24 * 60 * 60);
             assert.equal("passwordHash" in payload, false);
+            assert.equal(body.expiresAt, payload.exp! * 1000);
         });
         await t.test("input validation", async () => {
             for (const body of [{}, { email: "invalid", password }, { email, password: "" }]) {

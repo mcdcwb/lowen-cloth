@@ -85,12 +85,22 @@ test("shared login and /me identify customers and admins without granting custom
         assert.equal(response.status, 200);
         const session = await response.json();
         token = session.accessToken;
+        assert.equal(session.expiresIn, 30 * 86400);
         assert.deepEqual(session.account, { ...user, role: "USER" });
         assert.equal("admin" in session, false);
         const me = await http.request("/auth/me", "GET", undefined, token);
         assert.equal(me.status, 200);
         assert.deepEqual(await me.json(), { account: { ...user, role: "USER" } });
 
+        await t.test("expired USER and ADMIN tokens remain rejected by /auth/me", async () => {
+            const now = Math.floor(Date.now() / 1000);
+            for (const [role, id] of [["USER", user.id], ["ADMIN", admin.id]] as const) {
+                const expired = await new SignJWT({ role }).setProtectedHeader({ alg: "HS256" })
+                    .setSubject(String(id)).setIssuer("lowen-cloth").setAudience(`lowen-cloth-${role.toLowerCase()}`)
+                    .setIssuedAt(now - 901).setExpirationTime(now - 1).sign(getJwtKey());
+                assert.equal((await http.request("/auth/me", "GET", undefined, expired)).status, 401);
+            }
+        });
         await t.test("customer token cannot modify products", async () => {
             for (const [method, path] of [["POST", "/produtos"], ["PUT", "/produtos/1"], ["DELETE", "/produtos/1"]]) {
                 assert.equal((await http.request(path!, method, {}, token)).status, 403);
