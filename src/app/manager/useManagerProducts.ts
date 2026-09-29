@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { createManagerApi, ManagerApiError } from "./api";
 import type { ManagedProduct, ProductInput } from "./products";
 
@@ -9,7 +10,6 @@ export function useManagerProducts(token: string, onUnauthorized: (message: stri
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const pending = useRef(false);
   const mounted = useRef(true);
@@ -39,7 +39,6 @@ export function useManagerProducts(token: string, onUnauthorized: (message: stri
     pending.current = true;
     setBusy(true);
     setError(null);
-    setNotice(null);
     try {
       await action();
       callbacks.current.onChanged();
@@ -56,13 +55,13 @@ export function useManagerProducts(token: string, onUnauthorized: (message: stri
     const product = await api.save(input, id);
     if (!mounted.current) return;
     setProducts(previous => id === undefined ? [...previous, product] : previous.map(p => p.id === id ? product : p));
-    setNotice(id === undefined ? "Produto criado com sucesso." : "Produto atualizado com sucesso.");
+    toast.success(id === undefined ? "Produto criado com sucesso!" : "Produto salvo com sucesso!");
   });
   const remove = (id: number) => mutate(async () => {
     await api.remove(id);
     if (!mounted.current) return;
     setProducts(previous => previous.filter(product => product.id !== id));
-    setNotice("Produto excluído com sucesso.");
+    toast.success("Produto excluído com sucesso!");
   });
   const upload = async (file: File, signal: AbortSignal) => {
     try { return await api.upload(file, signal); }
@@ -71,5 +70,5 @@ export function useManagerProducts(token: string, onUnauthorized: (message: stri
       throw reason;
     }
   };
-  return { upload, products, loading, loaded, busy, error, notice, save, remove, reload: () => setRevision(value => value + 1) };
+  return { upload, products, loading, loaded, busy, error, save, remove, reload: () => setRevision(value => value + 1) };
 }

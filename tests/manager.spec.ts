@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { expectSuccess, successToasts } from "./toast-helpers";
 import { randomUUID } from "node:crypto";
 
 async function login(page: Page, role: "ADMIN" | "USER" = "ADMIN") {
@@ -192,11 +193,12 @@ test("real manager CRUD validates variants, saves stock, filters, edits and dele
     await expect(page.getByRole("button", { name: "Salvando..." })).toBeDisabled();
     await expect(page.getByLabel("Nome", { exact: true })).toBeDisabled();
     await expect.poll(() => posts).toBe(1);
+    await expect(successToasts(page)).toHaveCount(0);
     release();
     const response = await created;
     expect(response.status()).toBe(201);
     id = (await response.json()).id;
-    await expect(page.getByRole("status")).toHaveText("Produto criado com sucesso.");
+    await expectSuccess(page, "Produto criado com sucesso!");
     await page.getByLabel("Buscar por nome").fill(name);
     await page.getByLabel("Categoria", { exact: true }).selectOption("calcados");
     await page.getByLabel("Público", { exact: true }).selectOption("feminino");
@@ -208,7 +210,7 @@ test("real manager CRUD validates variants, saves stock, filters, edits and dele
     await page.getByLabel("Estoque 1", { exact: true }).fill("9");
     await page.getByRole("button", { name: "Remover variante 2" }).click();
     await page.getByRole("button", { name: "Salvar produto" }).click();
-    await expect(page.getByRole("status")).toHaveText("Produto atualizado com sucesso.");
+    await expectSuccess(page, "Produto salvo com sucesso!");
     const saved = (await (await page.request.get("/api/produtos")).json()).find((p: { id: number }) => p.id === id);
     expect(saved.colors[0].variants.map((v: { value: string; stock: number }) => ({ value: v.value, stock: v.stock }))).toEqual([{ value: "38", stock: 9 }]);
     expect(Number(saved.price)).toBe(149.9);
@@ -219,7 +221,7 @@ test("real manager CRUD validates variants, saves stock, filters, edits and dele
     await row.getByRole("link", { name: "Editar" }).click();
     await page.getByRole("button", { name: "Remover variante 1" }).click();
     await page.getByRole("button", { name: "Salvar produto" }).click();
-    await expect(page.getByRole("status")).toHaveText("Produto atualizado com sucesso.");
+    await expectSuccess(page, "Produto salvo com sucesso!");
     await expect(row).toContainText("Sem estoque");
     await row.getByRole("button", { name: "Excluir", exact: true }).click();
     const dialog = page.getByRole("alertdialog");
@@ -228,7 +230,7 @@ test("real manager CRUD validates variants, saves stock, filters, edits and dele
     await expect(row).toBeVisible();
     await row.getByRole("button", { name: "Excluir", exact: true }).click();
     await dialog.getByRole("button", { name: "Confirmar exclusão" }).click();
-    await expect(page.getByRole("status")).toHaveText("Produto excluído com sucesso.");
+    await expectSuccess(page, "Produto excluído com sucesso!");
     await expect(row).toHaveCount(0);
     expect((await (await page.request.get("/api/produtos")).json()).some((p: { id: number }) => p.id === id)).toBe(false);
   } finally {
@@ -276,6 +278,7 @@ test("save failure preserves the draft, allows retry and the form fits small scr
   await page.route("**/api/produtos", route => route.request().method() === "POST" ? route.fulfill({ status: 500, json: { error: "Falha temporária." } }) : route.continue());
   await page.getByRole("button", { name: "Salvar produto" }).click();
   await expect(page.getByRole("alert")).toContainText("Falha temporária");
+  await expect(successToasts(page)).toHaveCount(0);
   await expect(page.getByLabel("Nome", { exact: true })).toHaveValue("Rascunho preservado");
   await expect(page.getByRole("button", { name: "Salvar produto" })).toBeEnabled();
   for (const width of [320, 390, 768]) {

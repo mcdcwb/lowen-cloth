@@ -49,7 +49,6 @@ function ManagerWorkspace({ user, token, onLogout, onUnauthorized, onChanged }: 
       <div className="mt-5 lg:mt-auto pt-5 border-t border-border text-xs text-muted-foreground break-all"><p className="font-medium text-foreground">{user.name}</p><p className="mt-1">{user.email}</p></div>
     </aside>
     <main className="min-w-0 w-full max-w-7xl mx-auto p-4 sm:p-8 lg:p-10">
-      {data.notice && <p role="status" className="mb-5 bg-primary/10 text-primary border border-primary/20 rounded-lg p-4 text-sm">{data.notice}</p>}
       {data.error && <div role="alert" className="mb-5 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg p-4 text-sm"><p>{data.error}</p><button disabled={data.busy} onClick={data.reload} className="underline mt-2">Atualizar lista</button></div>}
       {data.loading ? <p role="status" className="py-20 text-center text-muted-foreground">Carregando produtos...</p> : data.error && !data.loaded ? null : path === "/manager" ? <>
         <div className="mb-8"><p className="text-sm text-primary font-medium mb-2">VISÃO GERAL</p><h1 className="font-serif text-3xl font-bold">Dashboard</h1><p className="text-muted-foreground mt-2">Acompanhe a disponibilidade do seu catálogo.</p></div>

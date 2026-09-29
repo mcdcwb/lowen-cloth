@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { expectSuccess, successToasts } from "./toast-helpers";
 
 let product: any;
 let adminToken: string;
@@ -15,6 +16,78 @@ async function logout(page: Page) {
   await page.getByRole("button", { name: "Sair", exact: true }).click();
 }
 const card = (page: Page) => page.locator("main div.group").filter({ has: page.getByText("Persistencia Browser", { exact: true }) });
+
+for (const authenticated of [false, true]) test(`cart success toasts are singular and passive updates stay silent (${authenticated ? "USER" : "guest"})`, async ({ page, context }) => {
+  await page.goto("/");
+  if (authenticated) await login(page);
+  const other = await context.newPage();
+  await other.goto("/");
+  await other.getByRole("button", { name: "Abrir carrinho" }).click();
+  await expect(other.getByText("Carrinho vazio", { exact: true })).toBeVisible();
+  for (const size of ["P", "M"]) {
+    await card(page).getByRole("button", { name: size, exact: true }).click();
+    await card(page).getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
+    await expectSuccess(page, `Persistencia Browser — tamanho ${size} foi adicionado ao carrinho.`);
+  }
+  await expect(other.getByRole("button", { name: "Remover item" })).toHaveCount(2);
+  await expect(successToasts(other)).toHaveCount(0);
+  await page.reload();
+  await page.getByRole("button", { name: "Abrir carrinho" }).click();
+  await expect(page.getByRole("button", { name: "Remover item" })).toHaveCount(2);
+  await expect(successToasts(page)).toHaveCount(0);
+  await page.getByRole("button", { name: "Remover item" }).first().click();
+  await expectSuccess(page, "Persistencia Browser — tamanho P foi removido do carrinho.");
+  await page.keyboard.press("Escape");
+  await card(page).getByRole("button", { name: "P", exact: true }).click();
+  await card(page).getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
+  await expectSuccess(page, "Persistencia Browser — tamanho P foi adicionado ao carrinho.");
+  if (!authenticated) {
+    await login(page);
+    await expect(page.getByRole("status")).toContainText("Carrinho de visitante sincronizado");
+    await expect(successToasts(page)).toHaveCount(0);
+  }
+  await page.getByRole("button", { name: "Abrir carrinho" }).click();
+  await expect(page.getByRole("button", { name: "Remover item" })).toHaveCount(2);
+  await page.getByRole("button", { name: "Limpar Carrinho" }).click();
+  await expectSuccess(page, "Carrinho esvaziado com sucesso.");
+  await expect(page.getByText("Carrinho vazio", { exact: true })).toBeVisible();
+  await expect(other.getByText("Carrinho vazio", { exact: true })).toBeVisible();
+  await expect(successToasts(other)).toHaveCount(0);
+});
+
+test("cart API failures never announce success", async ({ page }) => {
+  await page.goto("/");
+  await login(page);
+  await card(page).getByRole("button", { name: "P", exact: true }).click();
+  await card(page).getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
+  await expectSuccess(page, "Persistencia Browser — tamanho P foi adicionado ao carrinho.");
+  await page.route(/\/api\/carrinho(?:\/item)?$/, route => route.request().method() === "GET" ? route.continue() : route.fulfill({ status: 503, json: { error: "Carrinho indisponível" } }));
+  await card(page).getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Carrinho indisponível");
+  await expect(successToasts(page)).toHaveCount(0);
+  await page.getByRole("button", { name: "Abrir carrinho" }).click();
+  for (const name of ["Remover item", "Limpar Carrinho"]) {
+    const failed = page.waitForResponse(r => r.url().includes("/carrinho") && r.status() === 503);
+    await page.getByRole("button", { name, exact: true }).click();
+    await failed;
+    await expect(page.getByRole("alert")).toContainText("Carrinho indisponível");
+    await expect(page.getByRole("button", { name: "Remover item" })).toHaveCount(1);
+    await expect(successToasts(page)).toHaveCount(0);
+  }
+});
+
+for (const width of [1440, 390, 320]) test(`visible toast fits viewport at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto("/");
+  await card(page).getByRole("button", { name: "P", exact: true }).click();
+  await card(page).getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
+  await expect(successToasts(page)).toHaveCount(1);
+  await expect(page.locator('[data-sonner-toaster]')).toHaveCount(1);
+  const bounds = await successToasts(page).boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
 test.beforeAll(async ({ request }) => {
   const response = await request.post("/api/auth/login", { data: { email: process.env.E2E_ADMIN_EMAIL, password: process.env.E2E_ADMIN_PASSWORD } });
   adminToken = (await response.json()).accessToken;

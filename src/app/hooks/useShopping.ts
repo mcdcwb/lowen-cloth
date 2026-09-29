@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { adaptProduct, selectProductColor, stockFor, type Product } from "../lib/products";
 import type { Account } from "../lib/auth";
 import { AUTH_STORAGE_KEY } from "../lib/auth-session";
@@ -171,16 +172,25 @@ export function useShopping(products: Product[], accessToken: string | undefined
   }
   async function add(product: Product, size: string) {
     if (!ready || locked.current) return false;
-    if (token) return mutate("/carrinho", "POST", { productId: product.id, colorId: product.colorId, size, quantity: 1 });
+    if (token) {
+      if (!await mutate("/carrinho", "POST", { productId: product.id, colorId: product.colorId, size, quantity: 1 })) return false;
+      toast.success(`${product.name} — tamanho ${size} foi adicionado ao carrinho.`);
+      return true;
+    }
     const previous = guestItems.find(i => i.product.id === product.id && i.colorId === product.colorId && i.size === size);
     if ((previous?.quantity ?? 0) >= stockFor(product, size)) return false;
     updateGuest(previous ? guestItems.map(i => i === previous ? { ...i, quantity: i.quantity + 1 } : i) : [...guestItems, { product, colorId: product.colorId, size, quantity: 1 }]);
+    toast.success(`${product.name} — tamanho ${size} foi adicionado ao carrinho.`);
     return true;
   }
-  function remove(productId: number, size: string, colorId: number) {
+  async function remove(productId: number, size: string, colorId: number) {
     if (!ready || locked.current) return;
-    if (token) return void mutate("/carrinho/item", "DELETE", { productId, colorId, size });
-    updateGuest(guestItems.filter(i => i.product.id !== productId || i.colorId !== colorId || i.size !== size));
+    const item = items.find(i => i.product.id === productId && i.colorId === colorId && i.size === size);
+    if (!item) return;
+    if (token) {
+      if (!await mutate("/carrinho/item", "DELETE", { productId, colorId, size })) return;
+    } else updateGuest(guestItems.filter(i => i.product.id !== productId || i.colorId !== colorId || i.size !== size));
+    toast.success(`${item.product.name} — tamanho ${size} foi removido do carrinho.`);
   }
   function changeQty(productId: number, size: string, delta: number, colorId: number) {
     if (!ready || locked.current) return;
@@ -191,10 +201,12 @@ export function useShopping(products: Product[], accessToken: string | undefined
     if (token) return void mutate("/carrinho", "PATCH", { productId, colorId, size, quantity });
     updateGuest(guestItems.map(i => i === item ? { ...i, quantity: Math.min(stockFor(i.product, size), quantity) } : i));
   }
-  function clear() {
-    if (!ready || locked.current) return;
-    if (token) return void mutate("/carrinho", "DELETE");
-    updateGuest([]);
+  async function clear() {
+    if (!ready || locked.current || !items.length) return;
+    if (token) {
+      if (!await mutate("/carrinho", "DELETE")) return;
+    } else updateGuest([]);
+    toast.success("Carrinho esvaziado com sucesso.");
   }
   return { items, favorites, busy, ready, error, notice, add, remove, changeQty, clear,
     dismissNotice: () => setNotice(""),
