@@ -1,3 +1,5 @@
+import type { GetAddState } from "./hooks/useAddFeedback";
+import { sortCatalog, toggleCatalogSort, type CatalogSort } from "./lib/catalog-sort";
 import { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import { useProducts } from "./hooks/useProducts";
 import { ProductImage } from "./components/ProductImage";
@@ -13,7 +15,7 @@ import { validateLogin, validateRegistration } from "./lib/auth";
 import {
   ShoppingCart, X, ChevronDown, ChevronLeft, ChevronRight, Plus, Minus, Trash2,
   User, Menu, Heart, Tag, Leaf, Truck, Star,
-  LeafyGreen,
+  LeafyGreen, ArrowUp, ArrowDown, ArrowUpDown,
   GemIcon, Sprout, MessageCircle
 } from "lucide-react";
 import { SignpostBig } from "./components/icons/SignpostBig";
@@ -71,6 +73,7 @@ export default function App() {
     if (selectedCategory !== null && activeCategory === null) setActiveCategory(null);
   }, [selectedCategory, activeCategory]);
   const [selectedSizes, setSelectedSizes] = useState<Size[]>([]);
+  const [catalogSort, setCatalogSort] = useState<CatalogSort>(null);
   const { user, accessToken, validating, sessionError, login, register, logout, invalidate, updateAccount } = useAuth();
   const [cartOpen, setCartOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -123,6 +126,7 @@ export default function App() {
   });
 
   const totalItems = cartItems.reduce((s, i) => s + i.quantity, 0);
+  const sortedProducts = sortCatalog(filteredProducts, catalogSort);
   const totalPrice = cartItems.reduce((s, i) => s + i.product.price * i.quantity, 0);
 
   function toggleSize(size: Size) {
@@ -184,7 +188,11 @@ export default function App() {
       ? "Todas as Peças"
       : PUBLICS.find((c) => c.value === activePublic)?.label ?? "";
 
-  const featuredProducts = products.slice(0, 4);
+  const featuredProducts = products.filter(product => product.inCarousel).sort((a, b) => a.id - b.id);
+  const activeFeaturedIndex = Math.min(featuredIndex, Math.max(0, featuredProducts.length - 1));
+  useEffect(() => {
+    setFeaturedIndex(index => Math.min(index, Math.max(0, featuredProducts.length - 1)));
+  }, [featuredProducts.length]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -254,7 +262,7 @@ export default function App() {
           }}
           onLogout={handleLogout}
           onOpenCart={() => setCartOpen(true)}
-          onAddToCart={addToCart}
+          onAddToCart={addToCart} addState={shopping.addState}
         />
 
         {cartOpen && (
@@ -441,22 +449,22 @@ export default function App() {
       {isAccountPage ? <AccountPage accessToken={accessToken} onUpdated={updateAccount} user={user} favorites={accountPath === "/favoritos"} onLogin={() => setAuthOpen(true)}>
         {shopping.ready && !shopping.favorites.length && <p className="mt-4">Nenhum favorito salvo.</p>}
         <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-          {shopping.favorites.map(product => <ProductCard key={product.id} product={product} liked onFavorite={() => toggleFavorite(product.id)} favoriteBusy={shopping.busy} availableStock={availableStock} onAddToCart={addToCart} />)}
+          {shopping.favorites.map(product => <ProductCard key={product.id} product={product} liked onFavorite={() => toggleFavorite(product.id)} favoriteBusy={shopping.busy} availableStock={availableStock} onAddToCart={addToCart} addState={shopping.addState} />)}
         </div>
       </AccountPage> : <>
-        <div className="w-full pt-0">
+        {featuredProducts.length > 0 && <section aria-label="Carrossel de produtos" className="w-full pt-0">
           <div className="p-0 sm:p-0">
             <div
-              className="overflow-hidden rounded-none"
+              className="relative overflow-hidden rounded-none"
               onMouseEnter={() => setIsFeaturedHovering(true)}
               onMouseLeave={() => setIsFeaturedHovering(false)}
             >
               <div
                 className="flex transition-transform duration-300 ease-out"
-                style={{ transform: `translateX(-${featuredIndex * 100}%)` }}
+                style={{ transform: `translateX(-${activeFeaturedIndex * 100}%)` }}
               >
                 {featuredProducts.map((product) => (
-                  <article key={product.id} className="w-full shrink-0 p-0">
+                  <article key={product.id} aria-hidden={featuredProducts[activeFeaturedIndex]?.id !== product.id} ref={node => { node?.toggleAttribute("inert", featuredProducts[activeFeaturedIndex]?.id !== product.id); }} className="w-full shrink-0 p-0">
                     <div className="group relative h-72 overflow-hidden rounded-none bg-black sm:h-[420px]">
                       <ProductImage
                         src={product.imageUrl}
@@ -509,25 +517,25 @@ export default function App() {
                         </div>
                       </div>
 
-                      <div className="absolute inset-x-0 bottom-4 z-10 flex items-center justify-center gap-1.5 sm:bottom-5">
-                        {featuredProducts.map((item, index) => (
-                          <button
-                            key={item.id}
-                            type="button"
-                            aria-label={`Ir para o produto ${index + 1}`}
-                            onClick={() => setFeaturedIndex(index)}
-                            className={`h-1.5 rounded-full transition-all ${featuredIndex === index ? "w-6 bg-white" : "w-1.5 bg-white/45 hover:bg-white/75"
-                              }`}
-                          />
-                        ))}
-                      </div>
                     </div>
                   </article>
                 ))}
               </div>
+              <div className="absolute inset-x-0 bottom-4 z-10 flex items-center justify-center gap-1.5 sm:bottom-5">
+                {featuredProducts.map((item, index) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    aria-label={`Ir para o produto ${index + 1}`}
+                    aria-current={activeFeaturedIndex === index ? "true" : undefined}
+                    onClick={() => setFeaturedIndex(index)}
+                    className={`h-1.5 rounded-full transition-all ${activeFeaturedIndex === index ? "w-6 bg-white" : "w-1.5 bg-white/45 hover:bg-white/75"}`}
+                  />
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        </section>}
 
         {/* Desktop */}
         <div className="hidden sm:grid bg-primary text-primary-foreground px-3 py-2.5 text-xs font-medium tracking-wide grid-cols-[1fr_auto_1fr_auto_1fr] items-center">
@@ -602,13 +610,34 @@ export default function App() {
             <section className="flex-1 min-w-0">
               {/* Section header */}
               <div className="flex flex-wrap items-end justify-between mb-6 gap-4">
-                <div>
-                  <h2 className="font-serif text-2xl font-bold text-foreground leading-tight">
-                    {catalogTitle}
-                  </h2>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    {productsLoading ? "Carregando..." : productsError ? "Catálogo indisponível" : `${filteredProducts.length} ${filteredProducts.length === 1 ? "peça encontrada" : "peças encontradas"}`}
-                  </p>
+                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="font-serif text-2xl font-bold text-foreground leading-tight">
+                      {catalogTitle}
+                    </h2>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {productsLoading ? "Carregando..." : productsError ? "Catálogo indisponível" : `${filteredProducts.length} ${filteredProducts.length === 1 ? "peça encontrada" : "peças encontradas"}`}
+                    </p>
+                  </div>
+                  <div className="flex max-w-full flex-wrap items-center justify-end gap-2 self-end sm:flex-nowrap sm:self-auto">
+                    {hasActiveFilters && <button type="button" onClick={clearFilters}
+                      className="min-h-11 shrink-0 px-2 text-sm text-primary underline underline-offset-2 transition-colors duration-200 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                      Limpar filtros
+                    </button>}
+                  <div role="group" aria-label="Ordenar produtos" className="flex shrink-0 gap-1">
+                    {(["name", "price"] as const).map(field => {
+                      const active = catalogSort?.field === field;
+                      const label = field === "name" ? "Nome" : "Preço";
+                      const Arrow = !active ? ArrowUpDown : catalogSort.direction === "desc" ? ArrowDown : ArrowUp;
+                      return <button key={field} type="button" aria-pressed={active}
+                        aria-label={`Ordenar por ${label.toLocaleLowerCase("pt-BR")}${active ? `, ${catalogSort.direction === "asc" ? "crescente" : "decrescente"}` : ""}`}
+                        onClick={() => setCatalogSort(current => toggleCatalogSort(current, field))}
+                        className={`inline-flex min-h-11 w-[88px] items-center justify-center gap-1 rounded-md border px-3 text-sm transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${active ? "border-primary/20 bg-primary/10 font-semibold text-primary" : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
+                        {label}<Arrow aria-hidden="true" className="size-3.5 shrink-0" />
+                      </button>;
+                  })}
+                  </div>
+                  </div>
                 </div>
 
                 {/* Mobile size filter */}
@@ -636,10 +665,6 @@ export default function App() {
                     </button>
                   )}
                 </div>
-                {hasActiveFilters && <button type="button" onClick={clearFilters}
-                  className="ml-auto shrink-0 px-2 py-2 text-base text-primary underline underline-offset-2">
-                  Limpar filtros
-                </button>}
               </div>
 
               {productsLoading ? (
@@ -665,8 +690,8 @@ export default function App() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {filteredProducts.map((product) => (
-                    <ProductCard key={product.id} liked={shopping.favorites.some(p => p.id === product.id)} onFavorite={() => toggleFavorite(product.id)} favoriteBusy={shopping.busy || validating || user?.role === "ADMIN"} product={product} availableStock={availableStock} onAddToCart={addToCart} />
+                  {sortedProducts.map((product) => (
+                    <ProductCard key={product.id} liked={shopping.favorites.some(p => p.id === product.id)} onFavorite={() => toggleFavorite(product.id)} favoriteBusy={shopping.busy || validating || user?.role === "ADMIN"} product={product} availableStock={availableStock} onAddToCart={addToCart} addState={shopping.addState} />
                   ))}
                 </div>
               )}
@@ -774,6 +799,7 @@ function ProductDetailPage({
   onLogout,
   onOpenCart,
   onAddToCart,
+  addState,
   availableStock,
 }: {
   product: Product;
@@ -784,6 +810,7 @@ function ProductDetailPage({
   onLogout: () => void;
   onOpenCart: () => void;
   onAddToCart: (p: Product, s: Size) => Promise<boolean>;
+  addState: GetAddState;
   availableStock: (p: Product, s: Size) => number;
 }) {
   const [selectedColorId, setSelectedColorId] = useState(() => { const id = Number(new URLSearchParams(window.location.search).get("colorId")); return baseProduct.colors.some(c => c.id === id) ? id : baseProduct.colorId; });
@@ -792,7 +819,8 @@ function ProductDetailPage({
   const productImages = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [selectedSize, setSelectedSize] = useState<Size | null>(null);
-  const [added, setAdded] = useState(false);
+  const additionState = addState(product, selectedSize);
+  const added = additionState === "added";
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -896,7 +924,7 @@ function ProductDetailPage({
             <div className="text-2xl font-bold text-primary">{formatPrice(product.price)}</div>
             <ColorSelector product={product} onSelect={id => {
               const next = selectProductColor(baseProduct, id);
-              setSelectedColorId(id); setActiveImageIndex(0); setAdded(false);
+              setSelectedColorId(id); setActiveImageIndex(0);
               if (selectedSize && availableStock(next, selectedSize) <= 0) setSelectedSize(null);
             }} />
 
@@ -926,12 +954,11 @@ function ProductDetailPage({
 
             <button
               type="button"
-              disabled={!selectedSize || availableStock(product, selectedSize) <= 0}
+              disabled={additionState !== "idle" || !selectedSize || availableStock(product, selectedSize) <= 0}
+              aria-busy={additionState === "pending"}
               onClick={async () => {
                 if (!selectedSize) return;
-                if (!await onAddToCart(product, selectedSize)) return;
-                setAdded(true);
-                setTimeout(() => setAdded(false), 1800);
+                await onAddToCart(product, selectedSize);
               }}
               className={`disabled:opacity-50 disabled:cursor-not-allowed w-full py-3 text-sm font-semibold uppercase tracking-[0.18em] transition ${added
                 ? "bg-accent text-accent-foreground"
@@ -965,18 +992,21 @@ function ProductCard({
   liked, onFavorite, favoriteBusy,
   product: baseProduct,
   onAddToCart,
+  addState,
   availableStock,
 }: {
   liked: boolean; onFavorite: () => void; favoriteBusy: boolean;
   product: Product;
   onAddToCart: (p: Product, s: Size) => Promise<boolean>;
+  addState: GetAddState;
   availableStock: (p: Product, s: Size) => number;
 }) {
   const [selectedColorId, setSelectedColorId] = useState(baseProduct.colorId);
   const product = selectProductColor(baseProduct, baseProduct.colors.some(c => c.id === selectedColorId) ? selectedColorId : baseProduct.colors[0].id);
 
   const [selectedSize, setSelectedSize] = useState<Size | null>(null);
-  const [added, setAdded] = useState(false);
+  const additionState = addState(product, selectedSize);
+  const added = additionState === "added";
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   const productImages = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
@@ -984,9 +1014,7 @@ function ProductCard({
 
   async function handleAdd() {
     if (!selectedSize) return;
-    if (!await onAddToCart(product, selectedSize)) return;
-    setAdded(true);
-    setTimeout(() => setAdded(false), 1800);
+    await onAddToCart(product, selectedSize);
   }
 
   function showPrevImage() {
@@ -1091,7 +1119,7 @@ function ProductCard({
 
         <ColorSelector card product={product} onSelect={id => {
           const next = selectProductColor(baseProduct, id);
-          setSelectedColorId(id); setCurrentImageIndex(0); setAdded(false);
+          setSelectedColorId(id); setCurrentImageIndex(0);
           if (selectedSize && availableStock(next, selectedSize) <= 0) setSelectedSize(null);
         }} />
 
@@ -1117,7 +1145,8 @@ function ProductCard({
         {/* CTA */}
         <button
           onClick={handleAdd}
-          disabled={!selectedSize || availableStock(product, selectedSize) <= 0}
+          disabled={additionState !== "idle" || !selectedSize || availableStock(product, selectedSize) <= 0}
+          aria-busy={additionState === "pending"}
           className={`disabled:opacity-50 disabled:cursor-not-allowed mt-auto w-full py-2 text-sm font-semibold transition-all duration-200 rounded-none ${added
             ? "bg-accent text-accent-foreground"
             : selectedSize

@@ -8,13 +8,15 @@ import shoppingRoutes from "./routes/shopping.routes.js";
 import accountRoutes from "./routes/account.routes.js";
 import { createUploadRoutes } from "./routes/upload.routes.js";
 import type { ProductImageUploader } from "./services/upload.service.js";
+import { createSettingsRoutes } from "./routes/settings.routes.js";
 
-export function createApp(options: { uploadProductImage?: ProductImageUploader } = {}) {
+export function createApp(options: { uploadProductImage?: ProductImageUploader; settingsDatabase?: Pick<typeof prisma, "storeSettings"> } = {}) {
     getJwtKey();
     const app = express();
 
     app.use(express.json());
     app.use("/produtos", productRoutes);
+    app.use("/settings", createSettingsRoutes(options.settingsDatabase));
     app.use("/uploads", createUploadRoutes(options.uploadProductImage));
     app.use("/auth", createAuthRoutes());
     app.use("/conta", accountRoutes);

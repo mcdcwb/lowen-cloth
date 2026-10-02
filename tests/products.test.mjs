@@ -1,5 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { sortCatalog, toggleCatalogSort } from "../src/app/lib/catalog-sort.ts";
+
+test("catalog sorting is opt-in, numeric, pt-BR, stable and immutable", () => {
+  const products = Object.freeze([
+    Object.freeze({ name: "Zebra", price: 100 }),
+    Object.freeze({ name: "álgebra", price: 50 }),
+    Object.freeze({ name: "Algebra", price: 500 }),
+    Object.freeze({ name: "Bota", price: 100 }),
+  ]);
+  assert.deepEqual(sortCatalog(products, null), products);
+  assert.deepEqual(sortCatalog(products, { field: "name", direction: "asc" }).map(p => p.name), ["álgebra", "Algebra", "Bota", "Zebra"]);
+  assert.deepEqual(sortCatalog(products, { field: "name", direction: "desc" }).map(p => p.name), ["Zebra", "Bota", "álgebra", "Algebra"]);
+  assert.deepEqual(sortCatalog(products, { field: "price", direction: "asc" }).map(p => p.price), [50, 100, 100, 500]);
+  assert.deepEqual(sortCatalog(products, { field: "price", direction: "desc" }).map(p => p.name), ["Algebra", "Zebra", "Bota", "álgebra"]);
+  assert.deepEqual(products.map(p => p.name), ["Zebra", "álgebra", "Algebra", "Bota"]);
+});
+
+test("one sort criterion toggles direction and changing criterion starts ascending", () => {
+  let sort = null;
+  for (const [field, direction] of [["name", "asc"], ["name", "desc"], ["name", "asc"], ["price", "asc"], ["price", "desc"], ["name", "asc"]]) {
+    sort = toggleCatalogSort(sort, field);
+    assert.deepEqual(sort, { field, direction });
+  }
+});
 import { adaptProduct as adaptNested, selectProductColor, catalogCategories, catalogSizes, stockFor, productImagePlaceholder } from "../src/app/lib/products.ts";
 
 const adaptProduct = ({ images, imageUrl, colorName, colorValue, variants, ...product } = {}) => adaptNested({ ...product,

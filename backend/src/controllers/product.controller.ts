@@ -2,8 +2,23 @@ import type { Request, Response } from "express";
 import * as productService from "../services/product.service.js";
 import {
     createProductSchema,
+    carouselSchema,
     updateProductSchema
 } from "../schemas/product.schema.js";
+
+export async function setProductCarousel(req: Request, res: Response) {
+    const id = Number(req.params.id);
+    if (!Number.isSafeInteger(id) || id <= 0 || id > 2147483647) return res.status(400).json({ error: "ID inválido." });
+    const result = carouselSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ error: "Informe se o produto pertence ao carrossel." });
+    try {
+        return res.json(await productService.setProductCarousel(id, result.data.inCarousel));
+    } catch (error) {
+        if (error instanceof productService.ProductError) return res.status(error.status).json({ error: error.message });
+        console.error(error);
+        return res.status(500).json({ error: "Não foi possível atualizar o carrossel." });
+    }
+}
 
 export async function getProducts(req: Request, res: Response) {
     try {

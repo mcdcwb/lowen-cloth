@@ -7,6 +7,11 @@ datasource db {
   provider = "postgresql"
 }
 
+model StoreSettings {
+  id                Int @id @default(1)
+  lowStockThreshold Int @default(5)
+}
+
 model Product {
   id          Int      @id @default(autoincrement())
   name        String
@@ -17,6 +22,7 @@ model Product {
   category    String
 
   badge       String?
+  inCarousel  Boolean @default(false)
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

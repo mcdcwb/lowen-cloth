@@ -1,10 +1,12 @@
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
-import { LayoutDashboard, Package, ArrowUpRight, LogOut } from "lucide-react";
+import { LayoutDashboard, Package, ArrowUpRight, ArrowRight, LogOut, Settings } from "lucide-react";
 import type { Account } from "../lib/auth";
 import { ProductList } from "./ProductList";
 import { ProductForm } from "./ProductForm";
 import { useManagerProducts } from "./useManagerProducts";
-import { LOW_STOCK_LIMIT, productStats } from "./products";
+import { productStats } from "./products";
+import { useManagerSettings } from "./useManagerSettings";
+import { SettingsPage } from "./SettingsPage";
 
 interface Props {
   user: Account | null; token?: string; validating: boolean; sessionError: string | null;
@@ -29,34 +31,45 @@ function ManagerWorkspace({ user, token, onLogout, onUnauthorized, onChanged }: 
   const location = useLocation();
   const data = useManagerProducts(token, onUnauthorized, onChanged);
   const path = location.pathname.replace(/\/$/, "");
+  const settings = useManagerSettings(token, path, onUnauthorized);
   const edit = /^\/manager\/produtos\/(\d+)\/editar$/.exec(path);
   const isNew = path === "/manager/produtos/novo";
   const product = edit ? data.products.find(item => item.id === Number(edit[1])) : undefined;
-  const stats = productStats(data.products);
+  const stats = settings.threshold === null ? null : productStats(data.products, settings.threshold);
   const navigation = [
     { to: "/manager", label: "Dashboard", icon: LayoutDashboard, end: true },
-    { to: "/manager/produtos", label: "Produtos", icon: Package, end: false }
+    { to: "/manager/produtos", label: "Produtos", icon: Package, end: false },
+    { to: "/manager/settings", label: "Configurações", icon: Settings, end: true }
   ];
   return <div className="min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[240px_minmax(0,1fr)]">
     <aside className="lg:sticky lg:top-0 lg:h-screen bg-card border-b lg:border-b-0 lg:border-r border-border p-5 flex flex-col">
       <div className="mb-5 lg:mb-9"><span className="font-serif text-2xl tracking-[0.2em] text-primary">LÖWEN</span><p className="text-xs tracking-widest text-muted-foreground mt-1">ADMINISTRAÇÃO</p></div>
       <nav aria-label="Navegação administrativa" className="flex flex-wrap lg:flex-col gap-2">
-        {navigation.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={event => { if (data.busy) event.preventDefault(); }} className={({ isActive }) => `flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}><Icon size={18} />{label}</NavLink>)}
+        {navigation.map(({ to, label, icon: Icon, end }) => <NavLink key={to} to={to} end={end} onClick={event => { if (data.busy || settings.saving) event.preventDefault(); }} className={({ isActive }) => `flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium ${isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}><Icon size={18} />{label}</NavLink>)}
         <hr className="w-full border-border my-2 lg:my-5" />
-        <Link to="/" onClick={event => { if (data.busy) event.preventDefault(); }} className="flex items-center gap-2 px-3 py-3 text-base font-medium text-muted-foreground hover:text-primary"><ArrowUpRight size={20} />Ver loja</Link>
-        <button disabled={data.busy} onClick={onLogout} className="flex items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground hover:text-destructive disabled:opacity-50"><LogOut size={18} />Sair</button>
+        <Link to="/" onClick={event => { if (data.busy || settings.saving) event.preventDefault(); }} className="flex items-center gap-2 px-3 py-3 text-base font-medium text-muted-foreground hover:text-primary"><ArrowUpRight size={20} />Ver loja</Link>
+        <button disabled={data.busy || settings.saving} onClick={onLogout} className="flex items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground hover:text-destructive disabled:opacity-50"><LogOut size={18} />Sair</button>
       </nav>
       <div className="mt-5 lg:mt-auto pt-5 border-t border-border text-xs text-muted-foreground break-all"><p className="font-medium text-foreground">{user.name}</p><p className="mt-1">{user.email}</p></div>
     </aside>
     <main className="min-w-0 w-full max-w-7xl mx-auto p-4 sm:p-8 lg:p-10">
       {data.error && <div role="alert" className="mb-5 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg p-4 text-sm"><p>{data.error}</p><button disabled={data.busy} onClick={data.reload} className="underline mt-2">Atualizar lista</button></div>}
-      {data.loading ? <p role="status" className="py-20 text-center text-muted-foreground">Carregando produtos...</p> : data.error && !data.loaded ? null : path === "/manager" ? <>
+      {settings.loading ? <p role="status" className="py-20 text-center text-muted-foreground">Carregando configurações...</p> : settings.error || settings.threshold === null || !stats ? <div role="alert" className="rounded-xl border border-destructive/20 bg-card p-6"><p>{settings.error || "Configurações indisponíveis."}</p><button type="button" onClick={settings.reload} className="min-h-11 text-primary underline">Tentar novamente</button></div> : path === "/manager/settings" ? <SettingsPage threshold={settings.threshold} saving={settings.saving} onSave={settings.save} /> : data.loading ? <p role="status" className="py-20 text-center text-muted-foreground">Carregando produtos...</p> : data.error && !data.loaded ? null : path === "/manager" ? <>
         <div className="mb-8"><p className="text-sm text-primary font-medium mb-2">VISÃO GERAL</p><h1 className="font-serif text-3xl font-bold">Dashboard</h1><p className="text-muted-foreground mt-2">Acompanhe a disponibilidade do seu catálogo.</p></div>
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[
-          ["Total de produtos", stats.products], ["Total de variantes", stats.variants], ["Produtos sem estoque", stats.empty], ["Produtos com estoque baixo", stats.low]
-        ].map(([label, count]) => <section key={label} className="bg-card border border-border rounded-xl p-6"><h2 className="text-sm text-muted-foreground">{label}</h2><p className="text-4xl font-semibold mt-4">{count}</p></section>)}</div>
-        <section className="mt-6 bg-card border border-border rounded-xl p-6 sm:p-8"><h2 className="text-lg font-semibold">Seu catálogo, em dia</h2><p className="text-muted-foreground text-sm mt-2">O estoque de cada produto é a soma de suas variantes. Estoque baixo: de 1 a {LOW_STOCK_LIMIT} unidades.</p><Link to="/manager/produtos" className="inline-flex mt-5 text-primary font-semibold items-center gap-2">Gerenciar produtos <ArrowUpRight size={18} /></Link></section>
-      </> : path === "/manager/produtos" ? <ProductList products={data.products} busy={data.busy} error={data.error} onDelete={data.remove} /> : isNew || (edit && product) ? <>
+          { label: "Total de produtos", count: stats.products, to: "/manager/produtos", detail: "Ver catálogo completo" },
+          { label: "Total de variantes", count: stats.variants, detail: <><span>{stats.stockedVariants} com estoque</span>{" · "}{stats.emptyVariants > 0 ? <Link to="/manager/produtos?estoque=variante-sem-estoque" aria-label={`Ver ${stats.emptyVariants} variantes sem estoque`} onClick={event => { if (data.busy || settings.saving) event.preventDefault(); }} className="inline-block py-1 text-primary underline decoration-primary/40 underline-offset-2 transition-colors duration-200 hover:text-foreground hover:decoration-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none">{stats.emptyVariants} sem estoque</Link> : <span>0 sem estoque</span>}</> },
+          { label: "Produtos sem estoque", count: stats.empty, to: "/manager/produtos?estoque=sem-estoque", arrow: true },
+          { label: "Variantes com estoque baixo", count: stats.lowVariants, to: "/manager/produtos?estoque=variante-baixo", arrow: true, variant: true }
+        ].map(({ label, count, to, detail, arrow, variant }) => {
+          const content = <><h2 className="text-sm text-muted-foreground">{label}</h2><p className="text-4xl font-semibold mt-4">{count}</p>
+            <p className={`mt-3 text-sm ${to ? "text-primary" : "text-muted-foreground"}`}>{arrow ? <span className="inline-flex items-center gap-1.5">{variant ? "Ver variantes" : "Ver produtos"} <ArrowRight aria-hidden="true" size={15} className="transition-transform duration-200 motion-safe:group-hover:translate-x-1 motion-safe:group-focus-visible:translate-x-1 motion-reduce:transform-none motion-reduce:translate-none motion-reduce:transition-none" /></span> : detail}</p></>;
+          const base = "bg-card border border-border rounded-xl p-6 transition-[translate,box-shadow,border-color] duration-200 motion-reduce:transition-none";
+          return to ? <Link key={label} to={to} onClick={event => { if (data.busy || settings.saving) event.preventDefault(); }} className={`${base} group block cursor-pointer motion-safe:hover:-translate-y-0.5 hover:shadow-md hover:border-primary/40 motion-safe:focus-visible:-translate-y-0.5 focus-visible:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transform-none motion-reduce:translate-none`}>{content}</Link>
+            : <section key={label} aria-label={label} className={`${base} hover:border-primary/20 hover:shadow-sm`}>{content}</section>;
+        })}</div>
+        <section className="mt-6 bg-card border border-border rounded-xl p-6 sm:p-8"><h2 className="text-lg font-semibold">Seu catálogo, em dia</h2><p className="text-muted-foreground text-sm mt-2">O estoque de cada produto é a soma de suas variantes. Variantes com estoque baixo: de 1 a {settings.threshold} unidades.</p><Link to="/manager/produtos" className="inline-flex mt-5 text-primary font-semibold items-center gap-2">Gerenciar produtos <ArrowUpRight size={18} /></Link></section>
+      </> : path === "/manager/produtos" ? <ProductList threshold={settings.threshold} products={data.products} busy={data.busy} error={data.error} onDelete={data.remove} onCarousel={data.setCarousel} /> : isNew || (edit && product) ? <>
         <h1 className="font-serif text-3xl font-bold mb-2">{isNew ? "Novo produto" : "Editar produto"}</h1><p className="text-muted-foreground mb-6">{isNew ? "Adicione uma nova peça ao catálogo." : product?.name}</p>
         <ProductForm key={product?.id ?? "new"} product={product} busy={data.busy} onUpload={data.upload} onCancel={() => navigate("/manager/produtos")} onSave={async input => { if (await data.save(input, product?.id)) navigate("/manager/produtos"); }} />
       </> : <section className="p-8 bg-card border border-border rounded-xl"><h1 className="text-xl font-semibold">{edit ? "Produto não encontrado" : "Página não encontrada"}</h1><Link to="/manager/produtos" className="inline-block mt-4 text-primary underline">Voltar para produtos</Link></section>}

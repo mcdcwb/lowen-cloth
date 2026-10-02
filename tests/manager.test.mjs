@@ -1,12 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createManagerApi } from "../src/app/manager/api.ts";
-import { productStats, toDraft, toInput, validateDraft, normalizeHex, LOW_STOCK_LIMIT, colorDraft } from "../src/app/manager/products.ts";
+import { matchesStock, productStats, toDraft, toInput, validateDraft, normalizeHex, isLowStock, isProductOutOfStock, hasOutOfStockVariant, hasLowStockVariant, getOutOfStockVariants, getLowStockVariants, colorDraft } from "../src/app/manager/products.ts";
 const color = { colorName: "Preto", colorValue: "#111111", images: [], imageUrl: "", variants: [] };
 const draft = () => ({ ...toDraft(), name: "Produto teste", price: "19.90", colors: [colorDraft(color)] });
+
+for (const threshold of [5, 10]) test(`variant low stock uses the configured boundary ${threshold}`, () => {
+  const stocks = [0, 1, threshold, threshold + 1];
+  const products = stocks.map(stock => ({ colors: [{ variants: [{ stock, value: "M" }] }] }));
+  assert.deepEqual(stocks.map(stock => isLowStock(stock, threshold)), [false, true, true, false]);
+  for (const filter of ["variante-baixo"]) assert.deepEqual(products.map(p => matchesStock(p, filter, threshold)), [false, true, true, false]);
+  for (const filter of ["sem-estoque"]) assert.deepEqual(products.map(p => matchesStock(p, filter, threshold)), [true, false, false, false]);
+  const stats = productStats(products, threshold);
+  assert.equal(stats.lowVariants, 2);
+  assert.equal(stats.stockedVariants + stats.emptyVariants, stats.variants);
+  const mixed = { colors: [{ variants: [{ stock: 0 }, { stock: threshold + 1 }] }] };
+  assert.equal(matchesStock(mixed, "variante-baixo", threshold), false);
+  assert.equal(matchesStock(mixed, "variante-sem-estoque", threshold), true);
+});
 test("dashboard totals variants across colors and separates empty/low stock", () => {
-  const products = [[], [0], [2, 3], [LOW_STOCK_LIMIT + 1]].map(stocks => ({ colors: stocks.map(stock => ({ variants: [{ value: "P", stock }] })) }));
-  assert.deepEqual(productStats(products), { products: 4, variants: 4, empty: 2, low: 1 });
+  const products = [[], [0], [2, 3], [6]].map(stocks => ({ colors: stocks.map(stock => ({ variants: [{ value: "P", stock }] })) }));
+  assert.deepEqual(productStats(products, 5), { products: 4, variants: 4, stockedVariants: 3, emptyVariants: 1, lowVariants: 2, empty: 1 });
 });
 test("each color validates name, HEX and unique integer stocks; at least one color is required", () => {
   const d = draft();
@@ -62,6 +76,32 @@ test("HEX normalization accepts exactly six digits and preserves the color name"
   for (const value of ["#123", "123456", "red", "#GG0000", "#12345678", "rgb(1,2,3)"]) assert.equal(normalizeHex(value), null);
 });
 
+test("variant availability counts combinations, not products, including empty colors", () => {
+  const products = [[], [0, 0], [3, 0, 5, 2], [5, 4]].map(stocks => ({ colors: stocks.map(stock => ({ variants: [{ value: "M", stock }] })) }));
+  const stats = productStats(products, 5);
+  assert.equal(stats.variants, 8);
+  assert.equal(stats.stockedVariants, 5);
+  assert.equal(stats.emptyVariants, 3);
+  assert.equal(stats.stockedVariants + stats.emptyVariants, stats.variants);
+  assert.deepEqual(products.map(p => matchesStock(p, "variante-sem-estoque", 5)), [false, false, true, false]);
+  assert.deepEqual(products.map(p => matchesStock(p, "sem-estoque", 5)), [false, true, false, false]);
+  assert.equal(productStats([], 5).emptyVariants, 0);
+});
+
+test("carousel API sends an explicit selection and preserves backend limit errors", async () => {
+  const raw = { ...toInput(draft()), id: 5, inCarousel: true, colors: [{ ...color, id: 10 }] };
+  const api = createManagerApi("verified-token", "/api", async (url, init) => {
+    assert.equal(url, "/api/produtos/5/carrossel");
+    assert.equal(init.method, "PATCH");
+    assert.equal(init.headers.Authorization, "Bearer verified-token");
+    assert.deepEqual(JSON.parse(init.body), { inCarousel: true });
+    return Response.json(raw);
+  });
+  assert.equal((await api.setCarousel(5, true)).inCarousel, true);
+  const rejected = createManagerApi("verified-token", "/api", async () => Response.json({ error: "Limite de 5 produtos no carrossel." }, { status: 409 }));
+  await assert.rejects(rejected.setCarousel(6, true), { status: 409, message: "Limite de 5 produtos no carrossel." });
+});
+
 test("image upload sends authenticated multipart without forcing a boundary and returns a secure URL", async () => {
   const url = "https://res.cloudinary.com/test/image/upload/v1/products/image.png";
   const file = new File(["png"], "image.png", { type: "image/png" });
@@ -88,4 +128,26 @@ test("upload rejects invalid/large files, unsafe URLs and handles authentication
   await assert.rejects(createManagerApi("token", "/api", async () => { throw new Error("offline"); }).upload(file), { status: 0 });
   const controller = new AbortController(); controller.abort();
   await assert.rejects(createManagerApi("token", "/api", async (_path, init) => { assert.ok(init.signal.aborted); throw new DOMException("Aborted", "AbortError"); }).upload(file, controller.signal));
+});
+
+for (const [stocks, expected] of [
+  [[0, 0, 0], [true, false, false]],
+  [[0, 5, 10], [false, true, true]],
+  [[0, 10, 20], [false, true, false]],
+  [[0, 0, 10], [false, true, false]],
+  [[5, 8, 12], [false, false, true]],
+  [[], [false, false, false]],
+]) test(`operational stock filters for ${JSON.stringify(stocks)}`, () => {
+  // Each variant is in a different color: availability must span the whole product.
+  const product = { colors: stocks.map(stock => ({ variants: [{ stock }] })) };
+  assert.deepEqual([isProductOutOfStock(product), hasOutOfStockVariant(product), hasLowStockVariant(product, 5)], expected);
+  assert.deepEqual(["sem-estoque", "variante-sem-estoque", "variante-baixo"].map(filter => matchesStock(product, filter, 5)), expected);
+  assert.equal(getOutOfStockVariants(product).length, stocks.filter(stock => stock === 0).length);
+  assert.equal(getLowStockVariants(product, 5).length, stocks.filter(stock => stock >= 1 && stock <= 5).length);
+});
+test("low stock counts individual variants even when product totals exceed threshold", () => {
+  const products = [[2, 5, 10], [1, 12]].map(stocks => ({ colors: [{ variants: stocks.map(stock => ({ stock })) }] }));
+  assert.equal(productStats(products, 5).lowVariants, 3);
+  assert.equal(products.filter(product => matchesStock(product, "variante-baixo", 5)).length, 2);
+  assert.equal(productStats([{ colors: [{ variants: [] }] }], 5).empty, 0);
 });

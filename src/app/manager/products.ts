@@ -1,4 +1,3 @@
-export const LOW_STOCK_LIMIT = 5;
 export const categories = ["camisetas", "jaquetas", "calcas", "bermudas", "vestidos", "calcados"];
 export const audiences = ["masculino", "feminino", "unissex", "infantil"];
 export const labels: Record<string, string> = {
@@ -13,7 +12,7 @@ export interface ProductInput {
   name: string; description: string; price: number; public: string; category: string;
   badge: string | null; colors: ColorInput[];
 }
-export interface ManagedProduct extends ProductInput { id: number }
+export interface ManagedProduct extends ProductInput { id: number; inCarousel: boolean }
 export interface ColorDraft {
   key: string; id?: number; colorName: string; colorValue: string; imageUrl: string; images: string;
   variants: { id?: number; value: string; stock: string }[];
@@ -23,11 +22,34 @@ export interface ProductDraft {
   colors: ColorDraft[];
 }
 export const totalStock = (product: Pick<ProductInput, "colors">) => product.colors.reduce((sum, color) => sum + color.variants.reduce((n, v) => n + v.stock, 0), 0);
-export const stockStatus = (stock: number) => stock === 0 ? "Sem estoque" : stock <= LOW_STOCK_LIMIT ? "Estoque baixo" : "Disponível";
+export const isLowStock = (stock: number, threshold: number) => stock >= 1 && stock <= threshold;
+export const isEmptyVariant = (variant: { stock: number }) => variant.stock === 0;
+type StockProduct = Pick<ProductInput, "colors">;
+export const getProductVariants = (product: StockProduct) => product.colors.flatMap(color => color.variants);
+export const getOutOfStockVariants = (product: StockProduct) => getProductVariants(product).filter(isEmptyVariant);
+export const getLowStockVariants = (product: StockProduct, threshold: number) => getProductVariants(product).filter(variant => isLowStock(variant.stock, threshold));
+export function isProductOutOfStock(product: StockProduct) {
+  const variants = getProductVariants(product);
+  return variants.length > 0 && variants.every(isEmptyVariant);
+}
+export const hasOutOfStockVariant = (product: StockProduct) => getOutOfStockVariants(product).length > 0 && getProductVariants(product).some(variant => variant.stock > 0);
+export const hasLowStockVariant = (product: StockProduct, threshold: number) => getLowStockVariants(product, threshold).length > 0;
+export type StockFilter = "" | "sem-estoque" | "variante-sem-estoque" | "variante-baixo";
+export const stockFilterLabels: Record<Exclude<StockFilter, "">, string> = {
+  "sem-estoque": "Produtos sem estoque", "variante-sem-estoque": "Variantes sem estoque", "variante-baixo": "Variantes com estoque baixo"
+};
+export function matchesStock(product: StockProduct, filter: StockFilter, threshold: number) {
+  if (filter === "variante-baixo") return hasLowStockVariant(product, threshold);
+  if (filter === "variante-sem-estoque") return hasOutOfStockVariant(product);
+  return filter === "sem-estoque" ? isProductOutOfStock(product) : true;
+}
 export const normalizeHex = (value: string) => /^#[0-9a-f]{6}$/i.test(value.trim()) ? value.trim().toUpperCase() : null;
-export function productStats(products: ManagedProduct[]) {
+export function productStats(products: ManagedProduct[], threshold: number) {
   return { products: products.length, variants: products.reduce((n, p) => n + p.colors.reduce((n, c) => n + c.variants.length, 0), 0),
-    empty: products.filter(p => totalStock(p) === 0).length, low: products.filter(p => totalStock(p) > 0 && totalStock(p) <= LOW_STOCK_LIMIT).length };
+    stockedVariants: products.reduce((n, p) => n + p.colors.reduce((n, c) => n + c.variants.filter(v => v.stock > 0).length, 0), 0),
+    emptyVariants: products.reduce((n, p) => n + p.colors.reduce((n, c) => n + c.variants.filter(isEmptyVariant).length, 0), 0),
+    lowVariants: products.reduce((n, p) => n + getLowStockVariants(p, threshold).length, 0),
+    empty: products.filter(isProductOutOfStock).length };
 }
 let nextColorKey = 0;
 export function colorDraft(color?: ColorInput): ColorDraft {

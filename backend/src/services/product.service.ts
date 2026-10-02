@@ -9,6 +9,19 @@ export class ProductError extends Error {
 }
 export const getProducts = () => prisma.product.findMany({ include: productInclude });
 export const getProductById = (id: number) => prisma.product.findUnique({ where: { id }, include: productInclude });
+export async function setProductCarousel(id: number, inCarousel: boolean) {
+    return prisma.$transaction(async tx => {
+        // One transaction-scoped lock for the shared five-product selection.
+        // ReadCommitted ensures the count sees the previous lock holder's commit.
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(29092026, 1)::text`;
+        await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${id} FOR UPDATE`;
+        const product = await tx.product.findUnique({ where: { id } });
+        if (!product) throw new ProductError(404, "Produto não encontrado.");
+        if (inCarousel && !product.inCarousel && await tx.product.count({ where: { inCarousel: true } }) >= 5)
+            throw new ProductError(409, "Limite de 5 produtos no carrossel.");
+        return tx.product.update({ where: { id }, data: { inCarousel }, include: productInclude });
+    }, { isolationLevel: "ReadCommitted" });
+}
 export async function createProduct(data: z.infer<typeof createProductSchema>) {
     if (data.colors.some(c => c.id !== undefined || c.variants.some(v => v.id !== undefined)))
         throw new ProductError(400, "Novas cores e variantes não devem informar IDs.");

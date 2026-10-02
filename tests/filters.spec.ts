@@ -137,9 +137,11 @@ test("malformed catalog data is an API error instead of a fabricated catalog", a
 });
 
 test("audience includes unisex only for adults and clearing resets every existing catalog filter", async ({ page }) => {
-  await page.route("**/api/produtos", route => route.fulfill({ json: [...products,
+  await page.route("**/api/produtos", route => route.fulfill({
+    json: [...products,
     product(905, "Infantil API", "infantil", "camisetas", [{ value: "8", stock: 1 }])
-  ] }));
+    ]
+  }));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
   const sections = page.locator("aside section");
@@ -193,6 +195,134 @@ test("size groups use only available variants, with a divider only between text 
   }
 });
 
+const sortedFixture = [
+  { ...product(911, "Zebra", "masculino", "camisetas", [{ value: "M", stock: 3 }]), price: "100" },
+  { ...product(912, "álgebra", "feminino", "jaquetas", [{ value: "G", stock: 3 }]), price: "50" },
+  { ...product(913, "Algebra", "unissex", "camisetas", [{ value: "M", stock: 3 }]), price: "500" },
+  { ...product(914, "Bota", "masculino", "calcados", [{ value: "39", stock: 3 }]), price: "100" },
+];
+
+test("catalog sort toggles independently of filters, clear and initial order", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.route("**/api/produtos", route => route.fulfill({ json: sortedFixture }));
+  await page.goto("/");
+  const names = page.locator("main div.group p.line-clamp-2");
+  const controls = page.getByRole("group", { name: "Ordenar produtos" });
+  const name = controls.getByRole("button", { name: /Ordenar por nome/ });
+  const price = controls.getByRole("button", { name: /Ordenar por preço/ });
+  await expect(names).toHaveText(["Zebra", "álgebra", "Algebra", "Bota"]);
+  await expect(name).toHaveAttribute("aria-pressed", "false");
+  await expect(price).toHaveAttribute("aria-pressed", "false");
+  await expect(controls.locator("svg.lucide-arrow-up-down")).toHaveCount(2);
+  await expect(page.getByRole("button", { name: "Limpar filtros", exact: true })).toHaveCount(0);
+  await name.focus(); await page.keyboard.press("Enter");
+  await expect(name.locator("svg.lucide-arrow-up")).toBeVisible();
+  await expect(price.locator("svg.lucide-arrow-up-down")).toBeVisible();
+  await expect(names).toHaveText(["álgebra", "Algebra", "Bota", "Zebra"]);
+  await expect(name).toHaveAccessibleName("Ordenar por nome, crescente");
+  await page.keyboard.press("Space");
+  await expect(name.locator("svg.lucide-arrow-down")).toBeVisible();
+  await expect(names).toHaveText(["Zebra", "Bota", "álgebra", "Algebra"]);
+  await expect(name).toHaveAccessibleName("Ordenar por nome, decrescente");
+  await price.click();
+  await expect(name.locator("svg.lucide-arrow-up-down")).toBeVisible();
+  await expect(price.locator("svg.lucide-arrow-up")).toBeVisible();
+  await expect(name).toHaveAttribute("aria-pressed", "false");
+  await expect(price).toHaveAccessibleName("Ordenar por preço, crescente");
+  await expect(names).toHaveText(["álgebra", "Zebra", "Bota", "Algebra"]);
+  await price.click();
+  await expect(price.locator("svg.lucide-arrow-down")).toBeVisible();
+  await expect(controls.locator('[aria-pressed="true"]')).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Limpar filtros", exact: true })).toHaveCount(0);
+  await expect(names).toHaveText(["Algebra", "Zebra", "Bota", "álgebra"]);
+  const aside = page.locator("aside");
+  await aside.getByRole("button", { name: "Masculino", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Masculino", exact: true })).toBeVisible();
+  await expect(names).toHaveText(["Algebra", "Zebra", "Bota"]);
+  await aside.getByRole("button", { name: "Camisetas / Camisas", exact: true }).click();
+  await aside.getByRole("button", { name: "M", exact: true }).click();
+  await expect(names).toHaveText(["Algebra", "Zebra"]);
+  await aside.getByRole("button", { name: "Feminino", exact: true }).click();
+  await expect(names).toHaveText(["Algebra"]);
+  await expect(price).toHaveAccessibleName("Ordenar por preço, decrescente");
+  await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
+  await expect(names).toHaveText(["Algebra", "Zebra", "Bota", "álgebra"]);
+  await expect(price).toHaveAttribute("aria-pressed", "true");
+  await name.click();
+  await expect(name.locator("svg.lucide-arrow-up")).toBeVisible();
+  await expect(price.locator("svg.lucide-arrow-up-down")).toBeVisible();
+  await expect(name).toHaveAccessibleName("Ordenar por nome, crescente");
+  await expect(price).toHaveAttribute("aria-pressed", "false");
+  await page.reload();
+  await expect(names).toHaveText(["Zebra", "álgebra", "Algebra", "Bota"]);
+  await expect(name).toHaveAttribute("aria-pressed", "false");
+});
+
+for (const width of [1440, 390, 320]) test(`sorting header fits and remains stable at ${width}px`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.route("**/api/produtos", route => route.fulfill({ json: sortedFixture }));
+  await page.goto("/");
+  const heading = page.getByRole("heading", { name: "Todas as Peças", exact: true });
+  const controls = page.getByRole("group", { name: "Ordenar produtos" });
+  await controls.scrollIntoViewIfNeeded();
+  const before = await controls.boundingBox();
+  const title = await heading.boundingBox();
+  expect(before!.x).toBeGreaterThan(title!.x);
+  if (width === 1440) expect(Math.abs(before!.y - title!.y)).toBeLessThan(20);
+  else expect(before!.y).toBeGreaterThan(title!.y + title!.height);
+  const name = controls.getByRole("button", { name: /Ordenar por nome/ });
+  await name.hover();
+  await name.click();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  await expect(name).toHaveCSS("outline-style", "solid");
+  expect(await controls.boundingBox()).toEqual(before);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath(`sort-${width}.png`), animations: "disabled" });
+  await name.click();
+  await expect(name).toHaveAccessibleName("Ordenar por nome, decrescente");
+  expect(await controls.boundingBox()).toEqual(before);
+});
+
+for (const width of [1440, 390, 320]) test(`clear filters sits beside stable sort controls at ${width}px`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto("/");
+  const sizes = width === 1440 ? page.locator("aside").locator("section").first() : page.getByRole("group", { name: "Filtrar por tamanho" });
+  await sizes.getByRole("button", { name: "P", exact: true }).click();
+  const clear = page.getByRole("button", { name: "Limpar filtros", exact: true });
+  const controls = page.getByRole("group", { name: "Ordenar produtos" });
+  const name = controls.getByRole("button", { name: /Ordenar por nome/ });
+  const price = controls.getByRole("button", { name: /Ordenar por preço/ });
+  await clear.scrollIntoViewIfNeeded();
+  const bounds = await Promise.all([clear, name, price].map(control => control.boundingBox()));
+  const section = page.locator("main section").filter({ has: controls });
+  const header = section.locator(":scope > div").first();
+  const grid = section.locator(":scope > div.grid");
+  const layoutBounds = await Promise.all([header, grid].map(item => item.boundingBox()));
+  expect(layoutBounds.every(Boolean)).toBe(true);
+  for (const box of bounds) {
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+  }
+  expect(bounds[0]!.y + bounds[0]!.height <= bounds[1]!.y || bounds[0]!.x + bounds[0]!.width <= bounds[1]!.x).toBe(true);
+  if (width === 1440) {
+    expect(bounds[0]!.x + bounds[0]!.width).toBeLessThanOrEqual(bounds[1]!.x);
+    expect(bounds[0]!.y).toBe(bounds[1]!.y);
+  }
+  await page.screenshot({ path: testInfo.outputPath(`inactive-${width}.png`), animations: "disabled" });
+  for (const [index, control] of [name, name, price, price, name].entries()) {
+    await control.click();
+    expect(await Promise.all([clear, name, price].map(item => item.boundingBox()))).toEqual(bounds);
+    expect(await Promise.all([header, grid].map(item => item.boundingBox()))).toEqual(layoutBounds);
+    await expect(controls.locator('[aria-pressed="true"]')).toHaveCount(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    if (index === 3) await page.screenshot({ path: testInfo.outputPath(`active-${width}.png`), animations: "disabled" });
+  }
+  await clear.click();
+  await expect(clear).toHaveCount(0);
+  await expect(name).toHaveAccessibleName("Ordenar por nome, crescente");
+});
+
 for (const width of [1440, 390]) {
   test(`piece types remain global across size, audience, category and color selections at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 1000 });
@@ -200,11 +330,13 @@ for (const width of [1440, 390]) {
     pants.colors.push({ ...pants.colors[0], id: 9201, colorName: "Branco", colorValue: "#FFFFFF", variants: [{ id: 9202, value: "GG", stock: 2 }] });
     // Products absent from the public API cannot create filter options. This
     // model has no publication flag; `public` is the intended audience.
-    await page.route("**/api/produtos", route => route.fulfill({ json: [
-      pants, products[0],
-      product(921, "Jaqueta esgotada", "unissex", "jaquetas", [{ value: "M", stock: 0 }]),
-      product(922, "Calçado sem variantes", "infantil", "calcados", [])
-    ] }));
+    await page.route("**/api/produtos", route => route.fulfill({
+      json: [
+        pants, products[0],
+        product(921, "Jaqueta esgotada", "unissex", "jaquetas", [{ value: "M", stock: 0 }]),
+        product(922, "Calçado sem variantes", "infantil", "calcados", [])
+      ]
+    }));
     await page.goto("/");
     const mobile = width < 1024;
     const menu = page.getByRole("button", { name: "Abrir menu de navegação" });

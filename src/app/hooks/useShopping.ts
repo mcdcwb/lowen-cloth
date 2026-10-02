@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
+import { useAddFeedback } from "./useAddFeedback";
+import { notify } from "../lib/notifications";
 import { adaptProduct, selectProductColor, stockFor, type Product } from "../lib/products";
 import type { Account } from "../lib/auth";
 import { AUTH_STORAGE_KEY } from "../lib/auth-session";
@@ -21,6 +22,9 @@ function saveGuest(items: CartItem[]) {
 export function useShopping(products: Product[], accessToken: string | undefined, validating: boolean, user: Account | null) {
   const token = user?.role === "USER" ? accessToken : undefined;
   const owner = user ? `${user.role}:${user.id}` : "guest";
+  const additions = useAddFeedback(`${owner}:${accessToken ?? ""}`);
+  const addQueue = useRef(Promise.resolve());
+  useEffect(() => { addQueue.current = Promise.resolve(); }, [owner, accessToken]);
   // Trigger renders on local/storage changes, but read the shared snapshot below
   // so an undelivered storage event cannot resurrect an already imported cart.
   const [, setGuest] = useState<CartItem[]>([]);
@@ -136,6 +140,8 @@ export function useShopping(products: Product[], accessToken: string | undefined
   }, []);
   const ready = !validating && isCurrent() && (!token || account?.token === token);
   const items = !ready ? [] : token ? account?.token === token ? account.items : [] : guestItems;
+  const cartSnapshot = useRef(items);
+  cartSnapshot.current = items;
   const favorites = ready && token && account?.token === token ? account.favorites : [];
   useEffect(() => {
     if (!user && !validating && products.length && isCurrent()) {
@@ -143,7 +149,7 @@ export function useShopping(products: Product[], accessToken: string | undefined
       saveGuest(guestItems);
     }
   }, [products, accessToken, validating]);
-  async function mutate(path: string, method: string, body?: unknown) {
+  async function mutate(path: string, method: string, body?: unknown, onCartConfirmed?: (items: CartItem[]) => void) {
     if (!token || !ready || locked.current || !isCurrent()) return false;
     const current = generation.current;
     locked.current = true;
@@ -154,9 +160,11 @@ export function useShopping(products: Product[], accessToken: string | undefined
       const update = path.startsWith("/favoritos")
         ? { favorites: result.map((f: { product: unknown }) => adaptProduct(f.product)) }
         : { items: adaptCart(result) };
+      if (update.items) cartSnapshot.current = update.items;
       setAccount(previous => previous && ({ ...previous, ...update }));
       if (result.notices?.length) setNotice(result.notices.join(" "));
       announce();
+      if (update.items) onCartConfirmed?.(update.items);
       return true;
     } catch (e) {
       if (current === generation.current) setError(e instanceof Error ? e.message : "Falha ao salvar.");
@@ -167,21 +175,36 @@ export function useShopping(products: Product[], accessToken: string | undefined
   }
   function updateGuest(next: CartItem[]) {
     if (!isCurrent()) return;
+    cartSnapshot.current = next;
     if (user?.role === "ADMIN") { setAdminCart({ owner, token: accessToken, items: next }); return; }
     setGuest(next); saveGuest(next);
   }
   async function add(product: Product, size: string) {
-    if (!ready || locked.current) return false;
-    if (token) {
-      if (!await mutate("/carrinho", "POST", { productId: product.id, colorId: product.colorId, size, quantity: 1 })) return false;
-      toast.success(`${product.name} — tamanho ${size} foi adicionado ao carrinho.`);
-      return true;
-    }
-    const previous = guestItems.find(i => i.product.id === product.id && i.colorId === product.colorId && i.size === size);
-    if ((previous?.quantity ?? 0) >= stockFor(product, size)) return false;
-    updateGuest(previous ? guestItems.map(i => i === previous ? { ...i, quantity: i.quantity + 1 } : i) : [...guestItems, { product, colorId: product.colorId, size, quantity: 1 }]);
-    toast.success(`${product.name} — tamanho ${size} foi adicionado ao carrinho.`);
-    return true;
+    if (!ready || !isCurrent()) return false;
+    const current = generation.current;
+    return additions.run(product, size, () => {
+      const operation = addQueue.current.then(async () => {
+        if (current !== generation.current || !isCurrent() || locked.current) return false;
+        const matches = (item: CartItem) => item.product.id === product.id && item.colorId === product.colorId && item.size === size;
+        const snapshot = cartSnapshot.current;
+        const previous = snapshot.find(matches);
+        let changed = false;
+        if (token) {
+          await mutate("/carrinho", "POST", { productId: product.id, colorId: product.colorId, size, quantity: 1 }, confirmed => {
+            changed = (confirmed.find(matches)?.quantity ?? 0) > (previous?.quantity ?? 0);
+          });
+        } else {
+          if ((previous?.quantity ?? 0) >= stockFor(product, size)) return false;
+          updateGuest(previous ? snapshot.map(i => i === previous ? { ...i, quantity: i.quantity + 1 } : i) : [...snapshot, { product, colorId: product.colorId, size, quantity: 1 }]);
+          changed = true;
+        }
+        if (changed) notify.positive(`${product.name} — tamanho ${size} foi adicionado ao carrinho.`);
+        return changed;
+      });
+      // Serialize server snapshots without discarding another variant's click.
+      addQueue.current = operation.then(() => undefined, () => undefined);
+      return operation;
+    });
   }
   async function remove(productId: number, size: string, colorId: number) {
     if (!ready || locked.current) return;
@@ -190,25 +213,40 @@ export function useShopping(products: Product[], accessToken: string | undefined
     if (token) {
       if (!await mutate("/carrinho/item", "DELETE", { productId, colorId, size })) return;
     } else updateGuest(guestItems.filter(i => i.product.id !== productId || i.colorId !== colorId || i.size !== size));
-    toast.success(`${item.product.name} — tamanho ${size} foi removido do carrinho.`);
+    notify.removal(`${item.product.name} — tamanho ${size} foi removido do carrinho.`);
   }
-  function changeQty(productId: number, size: string, delta: number, colorId: number) {
+  async function changeQty(productId: number, size: string, delta: number, colorId: number) {
     if (!ready || locked.current) return;
     const item = items.find(i => i.product.id === productId && i.colorId === colorId && i.size === size);
     if (!item) return;
     const quantity = item.quantity + delta;
     if (quantity <= 0) return remove(productId, size, colorId);
-    if (token) return void mutate("/carrinho", "PATCH", { productId, colorId, size, quantity });
-    updateGuest(guestItems.map(i => i === item ? { ...i, quantity: Math.min(stockFor(i.product, size), quantity) } : i));
+    const reportQuantity = (confirmed: number) => {
+      if (delta > 0 ? confirmed <= item.quantity : confirmed >= item.quantity) return;
+      const message = `${item.product.name} — tamanho ${size}: quantidade ${confirmed}.`;
+      if (confirmed > item.quantity) notify.positive(message);
+      else notify.change(message);
+    };
+    if (token) {
+      await mutate("/carrinho", "PATCH", { productId, colorId, size, quantity }, confirmed => {
+        const updated = confirmed.find(i => i.product.id === productId && i.colorId === colorId && i.size === size);
+        if (updated && updated.quantity >= 1) reportQuantity(updated.quantity);
+      });
+      return;
+    }
+    const confirmed = Math.min(stockFor(item.product, size), quantity);
+    if (confirmed < 1 || confirmed === item.quantity || !isCurrent()) return;
+    updateGuest(guestItems.map(i => i === item ? { ...i, quantity: confirmed } : i));
+    reportQuantity(confirmed);
   }
   async function clear() {
     if (!ready || locked.current || !items.length) return;
     if (token) {
       if (!await mutate("/carrinho", "DELETE")) return;
     } else updateGuest([]);
-    toast.success("Carrinho esvaziado com sucesso.");
+    notify.removal("Carrinho esvaziado com sucesso.");
   }
-  return { items, favorites, busy, ready, error, notice, add, remove, changeQty, clear,
+  return { items, favorites, busy, ready, error, notice, addState: additions.getState, add, remove, changeQty, clear,
     dismissNotice: () => setNotice(""),
     retry: () => setRevision(v => v + 1),
     toggleFavorite: (productId: number) => mutate(`/favoritos/${productId}`, favorites.some(p => p.id === productId) ? "DELETE" : "PUT") };

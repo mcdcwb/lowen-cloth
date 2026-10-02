@@ -229,23 +229,23 @@ test("ADMIN reuses the account menu on storefront and detail with its own links 
 });
 
 test.describe("ADMIN mobile menu", () => {
-test.use({ hasTouch: true });
-test("ADMIN account menu opens by touch on mobile", async ({ page }) => {
-  await openLogin(page);
-  await submit(page);
-  await expect(page).toHaveURL(/\/manager$/);
-  await page.getByRole("link", { name: "Ver loja", exact: true }).click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  const trigger = page.getByRole("button", { name: email.split("@")[0], exact: true });
-  await trigger.tap();
-  const menu = page.getByRole("navigation", { name: "Menu da conta" });
-  await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Painel Administrativo", "Sair"]);
-  await trigger.tap();
-  await expect(menu).toBeHidden();
-  await trigger.tap();
-  await menu.getByRole("link", { name: "Painel Administrativo" }).click();
-  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
-});
+  test.use({ hasTouch: true });
+  test("ADMIN account menu opens by touch on mobile", async ({ page }) => {
+    await openLogin(page);
+    await submit(page);
+    await expect(page).toHaveURL(/\/manager$/);
+    await page.getByRole("link", { name: "Ver loja", exact: true }).click();
+    await page.setViewportSize({ width: 390, height: 844 });
+    const trigger = page.getByRole("button", { name: email.split("@")[0], exact: true });
+    await trigger.tap();
+    const menu = page.getByRole("navigation", { name: "Menu da conta" });
+    await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Painel Administrativo", "Sair"]);
+    await trigger.tap();
+    await expect(menu).toBeHidden();
+    await trigger.tap();
+    await menu.getByRole("link", { name: "Painel Administrativo" }).click();
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+  });
 });
 
 test.describe("mobile account menu", () => {

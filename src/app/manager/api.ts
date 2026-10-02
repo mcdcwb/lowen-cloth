@@ -9,7 +9,7 @@ function normalize(value: unknown): ManagedProduct {
   const product = adaptProduct(value);
   const raw = value as Record<string, unknown>;
   return { id: product.id, name: product.name, description: product.description, price: product.price, public: product.public,
-    category: product.category, badge: product.badge ?? null,
+    category: product.category, badge: product.badge ?? null, inCarousel: product.inCarousel,
     colors: (raw.colors as Array<Record<string, unknown>>).map((color, i) => ({
       ...product.colors[i], imageUrl: typeof color.imageUrl === "string" ? color.imageUrl : "", images: color.images as string[]
     }))
@@ -81,6 +81,7 @@ export function createManagerApi(token: string, baseUrl = "/api", fetcher: typeo
       return data.map(normalize);
     },
     async save(input: ProductInput, id?: number) { return normalize(await request(id === undefined ? "" : `/${id}`, id === undefined ? "POST" : "PUT", input)); },
-    async remove(id: number) { await request(`/${id}`, "DELETE"); }
+    async remove(id: number) { await request(`/${id}`, "DELETE"); },
+    async setCarousel(id: number, inCarousel: boolean) { return normalize(await request(`/${id}/carrossel`, "PATCH", { inCarousel })); }
   };
 }

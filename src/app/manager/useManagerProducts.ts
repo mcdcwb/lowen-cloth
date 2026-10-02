@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { notify } from "../lib/notifications";
 import { createManagerApi, ManagerApiError } from "./api";
 import type { ManagedProduct, ProductInput } from "./products";
 
@@ -34,7 +35,7 @@ export function useManagerProducts(token: string, onUnauthorized: (message: stri
     return () => controller.abort();
   }, [api, revision, fail]);
 
-  async function mutate(action: () => Promise<void>) {
+  async function mutate(action: () => Promise<void>, carousel = false) {
     if (pending.current) return false;
     pending.current = true;
     setBusy(true);
@@ -44,7 +45,12 @@ export function useManagerProducts(token: string, onUnauthorized: (message: stri
       callbacks.current.onChanged();
       return mounted.current;
     } catch (reason) {
-      if (mounted.current) fail(reason);
+      if (mounted.current) {
+        if (carousel && !(reason instanceof ManagerApiError && [401, 403].includes(reason.status))) {
+          toast.error(reason instanceof Error ? reason.message : "Não foi possível atualizar o carrossel.");
+          setRevision(value => value + 1);
+        } else fail(reason);
+      }
       return false;
     } finally {
       pending.current = false;
@@ -55,13 +61,13 @@ export function useManagerProducts(token: string, onUnauthorized: (message: stri
     const product = await api.save(input, id);
     if (!mounted.current) return;
     setProducts(previous => id === undefined ? [...previous, product] : previous.map(p => p.id === id ? product : p));
-    toast.success(id === undefined ? "Produto criado com sucesso!" : "Produto salvo com sucesso!");
+    notify.positive(id === undefined ? "Produto criado com sucesso!" : "Produto salvo com sucesso!");
   });
   const remove = (id: number) => mutate(async () => {
     await api.remove(id);
     if (!mounted.current) return;
     setProducts(previous => previous.filter(product => product.id !== id));
-    toast.success("Produto excluído com sucesso!");
+    notify.removal("Produto excluído com sucesso!");
   });
   const upload = async (file: File, signal: AbortSignal) => {
     try { return await api.upload(file, signal); }
@@ -70,5 +76,12 @@ export function useManagerProducts(token: string, onUnauthorized: (message: stri
       throw reason;
     }
   };
-  return { upload, products, loading, loaded, busy, error, save, remove, reload: () => setRevision(value => value + 1) };
+  const setCarousel = (id: number, inCarousel: boolean) => mutate(async () => {
+    const product = await api.setCarousel(id, inCarousel);
+    if (!mounted.current) return;
+    setProducts(previous => previous.map(p => p.id === id ? product : p));
+    if (inCarousel) notify.change("Produto adicionado ao carrossel!");
+    else notify.removal("Produto removido do carrossel!");
+  }, true);
+  return { upload, products, loading, loaded, busy, error, save, remove, setCarousel, reload: () => setRevision(value => value + 1) };
 }

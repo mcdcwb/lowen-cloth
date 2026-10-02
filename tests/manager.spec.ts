@@ -15,16 +15,212 @@ async function token(page: Page) {
   return page.evaluate(() => JSON.parse(localStorage.getItem("lowen-cloth_auth_v1")!).accessToken as string);
 }
 
+async function mockAdmin(page: Page) {
+  await page.route("**/api/settings", route => route.fulfill({ json: { lowStockThreshold: 5 } }));
+  const account = { id: 1, name: "Administrador de teste", email: "admin@example.test", role: "ADMIN" };
+  await page.route("**/api/auth/me", route => route.fulfill({ json: { account } }));
+  await page.route("**/api/auth/login", route => route.fulfill({ json: { account, accessToken: "test-session", tokenType: "Bearer", expiresIn: 3600, expiresAt: Date.now() + 3600000 } }));
+}
+
+for (const width of [1440, 390, 320]) test(`dashboard stock shortcuts, keyboard and layout at ${width}px`, async ({ page }, testInfo) => {
+  await mockAdmin(page);
+  const fixture = [[], [0, 0], [0, 1], [2, 3], [3, 3]].map((stocks, index) => ({
+    id: 800 + index, name: `Resumo ${index}`, description: "", price: "20", public: "unissex", category: "camisetas", badge: null, inCarousel: index === 2,
+    colors: (stocks.length ? stocks : [null]).map((stock, color) => ({ id: 900 + index * 10 + color, colorName: `Cor ${color}`, colorValue: "#111111", imageUrl: null, images: [], variants: stock === null ? [] : [{ id: 1000 + index * 10 + color, value: "P", stock }] }))
+  }));
+  await page.setViewportSize({ width, height: 1100 });
+  await page.route("**/api/produtos", route => route.fulfill({ json: fixture }));
+  await login(page);
+  const total = page.getByRole("link", { name: /Total de produtos/ });
+  const empty = page.getByRole("link", { name: /Produtos sem estoque/ });
+  const low = page.getByRole("link", { name: /Variantes com estoque baixo/ });
+  const variants = page.getByRole("region", { name: "Total de variantes" });
+  await expect(total).toContainText("5");
+  await expect(empty.locator("p").first()).toHaveText("1");
+  await expect(low.locator("p").first()).toHaveText("5");
+  await expect(page.getByRole("heading", { name: "Produtos com estoque baixo", exact: true })).toHaveCount(0);
+  await expect(variants).not.toContainText("com estoque baixo");
+  await expect(variants).toContainText("8");
+  await expect(variants).toContainText("5 com estoque");
+  await expect(variants.getByRole("link", { name: "Ver 3 variantes sem estoque" })).toHaveCount(1);
+  await expect(variants).not.toContainText("Ver produtos");
+  await expect(variants).toHaveCSS("cursor", "auto");
+  await expect(page.locator('main > div.grid > a, main > div.grid > section')).toHaveCount(4);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await total.scrollIntoViewIfNeeded();
+  await page.mouse.move(0, 0);
+  await expect(total).toHaveCSS("translate", "none");
+  const normal = await total.boundingBox();
+  const sibling = await variants.boundingBox();
+  await total.hover();
+  await expect.poll(async () => Math.round((await total.boundingBox())!.y - normal!.y)).toBe(-2);
+  expect(await variants.boundingBox()).toEqual(sibling);
+  await page.screenshot({ path: testInfo.outputPath(`dashboard-${width}.png`), fullPage: true });
+  await page.keyboard.press("Tab");
+  await total.focus();
+  await expect(total).toHaveCSS("outline-style", "solid");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/manager\/produtos$/);
+  await expect(page.getByRole("article")).toHaveCount(5);
+  await expect(page.getByLabel("Estoque", { exact: true }).locator("option")).toHaveText([
+    "Todos os estoques", "Produtos sem estoque", "Variantes sem estoque", "Variantes com estoque baixo"
+  ]);
+  await page.goto("/manager/produtos?estoque=baixo&preservado=sim");
+  await expect(page).toHaveURL(/\/manager\/produtos\?preservado=sim$/);
+  await expect(page.getByLabel("Estoque", { exact: true })).toHaveValue("");
+  await expect(page.getByRole("article")).toHaveCount(5);
+  await expect(page.getByRole("article", { name: "Resumo 0", exact: true })).toContainText("Sem variantes");
+  for (const [label, query, names] of [
+    ["Produtos sem estoque", "sem-estoque", ["Resumo 1"]],
+    ["Variantes com estoque baixo", "variante-baixo", ["Resumo 2", "Resumo 3", "Resumo 4"]]
+  ] as const) {
+    await page.getByRole("link", { name: "Dashboard", exact: true }).click();
+    await page.getByRole("link", { name: new RegExp(label) }).click({ position: { x: 8, y: 8 } });
+    await expect(page).toHaveURL(new RegExp(`estoque=${query}$`));
+    await expect(page.getByLabel("Estoque", { exact: true })).toHaveValue(query);
+    await expect(page.getByText(`Filtro: ${query === "variante-baixo" ? "Variantes com estoque baixo" : "Produtos sem estoque"}`, { exact: true })).toBeVisible();
+    await expect(page.getByRole("article")).toHaveCount(names.length);
+    for (const name of names) await expect(page.getByRole("article", { name, exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByLabel("Estoque", { exact: true })).toHaveValue(query);
+    await expect(page.getByRole("article")).toHaveCount(names.length);
+    await page.getByRole("searchbox").fill(names[0]);
+    await expect(page.getByRole("article")).toHaveCount(1);
+    await page.getByRole("button", { name: "Remover filtro de estoque" }).click();
+    await expect(page.getByRole("searchbox")).toHaveValue(names[0]);
+    await page.getByRole("searchbox").fill("");
+    await expect(page.getByRole("article")).toHaveCount(5);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await page.getByLabel("Estoque", { exact: true }).selectOption("variante-baixo");
+  await page.getByRole("checkbox", { name: /carrossel/i }).check();
+  await expect(page.getByRole("article")).toHaveCount(1);
+  await page.getByLabel("Categoria", { exact: true }).selectOption("camisetas");
+  await page.getByLabel("Público", { exact: true }).selectOption("unissex");
+  await expect(page.getByRole("article", { name: "Resumo 2", exact: true })).toBeVisible();
+  await page.getByRole("link", { name: "Dashboard", exact: true }).click();
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await empty.hover();
+  await expect(empty).toHaveCSS("transform", "none");
+  await expect(empty).toHaveCSS("translate", "none");
+  await expect(empty.locator("svg")).toHaveCSS("transform", "none");
+  await low.hover();
+  await expect(low).toHaveCSS("translate", "none");
+  await expect(low.locator("svg")).toHaveCSS("transform", "none");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.keyboard.press("Tab");
+  await low.focus();
+  await expect(low).toHaveCSS("outline-style", "solid");
+  await expect(low).toHaveCSS("transition-duration", "0.2s");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/estoque=variante-baixo$/);
+  await expect(page.getByRole("article")).toHaveCount(3);
+  await page.getByRole("link", { name: "Dashboard", exact: true }).click();
+  await total.click();
+  await expect(page.getByRole("article")).toHaveCount(5);
+  await expect(page.getByLabel("Estoque", { exact: true })).toHaveValue("");
+});
+
+for (const width of [1440, 390, 320]) test(`variant availability link and identification at ${width}px`, async ({ page }, testInfo) => {
+  await mockAdmin(page);
+  const fixture = [
+    { name: "Misto", category: "calcados", public: "feminino", inCarousel: true, stocks: [[3, 0], [0, 5]] },
+    { name: "Zerado", category: "camisetas", public: "masculino", inCarousel: false, stocks: [[0, 0]] },
+    { name: "Disponível", category: "calcados", public: "feminino", inCarousel: true, stocks: [[3, 2]] },
+    { name: "Sem variantes", category: "camisetas", public: "unissex", inCarousel: false, stocks: [[]] }
+  ].map((p, i) => ({
+    ...p, id: 700 + i, price: 20, description: "", badge: null, colors: p.stocks.map((stocks, c) => ({
+      id: 800 + i * 10 + c, colorName: c ? "Branco" : "Preto", colorValue: c ? "#FFFFFF" : "#111111", images: [], imageUrl: null,
+      variants: stocks.map((stock, v) => ({ id: 900 + i * 100 + c * 10 + v, value: v ? "M" : "P", stock }))
+    }))
+  }));
+  await page.route("**/api/produtos", route => route.fulfill({ json: fixture }));
+  await page.setViewportSize({ width, height: 1000 });
+  await login(page);
+  const card = page.getByRole("region", { name: "Total de variantes" });
+  await expect(card.locator("p").first()).toHaveText("8");
+  await expect(card).toContainText("4 com estoque · 4 sem estoque");
+  await expect(card).toHaveCSS("cursor", "auto");
+  await card.click({ position: { x: 8, y: 8 } });
+  await expect(page).toHaveURL(/\/manager$/);
+  const link = card.getByRole("link", { name: "Ver 4 variantes sem estoque" });
+  await link.focus();
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Shift+Tab");
+  await expect(link).toBeFocused();
+  await expect(link).toHaveCSS("outline-style", "solid");
+  await page.screenshot({ path: testInfo.outputPath(`variants-dashboard-${width}.png`), fullPage: true });
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/estoque=variante-sem-estoque$/);
+  await expect(page.getByLabel("Estoque", { exact: true })).toHaveValue("variante-sem-estoque");
+  await expect(page.getByText("Filtro: Variantes sem estoque", { exact: true })).toBeVisible();
+  await expect(page.getByRole("article")).toHaveCount(1);
+  const mixed = page.getByRole("article", { name: "Misto", exact: true });
+  const empty = page.getByRole("article", { name: "Zerado", exact: true });
+  await expect(mixed.getByText("Preto / M — Sem estoque", { exact: true })).toBeVisible();
+  await expect(mixed.getByText("Branco / P — Sem estoque", { exact: true })).toBeVisible();
+  await expect(empty).toHaveCount(0);
+  await expect(page.getByText(/— Sem estoque$/)).toHaveCount(2);
+  await page.reload();
+  await expect(page.getByLabel("Estoque", { exact: true })).toHaveValue("variante-sem-estoque");
+  await expect(page.getByRole("article")).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath(`variants-list-${width}.png`), fullPage: true });
+  await page.getByLabel("Categoria", { exact: true }).selectOption("calcados");
+  await page.getByLabel("Público", { exact: true }).selectOption("feminino");
+  await page.getByRole("checkbox", { name: /carrossel/i }).check();
+  await page.getByRole("searchbox").fill("Misto");
+  await expect(page.getByRole("article")).toHaveCount(1);
+  await expect(mixed).toBeVisible();
+  await page.getByRole("searchbox").fill("Disponível");
+  await expect(page.getByRole("article")).toHaveCount(0);
+  await page.getByRole("button", { name: "Remover filtro de estoque" }).click();
+  await expect(page.getByRole("article", { name: "Disponível", exact: true })).toBeVisible();
+  await expect(page.getByText(/— Sem estoque$/)).toHaveCount(0);
+  await page.goto("/manager/produtos?estoque=sem-estoque");
+  await expect(page.getByRole("article")).toHaveCount(1);
+  await expect(page.getByRole("article", { name: "Sem variantes", exact: true })).toHaveCount(0);
+  await expect(empty).toBeVisible();
+  await expect(mixed).toHaveCount(0);
+  for (const p of fixture) for (const c of p.colors) for (const v of c.variants) v.stock = 1;
+  await page.goto("/manager");
+  await expect(card).toContainText("8 com estoque · 0 sem estoque");
+  await expect(card.getByRole("link", { name: /variantes sem estoque/ })).toHaveCount(0);
+  await expect(card.getByText("0 sem estoque", { exact: true })).toHaveCSS("cursor", "auto");
+});
+
+test("variant availability in the current catalog is read-only", async ({ page }, testInfo) => {
+  await mockAdmin(page);
+  const response = await page.request.get("/api/produtos");
+  expect(response.ok()).toBe(true);
+  const products = await response.json();
+  const partial = products.filter((p: any) => p.colors.some((c: any) => c.variants.some((v: any) => v.stock > 0)));
+  const zero = products.flatMap((p: any) => p.colors.flatMap((c: any) => c.variants.filter((v: any) => v.stock === 0).map((v: any) => ({ product: p.name, color: c.colorName, size: v.value }))));
+  await testInfo.attach("current-empty-variants", { body: JSON.stringify(zero, null, 2), contentType: "application/json" });
+  await page.route("**/api/produtos", route => route.fulfill({ json: products }));
+  await login(page);
+  const card = page.getByRole("region", { name: "Total de variantes" });
+  await expect(card).toContainText(`${zero.length} sem estoque`);
+  if (!zero.length) { await expect(card.getByRole("link", { name: /variantes sem estoque/ })).toHaveCount(0); return; }
+  await card.getByRole("link", { name: /variantes sem estoque/ }).click();
+  const eligible = zero.filter((v: any) => partial.some((p: any) => p.name === v.product));
+  await expect(page.getByRole("article")).toHaveCount(new Set(eligible.map((v: any) => v.product)).size);
+  for (const variant of eligible) await expect(page.getByRole("article", { name: variant.product, exact: true }).getByText(`${variant.color} / ${variant.size} — Sem estoque`, { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("current-empty-variants.png"), fullPage: true });
+});
+
 test("color picker and image eyedropper synchronize HEX and persist during creation and editing", async ({ page }) => {
   await page.addInitScript(() => {
-    Object.defineProperty(window, "EyeDropper", { configurable: true, value: class {
-      async open() {
-        const image = document.querySelector('img[alt="Prévia do produto"]')!;
-        const bounds = image.getBoundingClientRect();
-        if (bounds.top < 0 || bounds.bottom > innerHeight || getComputedStyle(image.closest("fieldset")!).opacity !== "1") throw new Error("Preview must be visible and undimmed");
-        return { sRGBHex: "#a1b2c3" };
+    Object.defineProperty(window, "EyeDropper", {
+      configurable: true, value: class {
+        async open() {
+          const image = document.querySelector('img[alt="Prévia do produto"]')!;
+          const bounds = image.getBoundingClientRect();
+          if (bounds.top < 0 || bounds.bottom > innerHeight || getComputedStyle(image.closest("fieldset")!).opacity !== "1") throw new Error("Preview must be visible and undimmed");
+          return { sRGBHex: "#a1b2c3" };
+        }
       }
-    } });
+    });
   });
   await page.route("**/color-fixture.svg", route => route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="300" height="300" fill="#a1b2c3"/></svg>' }));
   await login(page);
@@ -79,9 +275,11 @@ test("color picker and image eyedropper synchronize HEX and persist during creat
 for (const behavior of ["unsupported", "cancelled", "failed"]) {
   test(`image eyedropper ${behavior} preserves color and the responsive form remains usable`, async ({ page }) => {
     await page.addInitScript(behavior => {
-      Object.defineProperty(window, "EyeDropper", { configurable: true, value: behavior === "unsupported" ? undefined : class {
-        async open() { throw new DOMException("test", behavior === "cancelled" ? "AbortError" : "OperationError"); }
-      } });
+      Object.defineProperty(window, "EyeDropper", {
+        configurable: true, value: behavior === "unsupported" ? undefined : class {
+          async open() { throw new DOMException("test", behavior === "cancelled" ? "AbortError" : "OperationError"); }
+        }
+      });
     }, behavior);
     await login(page);
     await page.getByRole("link", { name: "Produtos", exact: true }).click();
@@ -134,14 +332,15 @@ test("ADMIN login redirects to manager, dashboard uses real totals and mobile na
   await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
   const products = await (await page.request.get("/api/produtos")).json();
   type StockProduct = { colors: { variants: { stock: number }[] }[] };
-  const total = (p: StockProduct) => p.colors.reduce((sum, c) => sum + c.variants.reduce((n, v) => n + v.stock, 0), 0);
+  const variantsOf = (p: StockProduct) => p.colors.flatMap(c => c.variants);
+  const { lowStockThreshold } = await (await page.request.get("/api/settings", { headers: { Authorization: `Bearer ${await token(page)}` } })).json();
   const checks = [
     ["Total de produtos", products.length],
     ["Total de variantes", products.reduce((sum: number, p: StockProduct) => sum + p.colors.reduce((n, c) => n + c.variants.length, 0), 0)],
-    ["Produtos sem estoque", products.filter((p: StockProduct) => total(p) === 0).length],
-    ["Produtos com estoque baixo", products.filter((p: StockProduct) => total(p) > 0 && total(p) <= 5).length]
+    ["Produtos sem estoque", products.filter((p: StockProduct) => variantsOf(p).length > 0 && variantsOf(p).every(v => v.stock === 0)).length],
+    ["Variantes com estoque baixo", products.reduce((n: number, p: StockProduct) => n + variantsOf(p).filter(v => v.stock >= 1 && v.stock <= lowStockThreshold).length, 0)]
   ];
-  for (const [label, count] of checks) await expect(page.locator("section").filter({ has: page.getByRole("heading", { name: String(label), exact: true }) }).locator("p")).toHaveText(String(count));
+  for (const [label, count] of checks) await expect(page.getByRole("heading", { name: String(label), exact: true }).locator("..").locator("p").first()).toHaveText(String(count));
   await page.reload();
   await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
   for (const width of [320, 768, 1440]) {
@@ -203,7 +402,7 @@ test("real manager CRUD validates variants, saves stock, filters, edits and dele
     await page.getByLabel("Categoria", { exact: true }).selectOption("calcados");
     await page.getByLabel("Público", { exact: true }).selectOption("feminino");
     const row = page.getByRole("article", { name, exact: true });
-    await expect(row).toContainText("Estoque baixo");
+    await expect(row).toContainText("Disponível");
     await expect(row).toContainText("Sob medida: 0");
     await row.getByRole("link", { name: "Editar" }).click();
     await expect(page.getByLabel("Nome", { exact: true })).toHaveValue(name);
@@ -230,7 +429,7 @@ test("real manager CRUD validates variants, saves stock, filters, edits and dele
     await expect(row).toBeVisible();
     await row.getByRole("button", { name: "Excluir", exact: true }).click();
     await dialog.getByRole("button", { name: "Confirmar exclusão" }).click();
-    await expectSuccess(page, "Produto excluído com sucesso!");
+    await expectSuccess(page, "Produto excluído com sucesso!", "removal");
     await expect(row).toHaveCount(0);
     expect((await (await page.request.get("/api/produtos")).json()).some((p: { id: number }) => p.id === id)).toBe(false);
   } finally {

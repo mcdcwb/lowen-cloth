@@ -1,5 +1,6 @@
 import { z } from "zod";
 const id = z.number().int().positive().max(2147483647);
+export const carouselSchema = z.strictObject({ inCarousel: z.boolean() });
 export const productVariantSchema = z.strictObject({
     id: id.optional(),
     value: z.string().trim().min(1, "Informe o valor da variante."),

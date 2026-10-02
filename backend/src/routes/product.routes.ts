@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
     getProducts,
+    setProductCarousel,
     createProduct,
     updateProduct,
     deleteProduct
@@ -11,6 +12,7 @@ const router = Router();
 
 router.get("/", getProducts);
 router.post("/", requireAdmin, createProduct);
+router.patch("/:id/carrossel", requireAdmin, setProductCarousel);
 router.put("/:id", requireAdmin, updateProduct);
 router.delete("/:id", requireAdmin, deleteProduct);
 

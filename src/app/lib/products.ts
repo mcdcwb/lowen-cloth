@@ -4,6 +4,7 @@ export interface ProductColor {
   variants: { id: number; value: string; stock: number }[];
 }
 export interface Product {
+  inCarousel: boolean;
   colors: ProductColor[];
   colorId: number;
   id: number;
@@ -54,7 +55,7 @@ export function adaptProduct(value: unknown): Product {
   });
   if (new Set(colors.map(c => c.id)).size !== colors.length) throw new Error("Cor duplicada.");
   const first = colors[0];
-  return { id: p.id as number, name: p.name, price, public: p.public, category: p.category,
+  return { id: p.id as number, name: p.name, price, public: p.public, category: p.category, inCarousel: p.inCarousel === true,
     description: typeof p.description === "string" ? p.description : "", badge: typeof p.badge === "string" ? p.badge : undefined,
     colors, colorId: first.id, color: { name: first.colorName, value: first.colorValue }, images: first.images, imageUrl: first.imageUrl,
     variants: first.variants, sizes: first.variants.map(v => v.value) };

@@ -1,0 +1,18 @@
+[data-sonner-toast][data-styled='true'].toast-positive {
+  --normal-bg: #edf8f0;
+  --normal-border: #a8d5b5;
+  --normal-text: #205c37;
+}
+
+[data-sonner-toast][data-styled='true'].toast-change {
+  --normal-bg: #fff8e5;
+  --normal-border: #e6ca7a;
+  --normal-text: #75520d;
+}
+
+[data-sonner-toast][data-styled='true'].toast-removal,
+[data-sonner-toast][data-styled='true'][data-type='error'] {
+  --normal-bg: #fff0ef;
+  --normal-border: #e4b0ab;
+  --normal-text: #943c35;
+}
