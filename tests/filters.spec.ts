@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 const product = (id: number, name: string, audience: string, category: string, variants: { value: string; stock: number }[]) => ({
-  id, name, public: audience, category, price: "129.9", description: "Descrição real do catálogo",
+  id, name, public: audience, categoryId: ["camisetas", "jaquetas", "calcas", "bermudas", "calcados", "vestidos"].indexOf(category) + 1, category: { id: ["camisetas", "jaquetas", "calcas", "bermudas", "calcados", "vestidos"].indexOf(category) + 1, name: ({ camisetas: "Camisetas / Camisas", jaquetas: "Jaquetas / Agasalhos", calcas: "Calças", bermudas: "Bermudas / Shorts", calcados: "Calçados", vestidos: "Vestidos" } as Record<string, string>)[category] ?? category }, price: "129.9", description: "Descrição real do catálogo",
   badge: null, colors: [{ id: id * 10, images: [], imageUrl: null, colorName: "Preto", colorValue: "#111111", variants: variants.map((v, i) => ({ ...v, id: id * 100 + i })) }]
 });
 const products = [
@@ -11,7 +11,7 @@ const products = [
   product(904, "Camiseta Livre", "unissex", "camisetas", [{ value: "Único", stock: 4 }])
 ];
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/produtos", route => route.fulfill({ json: products }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: products }));
 });
 
 test("catalog combines audience, category and in-stock sizes across header and aside", async ({ page }) => {
@@ -62,7 +62,7 @@ test("mobile filters support arbitrary sizes without overflowing", async ({ page
 test("catalog shows loading, retry after errors, and a separate empty state", async ({ page }) => {
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
-  await page.route("**/api/produtos", async route => {
+  await page.route("**/api/produtos{,/admin}", async route => {
     await gate;
     await route.fulfill({ status: 503, json: {} });
   });
@@ -70,7 +70,7 @@ test("catalog shows loading, retry after errors, and a separate empty state", as
   await expect(page.getByRole("status")).toHaveText("Carregando produtos...");
   release();
   await expect(page.getByRole("alert")).toContainText("Não foi possível carregar");
-  await page.route("**/api/produtos", route => route.fulfill({ json: [] }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [] }));
   await page.getByRole("button", { name: "Tentar novamente" }).click();
   await expect(page.getByText("Nenhuma peça encontrada", { exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -103,7 +103,7 @@ test("detail and persisted cart respect variant stock and decimal prices", async
 });
 
 test("catalog loads real PostgreSQL products through the API proxy", async ({ page }) => {
-  await page.unroute("**/api/produtos");
+  await page.unroute("**/api/produtos{,/admin}");
   const response = await page.request.get("/api/produtos");
   expect(response.ok()).toBeTruthy();
   const realProducts = await response.json();
@@ -115,7 +115,7 @@ test("catalog loads real PostgreSQL products through the API proxy", async ({ pa
 
 test("cards cap additions by stock and replace broken images without changing their layout", async ({ page }) => {
   await page.route("**/broken-product.jpg", route => route.fulfill({ status: 404, body: "missing" }));
-  await page.route("**/api/produtos", route => route.fulfill({ json: [{ ...products[0], imageUrl: "/broken-product.jpg" }] }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [{ ...products[0], imageUrl: "/broken-product.jpg" }] }));
   await page.goto("/");
   const main = page.locator("main");
   const image = main.getByRole("img", { name: "Camiseta API", exact: true });
@@ -130,14 +130,14 @@ test("cards cap additions by stock and replace broken images without changing th
 });
 
 test("malformed catalog data is an API error instead of a fabricated catalog", async ({ page }) => {
-  await page.route("**/api/produtos", route => route.fulfill({ json: [{ ...products[0], price: "invalid" }] }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [{ ...products[0], price: "invalid" }] }));
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("Não foi possível carregar");
   await expect(page.locator("main").getByText("Camiseta API", { exact: true })).toHaveCount(0);
 });
 
 test("audience includes unisex only for adults and clearing resets every existing catalog filter", async ({ page }) => {
-  await page.route("**/api/produtos", route => route.fulfill({
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({
     json: [...products,
     product(905, "Infantil API", "infantil", "camisetas", [{ value: "8", stock: 1 }])
     ]
@@ -177,7 +177,7 @@ test("audience includes unisex only for adults and clearing resets every existin
 test("size groups use only available variants, with a divider only between text and numbers", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const variants = ["10", "9", "8", "M", "P", "Único"].map(value => ({ value, stock: 2 }));
-  await page.route("**/api/produtos", route => route.fulfill({ json: [product(910, "Tamanhos API", "unissex", "camisetas", [...variants, { value: "36", stock: 0 }])] }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [product(910, "Tamanhos API", "unissex", "camisetas", [...variants, { value: "36", stock: 0 }])] }));
   await page.goto("/");
   const sizes = page.locator("aside section").first();
   await expect(sizes.locator("button[aria-pressed]")).toHaveText(["P", "M", "Único", "8", "9", "10"]);
@@ -188,7 +188,7 @@ test("size groups use only available variants, with a divider only between text 
   await sizes.locator("h3 button").click();
   await expect(sizes.getByRole("separator")).toBeVisible();
   for (const only of [[{ value: "Único", stock: 1 }], [{ value: "8", stock: 1 }]]) {
-    await page.route("**/api/produtos", route => route.fulfill({ json: [product(911, "Grupo único", "unissex", "camisetas", only)] }));
+    await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [product(911, "Grupo único", "unissex", "camisetas", only)] }));
     await page.reload();
     await expect(sizes.locator("button[aria-pressed]")).toHaveText([only[0].value]);
     await expect(sizes.getByRole("separator")).toHaveCount(0);
@@ -204,7 +204,7 @@ const sortedFixture = [
 
 test("catalog sort toggles independently of filters, clear and initial order", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.route("**/api/produtos", route => route.fulfill({ json: sortedFixture }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: sortedFixture }));
   await page.goto("/");
   const names = page.locator("main div.group p.line-clamp-2");
   const controls = page.getByRole("group", { name: "Ordenar produtos" });
@@ -260,7 +260,7 @@ test("catalog sort toggles independently of filters, clear and initial order", a
 
 for (const width of [1440, 390, 320]) test(`sorting header fits and remains stable at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 900 });
-  await page.route("**/api/produtos", route => route.fulfill({ json: sortedFixture }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: sortedFixture }));
   await page.goto("/");
   const heading = page.getByRole("heading", { name: "Todas as Peças", exact: true });
   const controls = page.getByRole("group", { name: "Ordenar produtos" });
@@ -329,8 +329,8 @@ for (const width of [1440, 390]) {
     const pants = product(920, "Calça multicor", "feminino", "calcas", [{ value: "P", stock: 0 }]);
     pants.colors.push({ ...pants.colors[0], id: 9201, colorName: "Branco", colorValue: "#FFFFFF", variants: [{ id: 9202, value: "GG", stock: 2 }] });
     // Products absent from the public API cannot create filter options. This
-    // model has no publication flag; `public` is the intended audience.
-    await page.route("**/api/produtos", route => route.fulfill({
+    // public is the audience, while isPublished controls publication.
+    await page.route("**/api/produtos{,/admin}", route => route.fulfill({
       json: [
         pants, products[0],
         product(921, "Jaqueta esgotada", "unissex", "jaquetas", [{ value: "M", stock: 0 }]),
@@ -343,7 +343,7 @@ for (const width of [1440, 390]) {
     const options = mobile
       ? page.locator("header").getByRole("button", { name: "Camisetas / Camisas", exact: true }).locator("..")
       : page.locator("aside section").nth(2).locator("div").first();
-    const labels = ["Todos", "Camisetas / Camisas", "Calças"];
+    const labels = ["Todos", "Calças", "Camisetas / Camisas"];
     const checkOptions = async () => {
       if (mobile) await menu.click();
       await expect(options.getByRole("button")).toHaveText(labels);
@@ -383,7 +383,7 @@ for (const change of ["removed", "sold out"] as const) {
   test(`catalog refresh clears a selected type when its last available product is ${change}`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     let catalog = [products[0], products[1]];
-    await page.route("**/api/produtos", route => route.fulfill({ json: catalog }));
+    await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: catalog }));
     // Exercise the existing onChanged -> useProducts retry flow without DB mutations.
     await page.route("**/api/produtos/902", async route => {
       if (route.request().method() === "DELETE") {

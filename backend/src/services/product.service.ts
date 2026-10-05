@@ -3,11 +3,12 @@ import type { Prisma } from "../generated/prisma/client.js";
 import type { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import type { createProductSchema, updateProductSchema } from "../schemas/product.schema.js";
-export const productInclude = { colors: { orderBy: [{ position: "asc" }, { id: "asc" }], include: { variants: { orderBy: { id: "asc" } } } } } satisfies Prisma.ProductInclude;
+export const productInclude = { category: { select: { id: true, name: true } }, colors: { orderBy: [{ position: "asc" }, { id: "asc" }], include: { variants: { orderBy: { id: "asc" } } } } } satisfies Prisma.ProductInclude;
 export class ProductError extends Error {
     constructor(public status: number, message: string) { super(message); }
 }
 export const getProducts = () => prisma.product.findMany({ include: productInclude });
+export const getPublicProducts = () => prisma.product.findMany({ where: { isPublished: true }, include: productInclude });
 export const getProductById = (id: number) => prisma.product.findUnique({ where: { id }, include: productInclude });
 export async function setProductCarousel(id: number, inCarousel: boolean) {
     return prisma.$transaction(async tx => {
@@ -26,6 +27,7 @@ export async function createProduct(data: z.infer<typeof createProductSchema>) {
     if (data.colors.some(c => c.id !== undefined || c.variants.some(v => v.id !== undefined)))
         throw new ProductError(400, "Novas cores e variantes não devem informar IDs.");
     const { colors, ...product } = data;
+    if (!await prisma.category.findUnique({ where: { id: product.categoryId } })) throw new ProductError(400, "Categoria não encontrada. Atualize a lista de categorias.");
     return prisma.product.create({ data: { ...product, price: String(product.price), colors: { create: colors.map(({ variants, ...color }, position) => ({
         ...color, position, variants: { create: variants }
     })) } }, include: productInclude });
@@ -37,6 +39,7 @@ export async function updateProduct(id: number, data: z.infer<typeof updateProdu
         const existing = await tx.product.findUnique({ where: { id }, include: productInclude });
         if (!existing) throw new ProductError(404, "Produto não encontrado.");
         const { colors, ...product } = data;
+        if (product.categoryId !== undefined && !await tx.category.findUnique({ where: { id: product.categoryId } })) throw new ProductError(400, "Categoria não encontrada. Atualize a lista de categorias.");
         if (colors) {
             for (const color of colors) {
                 const old = existing.colors.find(c => c.id === color.id);

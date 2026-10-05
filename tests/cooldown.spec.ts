@@ -122,7 +122,7 @@ test("guest stock rejection never starts success feedback", async ({ page }) => 
 });
 
 test("real card and details share feedback across size/color changes; keyboard cannot bypass it", async ({ page }) => {
-  await page.route("**/api/produtos", route => route.fulfill({ json: [raw] }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [raw] }));
   await page.goto("/");
   await page.clock.pauseAt(new Date());
   const card = page.locator("main div.group").filter({ has: page.getByText("Cooldown", { exact: true }) });
@@ -158,7 +158,7 @@ test("rapid mobile taps add only one unit", async ({ browser }) => {
   const context = await browser.newContext({ hasTouch: true, viewport: { width: 390, height: 844 } });
   try {
     const page = await context.newPage();
-    await page.route("**/api/produtos", route => route.fulfill({ json: [raw] }));
+    await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [raw] }));
     await page.goto("http://127.0.0.1:4178/");
     await page.clock.pauseAt(new Date());
     await page.locator("main div.group").filter({ has: page.getByText("Cooldown", { exact: true }) }).getByRole("button", { name: "M", exact: true }).tap();

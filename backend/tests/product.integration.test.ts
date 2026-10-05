@@ -1,3 +1,4 @@
+import { fixtureCategory } from "./helpers/category.js";
 import "dotenv/config";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -19,7 +20,7 @@ test("nested product CRUD preserves identity, cart relations and per-color stock
     const admin = (await (await server.request("/auth/login", "POST", { email, password })).json()).accessToken;
     const token = (await (await server.request("/auth/login", "POST", { email: userEmail, password })).json()).accessToken;
     const req = (path: string, method = "GET", body?: unknown) => server.request(path, method, body, admin);
-    const input = { name: "Colors integration", price: 99.9, description: "Temporary", public: "unissex", category: "camisetas", badge: "Novo", colors: [color()] };
+    const input = { name: "Colors integration", price: 99.9, description: "Temporary", public: "unissex", categoryId: (await fixtureCategory()).id, badge: "Novo", colors: [color()] };
     let product: any;
     await t.test("creates one color and many colors with shared price and distinct variants", async () => {
       for (const colors of [[color()], [color(), color("Branco", 1), color("Verde", 4)]]) {
@@ -38,7 +39,7 @@ test("nested product CRUD preserves identity, cart relations and per-color stock
         assert.equal((await req("/produtos", "POST", { ...input, colors: bad })).status, 400);
         assert.equal((await req(`/produtos/${product.id}`, "PUT", { name: "Must not persist", colors: bad })).status, 400);
       }
-      for (const bad of [{}, { public: " " }, { category: "" }, { price: -1 }, { variants: [] }]) assert.equal((await req(`/produtos/${product.id}`, "PUT", bad)).status, 400);
+      for (const bad of [{}, { public: " " }, { categoryId: 0 }, { price: -1 }, { variants: [] }]) assert.equal((await req(`/produtos/${product.id}`, "PUT", bad)).status, 400);
       assert.equal((await req("/produtos", "POST", { ...input, colors: undefined })).status, 400);
       assert.equal((await req("/produtos", "POST", { ...input, colors: [editable(product.colors[0])] })).status, 400);
       for (const method of ["PUT", "DELETE"]) assert.equal((await req("/produtos/invalid", method, {})).status, 400);

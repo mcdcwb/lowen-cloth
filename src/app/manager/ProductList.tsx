@@ -1,3 +1,4 @@
+import type { Category } from "../lib/categories";
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { GalleryHorizontalEnd, Pencil, Plus, Search, Trash2 } from "lucide-react";
@@ -10,11 +11,13 @@ export function StockBadge({ product }: { product: ManagedProduct }) {
   const label = getProductVariants(product).length === 0 ? "Sem variantes" : empty ? "Sem estoque" : "Disponível";
   return <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${empty ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>{label}</span>;
 }
-export function ProductList({ threshold, products, busy, error, onDelete, onCarousel }: { threshold: number; products: ManagedProduct[]; busy: boolean; error: string | null; onDelete: (id: number) => Promise<boolean>; onCarousel: (id: number, selected: boolean) => Promise<boolean> }) {
+export function ProductList({ categories, threshold, products, busy, error, onDelete, onCarousel }: { categories: Category[]; threshold: number; products: ManagedProduct[]; busy: boolean; error: string | null; onDelete: (id: number) => Promise<boolean>; onCarousel: (id: number, selected: boolean) => Promise<boolean> }) {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [audience, setAudience] = useState("");
   const [onlyCarousel, setOnlyCarousel] = useState(false);
+  const [publication, setPublication] = useState("");
+  useEffect(() => { if (category && !categories.some(c => String(c.id) === category)) setCategory(""); }, [categories, category]);
   const [params, setParams] = useSearchParams();
   const rawStock = params.get("estoque");
   const stock: StockFilter = rawStock === "sem-estoque" || rawStock === "variante-sem-estoque" || rawStock === "variante-baixo" ? rawStock : "";
@@ -37,7 +40,7 @@ export function ProductList({ threshold, products, busy, error, onDelete, onCaro
   const carouselFull = products.filter(product => product.inCarousel).length >= 5;
   const [deleting, setDeleting] = useState<ManagedProduct | null>(null);
   const visible = products.filter(product => product.name.toLocaleLowerCase("pt-BR").includes(search.trim().toLocaleLowerCase("pt-BR")) &&
-    (!category || product.category === category) && (!audience || product.public === audience) && (!onlyCarousel || product.inCarousel) && matchesStock(product, stock, threshold))
+    (!category || String(product.categoryId) === category) && (!audience || product.public === audience) && (!publication || product.isPublished === (publication === "published")) && (!onlyCarousel || product.inCarousel) && matchesStock(product, stock, threshold))
     .sort((a, b) => Number(b.inCarousel) - Number(a.inCarousel));
   return <>
     <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
@@ -46,10 +49,11 @@ export function ProductList({ threshold, products, busy, error, onDelete, onCaro
     </div>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 rounded-xl border border-border bg-card p-4 mb-5">
       <label className="flex flex-col gap-2 text-sm"><span className="flex items-center gap-2"><Search size={14} />Buscar por nome</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} className="h-10 w-full min-w-0 rounded-lg border border-border bg-background px-3 py-2" placeholder="Nome do produto" /></label>
-      <label className="flex flex-col gap-2 text-sm"><span>Categoria</span><select aria-label="Categoria" value={category} onChange={event => setCategory(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2"><option value="">Todas as categorias</option>{[...new Set(products.map(p => p.category))].map(value => <option key={value} value={value}>{labels[value] ?? value}</option>)}</select></label>
+      <label className="flex flex-col gap-2 text-sm"><span>Categoria</span><select aria-label="Categoria" value={category} onChange={event => setCategory(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2"><option value="">Todas as categorias</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
       <label className="flex flex-col gap-2 text-sm"><span>Público</span><select aria-label="Público" value={audience} onChange={event => setAudience(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2"><option value="">Todos os públicos</option>{[...new Set(products.map(p => p.public))].map(value => <option key={value} value={value}>{labels[value] ?? value}</option>)}</select></label>
       <label className="flex min-w-0 flex-col gap-2 text-sm xl:col-span-2"><span>Estoque</span><select aria-label="Estoque" value={stock} onChange={event => setStock(event.target.value)} className="h-10 w-full min-w-0 rounded-lg border border-border bg-background px-3 py-2"><option value="">Todos os estoques</option>{Object.entries(stockFilterLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="flex items-center gap-2 self-end h-10 text-sm whitespace-nowrap"><input type="checkbox" checked={onlyCarousel} onChange={event => setOnlyCarousel(event.target.checked)} className="size-4 accent-primary" />Apenas itens do carrossel</label>
+      <label className="flex flex-col gap-2 text-sm"><span>Publicação</span><select aria-label="Publicação" value={publication} onChange={event => setPublication(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2"><option value="">Todas as publicações</option><option value="published">Publicados</option><option value="hidden">Não publicados</option></select></label>
     </div>
     {stock && <div className="flex flex-wrap items-center gap-2 mb-4 text-sm"><span className="rounded-full bg-primary/10 text-primary px-3 py-1">Filtro: {stockFilterLabels[stock]}</span><button type="button" onClick={() => setStock("")} className="min-h-11 px-2 text-primary underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">Remover filtro de estoque</button></div>}
     <p className="mb-3 text-sm text-muted-foreground">{visible.length} produto(s)</p>
@@ -58,7 +62,7 @@ export function ProductList({ threshold, products, busy, error, onDelete, onCaro
         <ProductImage src={product.colors[0]?.imageUrl || product.colors[0]?.images[0]} alt={product.name} className="h-24 w-20 object-cover rounded-lg bg-muted shrink-0" />
         <div className="min-w-0 flex-1 basis-40">
           <h2 className="font-semibold break-words">{product.name}</h2>
-          <p className="text-sm text-muted-foreground mt-1">{labels[product.category] ?? product.category} · {labels[product.public] ?? product.public}</p>
+          <p className="text-sm text-muted-foreground mt-1">{product.category} · {labels[product.public] ?? product.public}{!product.isPublished && " · Não publicado"}</p>
           <p className="font-semibold mt-1">{product.price.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</p>
         </div>
         <div className="flex-1 min-w-0 basis-44 space-y-2">

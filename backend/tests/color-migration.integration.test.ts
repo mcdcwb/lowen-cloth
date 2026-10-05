@@ -11,7 +11,7 @@ test("migration preserves legacy products, variant IDs, nonempty carts, favorite
   try {
     await db.query(`CREATE SCHEMA "${schema}"`); await db.query(`SET search_path TO "${schema}"`);
     const dirs = (await readdir("prisma/migrations", { withFileTypes: true })).filter(d => d.isDirectory()).map(d => d.name).sort();
-    for (const dir of dirs.filter(d => d !== "20260922000000_product_colors")) await db.query(await readFile(`prisma/migrations/${dir}/migration.sql`, "utf8"));
+    for (const dir of dirs.filter(d => d < "20260922000000_product_colors")) await db.query(await readFile(`prisma/migrations/${dir}/migration.sql`, "utf8"));
     await db.query(`INSERT INTO "User" (name,email,"passwordHash","updatedAt") VALUES ('Test','test@example.test','opaque',now());
       INSERT INTO "Admin" (email,"passwordHash","updatedAt") VALUES ('admin@example.test','opaque',now());
       INSERT INTO "Product" (name,price,public,category,"colorName","colorValue","imageUrl",images,"updatedAt") VALUES ('Legacy',19.9,'unissex','camisetas','Azul','#aabbcc','/front.png',ARRAY['/back.png'],now()),('Missing color',10,'unissex','camisetas',NULL,NULL,NULL,ARRAY[]::text[],now());

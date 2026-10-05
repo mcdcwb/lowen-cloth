@@ -4,6 +4,7 @@ import { getJwtKey } from "./config/auth.js";
 import { createAuthRoutes } from "./routes/auth.routes.js";
 import { prisma } from "./lib/prisma.js";
 import productRoutes from "./routes/product.routes.js";
+import categoryRoutes from "./routes/category.routes.js";
 import shoppingRoutes from "./routes/shopping.routes.js";
 import accountRoutes from "./routes/account.routes.js";
 import { createUploadRoutes } from "./routes/upload.routes.js";
@@ -16,6 +17,7 @@ export function createApp(options: { uploadProductImage?: ProductImageUploader; 
 
     app.use(express.json());
     app.use("/produtos", productRoutes);
+    app.use("/categorias", categoryRoutes);
     app.use("/settings", createSettingsRoutes(options.settingsDatabase));
     app.use("/uploads", createUploadRoutes(options.uploadProductImage));
     app.use("/auth", createAuthRoutes());

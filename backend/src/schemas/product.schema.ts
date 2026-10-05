@@ -27,7 +27,7 @@ const colorsSchema = z.array(productColorSchema).min(1, "Adicione pelo menos uma
 export const createProductSchema = z.strictObject({
     name: z.string().trim().min(3, "O nome deve possuir pelo menos 3 caracteres"),
     description: z.string().optional(), price: z.number().positive("O preço deve ser maior que zero"),
-    public: z.string().trim().min(1), category: z.string().trim().min(1),
+    public: z.string().trim().min(1), categoryId: id, isPublished: z.boolean().optional(),
     badge: z.string().nullable().optional(), colors: colorsSchema
 });
 export const updateProductSchema = createProductSchema.partial().refine(data => Object.keys(data).length > 0, {

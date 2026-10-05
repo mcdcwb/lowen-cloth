@@ -16,6 +16,7 @@ async function token(page: Page) {
 }
 
 async function mockAdmin(page: Page) {
+  await page.route("**/api/categorias", route => route.fulfill({ json: [{ id: 1, name: "camisetas" }, { id: 2, name: "calcados" }] }));
   await page.route("**/api/settings", route => route.fulfill({ json: { lowStockThreshold: 5 } }));
   const account = { id: 1, name: "Administrador de teste", email: "admin@example.test", role: "ADMIN" };
   await page.route("**/api/auth/me", route => route.fulfill({ json: { account } }));
@@ -25,11 +26,11 @@ async function mockAdmin(page: Page) {
 for (const width of [1440, 390, 320]) test(`dashboard stock shortcuts, keyboard and layout at ${width}px`, async ({ page }, testInfo) => {
   await mockAdmin(page);
   const fixture = [[], [0, 0], [0, 1], [2, 3], [3, 3]].map((stocks, index) => ({
-    id: 800 + index, name: `Resumo ${index}`, description: "", price: "20", public: "unissex", category: "camisetas", badge: null, inCarousel: index === 2,
+    id: 800 + index, name: `Resumo ${index}`, description: "", price: "20", public: "unissex", category: "camisetas", categoryId: 1, badge: null, inCarousel: index === 2,
     colors: (stocks.length ? stocks : [null]).map((stock, color) => ({ id: 900 + index * 10 + color, colorName: `Cor ${color}`, colorValue: "#111111", imageUrl: null, images: [], variants: stock === null ? [] : [{ id: 1000 + index * 10 + color, value: "P", stock }] }))
   }));
   await page.setViewportSize({ width, height: 1100 });
-  await page.route("**/api/produtos", route => route.fulfill({ json: fixture }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: fixture }));
   await login(page);
   const total = page.getByRole("link", { name: /Total de produtos/ });
   const empty = page.getByRole("link", { name: /Produtos sem estoque/ });
@@ -95,7 +96,7 @@ for (const width of [1440, 390, 320]) test(`dashboard stock shortcuts, keyboard 
   await page.getByLabel("Estoque", { exact: true }).selectOption("variante-baixo");
   await page.getByRole("checkbox", { name: /carrossel/i }).check();
   await expect(page.getByRole("article")).toHaveCount(1);
-  await page.getByLabel("Categoria", { exact: true }).selectOption("camisetas");
+  await page.getByLabel("Categoria", { exact: true }).selectOption({ label: "camisetas" });
   await page.getByLabel("Público", { exact: true }).selectOption("unissex");
   await expect(page.getByRole("article", { name: "Resumo 2", exact: true })).toBeVisible();
   await page.getByRole("link", { name: "Dashboard", exact: true }).click();
@@ -129,12 +130,12 @@ for (const width of [1440, 390, 320]) test(`variant availability link and identi
     { name: "Disponível", category: "calcados", public: "feminino", inCarousel: true, stocks: [[3, 2]] },
     { name: "Sem variantes", category: "camisetas", public: "unissex", inCarousel: false, stocks: [[]] }
   ].map((p, i) => ({
-    ...p, id: 700 + i, price: 20, description: "", badge: null, colors: p.stocks.map((stocks, c) => ({
+    ...p, categoryId: p.category === "camisetas" ? 1 : 2, id: 700 + i, price: 20, description: "", badge: null, colors: p.stocks.map((stocks, c) => ({
       id: 800 + i * 10 + c, colorName: c ? "Branco" : "Preto", colorValue: c ? "#FFFFFF" : "#111111", images: [], imageUrl: null,
       variants: stocks.map((stock, v) => ({ id: 900 + i * 100 + c * 10 + v, value: v ? "M" : "P", stock }))
     }))
   }));
-  await page.route("**/api/produtos", route => route.fulfill({ json: fixture }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: fixture }));
   await page.setViewportSize({ width, height: 1000 });
   await login(page);
   const card = page.getByRole("region", { name: "Total de variantes" });
@@ -166,7 +167,7 @@ for (const width of [1440, 390, 320]) test(`variant availability link and identi
   await expect(page.getByRole("article")).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath(`variants-list-${width}.png`), fullPage: true });
-  await page.getByLabel("Categoria", { exact: true }).selectOption("calcados");
+  await page.getByLabel("Categoria", { exact: true }).selectOption({ label: "calcados" });
   await page.getByLabel("Público", { exact: true }).selectOption("feminino");
   await page.getByRole("checkbox", { name: /carrossel/i }).check();
   await page.getByRole("searchbox").fill("Misto");
@@ -197,7 +198,7 @@ test("variant availability in the current catalog is read-only", async ({ page }
   const partial = products.filter((p: any) => p.colors.some((c: any) => c.variants.some((v: any) => v.stock > 0)));
   const zero = products.flatMap((p: any) => p.colors.flatMap((c: any) => c.variants.filter((v: any) => v.stock === 0).map((v: any) => ({ product: p.name, color: c.colorName, size: v.value }))));
   await testInfo.attach("current-empty-variants", { body: JSON.stringify(zero, null, 2), contentType: "application/json" });
-  await page.route("**/api/produtos", route => route.fulfill({ json: products }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: products }));
   await login(page);
   const card = page.getByRole("region", { name: "Total de variantes" });
   await expect(card).toContainText(`${zero.length} sem estoque`);
@@ -364,7 +365,7 @@ test("real manager CRUD validates variants, saves stock, filters, edits and dele
     await page.getByLabel("Descrição", { exact: true }).fill("Produto temporário do teste de integração.");
     await page.getByLabel("Preço (R$)", { exact: true }).fill("149.90");
     await page.getByLabel("Público", { exact: true }).selectOption("feminino");
-    await page.getByLabel("Categoria", { exact: true }).selectOption("calcados");
+    await page.getByLabel("Categoria", { exact: true }).selectOption({ label: "calcados" });
     await page.getByLabel("Nome da cor", { exact: true }).fill("Preto");
     await page.getByLabel("Valor da cor", { exact: true }).fill("#111111");
     await page.getByLabel("Badge (opcional)", { exact: true }).fill("Novo");
@@ -383,7 +384,7 @@ test("real manager CRUD validates variants, saves stock, filters, edits and dele
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
     let posts = 0;
-    await page.route("**/api/produtos", async route => {
+    await page.route("**/api/produtos{,/admin}", async route => {
       if (route.request().method() === "POST") { posts++; await gate; }
       await route.continue();
     });
@@ -399,7 +400,7 @@ test("real manager CRUD validates variants, saves stock, filters, edits and dele
     id = (await response.json()).id;
     await expectSuccess(page, "Produto criado com sucesso!");
     await page.getByLabel("Buscar por nome").fill(name);
-    await page.getByLabel("Categoria", { exact: true }).selectOption("calcados");
+    await page.getByLabel("Categoria", { exact: true }).selectOption({ label: "calcados" });
     await page.getByLabel("Público", { exact: true }).selectOption("feminino");
     const row = page.getByRole("article", { name, exact: true });
     await expect(row).toContainText("Disponível");
@@ -421,7 +422,7 @@ test("real manager CRUD validates variants, saves stock, filters, edits and dele
     await page.getByRole("button", { name: "Remover variante 1" }).click();
     await page.getByRole("button", { name: "Salvar produto" }).click();
     await expectSuccess(page, "Produto salvo com sucesso!");
-    await expect(row).toContainText("Sem estoque");
+    await expect(row).toContainText("Sem variantes");
     await row.getByRole("button", { name: "Excluir", exact: true }).click();
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toContainText(name);
@@ -446,7 +447,7 @@ for (const status of [401, 403]) test(`administrative ${status} response removes
   await page.getByLabel("Valor da cor", { exact: true }).fill("#111111");
   await page.getByLabel("Preço (R$)", { exact: true }).fill("10");
   await page.getByLabel("Variante 1", { exact: true }).fill("P");
-  await page.route("**/api/produtos", route => route.request().method() === "POST" ? route.fulfill({ status, json: {} }) : route.continue());
+  await page.route("**/api/produtos{,/admin}", route => route.request().method() === "POST" ? route.fulfill({ status, json: {} }) : route.continue());
   await page.getByRole("button", { name: "Salvar produto" }).click();
   await expect(page.getByRole("heading", { name: "Acesso administrativo" })).toBeVisible();
   await expect(page.getByRole("alert")).toContainText(status === 401 ? "sessão expirou" : "não autorizado");
@@ -474,7 +475,7 @@ test("save failure preserves the draft, allows retry and the form fits small scr
   await page.getByLabel("Valor da cor", { exact: true }).fill("#111111");
   await page.getByLabel("Preço (R$)", { exact: true }).fill("25");
   await page.getByLabel("Variante 1", { exact: true }).fill("Livre");
-  await page.route("**/api/produtos", route => route.request().method() === "POST" ? route.fulfill({ status: 500, json: { error: "Falha temporária." } }) : route.continue());
+  await page.route("**/api/produtos{,/admin}", route => route.request().method() === "POST" ? route.fulfill({ status: 500, json: { error: "Falha temporária." } }) : route.continue());
   await page.getByRole("button", { name: "Salvar produto" }).click();
   await expect(page.getByRole("alert")).toContainText("Falha temporária");
   await expect(successToasts(page)).toHaveCount(0);

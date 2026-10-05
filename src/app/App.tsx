@@ -4,7 +4,7 @@ import { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import { useProducts } from "./hooks/useProducts";
 import { ProductImage } from "./components/ProductImage";
 import { Manager } from "./manager/Manager";
-import { catalogCategories, catalogSizes, isNumericSize, selectProductColor, stockFor, type Product, type Size } from "./lib/products";
+import { categoryValue, catalogCategories, catalogSizes, isNumericSize, selectProductColor, stockFor, type Product, type Size } from "./lib/products";
 import { useShopping, type CartItem } from "./hooks/useShopping";
 import { useAuth } from "./hooks/useAuth";
 import { useLocation, useNavigate } from "react-router";
@@ -23,7 +23,7 @@ import { SignpostBig } from "./components/icons/SignpostBig";
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 type Public = "masculino" | "feminino" | "unissex" | "infantil";
-type Category = "camisetas" | "jaquetas" | "calcas" | "bermudas" | "calcados" | "vestidos";
+type Category = string;
 
 interface AuthUser {
   id: number;
@@ -35,15 +35,6 @@ interface AuthUser {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 
-
-const CATEGORIES: { value: Category; label: string }[] = [
-  { value: "camisetas", label: "Camisetas / Camisas" },
-  { value: "jaquetas", label: "Jaquetas / Agasalhos" },
-  { value: "calcas", label: "Calças" },
-  { value: "bermudas", label: "Bermudas / Shorts" },
-  { value: "vestidos", label: "Vestidos" },
-  { value: "calcados", label: "Calçados" },
-];
 
 const PUBLICS: { value: Public; label: string }[] = [
   { value: "masculino", label: "Masculino" },
@@ -61,7 +52,7 @@ const sizeButtonClass = "inline-flex h-[48px] w-[48px] shrink-0 items-center jus
 export default function App() {
   const { products, loading: productsLoading, error: productsError, retry: retryProducts } = useProducts();
   const allSizes = catalogSizes(products);
-  const availableCategories = useMemo(() => catalogCategories(products, CATEGORIES), [products]);
+  const availableCategories = useMemo(() => catalogCategories(products), [products]);
   const location = useLocation();
   const navigate = useNavigate();
   const accountPath = location.pathname.replace(/\/$/, "");
@@ -122,7 +113,7 @@ export default function App() {
     const publicMatch = activePublic === "todos" || p.public === activePublic ||
       ((activePublic === "masculino" || activePublic === "feminino") && p.public === "unissex");
     const sizeMatch = selectedSizes.length === 0 || p.colors.some(c => c.variants.some(v => v.stock > 0 && selectedSizes.includes(v.value)));
-    return publicMatch && sizeMatch && (!activeCategory || p.category === activeCategory);
+    return publicMatch && sizeMatch && (!activeCategory || categoryValue(p) === activeCategory);
   });
 
   const totalItems = cartItems.reduce((s, i) => s + i.quantity, 0);
@@ -182,7 +173,7 @@ export default function App() {
   const hasActiveFilters = activePublic !== "todos" || activeCategory !== null || selectedSizes.length > 0;
 
   const catalogTitle = activeCategory
-    ? CATEGORIES.find(piece => piece.value === activeCategory)?.label
+    ? availableCategories.find(piece => piece.value === activeCategory)?.label
     :
     activePublic === "todos"
       ? "Todas as Peças"

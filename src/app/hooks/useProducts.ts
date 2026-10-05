@@ -7,10 +7,16 @@ export function useProducts() {
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") setAttempt(value => value + 1); };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const timer = window.setInterval(refresh, 30000);
+    return () => { window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); window.clearInterval(timer); };
+  }, []);
+  useEffect(() => {
     const controller = new AbortController();
     let active = true;
     const timeout = window.setTimeout(() => controller.abort(), 10000);
-    setLoading(true);
     setError(null);
     fetchProducts(import.meta.env.VITE_API_URL || "/api", controller.signal)
       .then(data => { if (active) setProducts(data); })

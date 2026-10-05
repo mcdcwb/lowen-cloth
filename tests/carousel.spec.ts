@@ -8,7 +8,7 @@ for (const width of [1440, 390, 320]) test(`slider renders exactly 0–5 selecti
   await page.setViewportSize({ width, height: 900 });
   await page.route("**/carousel-*.svg", route => route.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="${route.request().url().includes("portrait") ? 400 : 1600}" height="${route.request().url().includes("portrait") ? 500 : 900}"><rect width="100%" height="100%" fill="#555"/></svg>` }));
   let count = 0;
-  await page.route("**/api/produtos", route => route.fulfill({ json: Array.from({ length: 6 }, (_, i) => fixture(i + 1, i < count)).reverse() }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: Array.from({ length: 6 }, (_, i) => fixture(i + 1, i < count)).reverse() }));
   for (count = 0; count <= 5; count++) {
     await page.goto("/");
     await expect(page.locator("main div.group").filter({ has: page.getByText("Carousel 6", { exact: true }) })).toBeVisible();
@@ -42,13 +42,14 @@ for (const width of [1440, 390, 320]) test(`slider renders exactly 0–5 selecti
 });
 
 test("autoplay pauses on hover and shrinking selection clamps the current index", async ({ page }) => {
+  await page.route("**/api/categorias", route => route.fulfill({ json: [{ id: 1, name: "camisetas" }] }));
   await page.route("**/api/settings", route => route.fulfill({ json: { lowStockThreshold: 5 } }));
   const account = { id: 1, name: "Administrador de teste", email: "admin@example.test", role: "ADMIN" };
   await page.route("**/api/auth/me", route => route.fulfill({ json: { account } }));
   await page.route("**/api/auth/login", route => route.fulfill({ json: { account, accessToken: "test-session", tokenType: "Bearer", expiresIn: 3600, expiresAt: Date.now() + 3600000 } }));
   await page.clock.install();
   let count = 5;
-  await page.route("**/api/produtos", route => route.fulfill({ json: Array.from({ length: count }, (_, i) => fixture(i + 1)) }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: Array.from({ length: count }, (_, i) => fixture(i + 1)) }));
   await page.goto("/");
   const slider = page.getByRole("region", { name: "Carrossel de produtos" });
   await expect(slider.getByRole("heading")).toHaveText("Carousel 1");
@@ -76,7 +77,7 @@ test("autoplay pauses on hover and shrinking selection clamps the current index"
 
 test("carousel notifications distinguish confirmed changes, removals and real errors", async ({ page }) => {
   const product = fixture(1, false);
-  await page.route("**/api/produtos", route => route.fulfill({ json: [product] }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [product] }));
   let fail = false;
   await page.route("**/api/produtos/1/carrossel", route => {
     if (fail) return route.fulfill({ status: 409, json: { error: "Limite de 5 produtos no carrossel." } });
@@ -120,8 +121,8 @@ test("Manager persists carousel selection, combines filters, prioritizes stably 
   const prefix = `Carousel E2E ${Date.now()} `;
   try {
     for (let i = 0; i < 6; i++) {
-      const data = fixture(i + 1); const { id, inCarousel, ...input } = data;
-      const response = await page.request.post("/api/produtos", { headers, data: { ...input, name: prefix + i, colors: input.colors.map(({ id, ...color }) => ({ ...color, variants: [{ value: "M", stock: 4 }] })) } });
+      const data = fixture(i + 1); const { id, inCarousel, category, ...input } = data;
+      const response = await page.request.post("/api/produtos", { headers, data: { ...input, categoryId: catalog.find((p: any) => p.category.name === category).categoryId, name: prefix + i, colors: input.colors.map(({ id, ...color }) => ({ ...color, variants: [{ value: "M", stock: 4 }] })) } });
       expect(response.status()).toBe(201); ids.push((await response.json()).id);
     }
     await page.getByRole("link", { name: "Produtos", exact: true }).click();
@@ -148,13 +149,13 @@ test("Manager persists carousel selection, combines filters, prioritizes stably 
     await expect(row(5).getByRole("button", { name: "Adicionar ao carrossel" })).toBeDisabled();
     await expect(row(5).locator('[title="Limite de 5 produtos no carrossel"]')).toBeVisible();
     expect((await page.request.patch(`/api/produtos/${ids[5]}/carrossel`, { headers, data: { inCarousel: true } })).status()).toBe(409);
-    await page.getByLabel("No carrossel", { exact: true }).check(); await expect(rows).toHaveCount(5);
+    await page.getByLabel("Apenas itens do carrossel", { exact: true }).check(); await expect(rows).toHaveCount(5);
     await page.getByLabel("Público", { exact: true }).selectOption("masculino"); await expect(rows).toHaveCount(3);
-    await page.getByLabel("Categoria", { exact: true }).selectOption("camisetas"); await expect(rows).toHaveCount(3);
+    await page.getByLabel("Categoria", { exact: true }).selectOption({ label: "camisetas" }); await expect(rows).toHaveCount(3);
     await page.getByLabel("Buscar por nome").fill(prefix + 2); await expect(rows).toHaveCount(1);
     await row(2).getByRole("button", { name: "Remover do carrossel" }).click(); await expectSuccess(page, "Produto removido do carrossel!", "removal");
     await expect(rows).toHaveCount(0);
-    await page.getByLabel("No carrossel", { exact: true }).uncheck();
+    await page.getByLabel("Apenas itens do carrossel", { exact: true }).uncheck();
     await expect(rows).toHaveCount(1);
     await page.route(`**/api/produtos/${ids[2]}/carrossel`, route => route.fulfill({ status: 409, json: { error: "Limite de 5 produtos no carrossel." } }));
     await row(2).getByRole("button", { name: "Adicionar ao carrossel" }).click();

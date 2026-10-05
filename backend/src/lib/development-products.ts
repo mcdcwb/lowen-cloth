@@ -1,5 +1,7 @@
 import { prisma } from "./prisma.js";
 import { createProductSchema } from "../schemas/product.schema.js";
+import { z } from "zod";
+import { normalizeCategoryName } from "../schemas/category.schema.js";
 
 // Reserved ownership marker: only records created by this seed are replaced.
 export const seedMarker = "[lowen-cloth:dev-seed:v1] ";
@@ -27,7 +29,7 @@ export const developmentProducts = catalog.map((product, index) => {
     const images = ["Frente", "Costas"].map(view =>
         `https://placehold.co/800x1000/${product.colorValue.slice(1)}/222222?text=${encodeURIComponent(product.name + " - " + view)}`
     );
-    return createProductSchema.parse({
+    return createProductSchema.omit({ categoryId: true }).extend({ category: z.string() }).parse({
         name: product.name, price: product.price, public: product.public, category: product.category,
         description: seedMarker + product.description,
         badge: product.badge ?? null,
@@ -41,9 +43,10 @@ export async function seedDevelopmentProducts() {
     return prisma.$transaction(async tx => {
         // Cascade removes only variants belonging to these explicitly marked products.
         await tx.product.deleteMany({ where: seedWhere });
-        for (const { colors, ...product } of developmentProducts) {
-            await tx.product.create({ data: { ...product, colors: { create: colors.map(({ variants, ...color }, position) => ({ ...color, position, variants: { create: variants } })) } } });
+        for (const { colors, category: name, ...product } of developmentProducts) {
+            const category = await tx.category.upsert({ where: { normalizedName: normalizeCategoryName(name) }, create: { name, normalizedName: normalizeCategoryName(name) }, update: {} });
+            await tx.product.create({ data: { ...product, categoryId: category.id, colors: { create: colors.map(({ variants, ...color }, position) => ({ ...color, position, variants: { create: variants } })) } } });
         }
-        return tx.product.findMany({ where: seedWhere, include: { colors: { include: { variants: true } } } });
+        return tx.product.findMany({ where: seedWhere, include: { category: { select: { id: true, name: true } }, colors: { include: { variants: true } } } });
     });
 }

@@ -73,7 +73,7 @@ test("catalog/details switch images and sizes; multi-color guest cart merges and
   const userHeaders = { Authorization: `Bearer ${customer}` }, headers = { Authorization: `Bearer ${admin}` };
   await page.request.delete("/api/carrinho", { headers: userHeaders });
   const name = "Compra multicor " + randomUUID();
-  const response = await page.request.post("/api/produtos", { headers, data: { name, price: 99.9, public: "unissex", category: "camisetas", colors: [
+  const response = await page.request.post("/api/produtos", { headers, data: { name, price: 99.9, public: "unissex", categoryId: (await (await page.request.get("/api/categorias", { headers: headers })).json()).find((c: { name: string }) => c.name === "camisetas").id, colors: [
     { colorName: "Preto", colorValue: "#111111", images: ["/colors-black.svg", "/colors-black-back.svg"], variants: [{ value: "P", stock: 3 }, { value: "GG", stock: 0 }] },
     { colorName: "Branco", colorValue: "#FFFFFF", images: ["/colors-white.svg"], variants: [{ value: "P", stock: 0 }, { value: "GG", stock: 1 }] }
   ] } });
@@ -142,7 +142,7 @@ test("legacy guest cart gains the original color and all-color size filters keep
     { id: 99993, colorName: "Branco", colorValue: "#FFFFFF", images: [], variants: [{ id: 99995, value: "GG", stock: 1 }, { id: 99996, value: "36", stock: 0 }] }
   ] };
   await page.addInitScript(() => { if (!localStorage.getItem("brecho_guest_cart_v2")) localStorage.setItem("brecho_guest_cart_v2", JSON.stringify([{ product: { id: 99991 }, size: "P", quantity: 2 }])); });
-  await page.route("**/api/produtos", route => route.fulfill({ json: [product] }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [product] }));
   await page.goto("/");
   const sizes = page.locator("aside section").first();
   await expect(sizes.locator("button[aria-pressed]")).toHaveText(["P", "GG"]);

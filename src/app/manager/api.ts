@@ -1,3 +1,4 @@
+import { adaptCategories, type Category } from "../lib/categories.ts";
 import { adaptProduct } from "../lib/products.ts";
 import type { ManagedProduct, ProductInput } from "./products.ts";
 
@@ -9,21 +10,21 @@ function normalize(value: unknown): ManagedProduct {
   const product = adaptProduct(value);
   const raw = value as Record<string, unknown>;
   return { id: product.id, name: product.name, description: product.description, price: product.price, public: product.public,
-    category: product.category, badge: product.badge ?? null, inCarousel: product.inCarousel,
+    category: product.category, categoryId: product.categoryId!, isPublished: product.isPublished, badge: product.badge ?? null, inCarousel: product.inCarousel,
     colors: (raw.colors as Array<Record<string, unknown>>).map((color, i) => ({
       ...product.colors[i], imageUrl: typeof color.imageUrl === "string" ? color.imageUrl : "", images: color.images as string[]
     }))
   };
 }
 export function createManagerApi(token: string, baseUrl = "/api", fetcher: typeof fetch = fetch) {
-  async function request(path: string, method = "GET", body?: unknown, signal?: AbortSignal) {
+  async function request(path: string, method = "GET", body?: unknown, signal?: AbortSignal, resource = "/produtos") {
     const controller = new AbortController();
     const abort = () => controller.abort();
     if (signal?.aborted) abort();
     signal?.addEventListener("abort", abort, { once: true });
     const timeout = setTimeout(abort, 15000);
     try {
-      const response = await fetcher(baseUrl.replace(/\/$/, "") + "/produtos" + path, {
+      const response = await fetcher(baseUrl.replace(/\/$/, "") + resource + path, {
         method, headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal, cache: "no-store"
       });
@@ -44,6 +45,9 @@ export function createManagerApi(token: string, baseUrl = "/api", fetcher: typeo
     }
   }
   return {
+    async categories(signal?: AbortSignal): Promise<Category[]> { return adaptCategories(await request("", "GET", undefined, signal, "/categorias")); },
+    async saveCategory(name: string, id?: number): Promise<Category> { return request(id === undefined ? "" : `/${id}`, id === undefined ? "POST" : "PUT", { name }, undefined, "/categorias"); },
+    async deleteCategory(id: number) { await request(`/${id}`, "DELETE", undefined, undefined, "/categorias"); },
     async upload(file: File, signal?: AbortSignal): Promise<string> {
       if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) throw new ManagerApiError(400, "Selecione uma imagem JPEG, PNG ou WebP.");
       if (file.size > 5 * 1024 * 1024) throw new ManagerApiError(413, "A imagem deve ter no máximo 5 MiB.");
@@ -76,7 +80,7 @@ export function createManagerApi(token: string, baseUrl = "/api", fetcher: typeo
       }
     },
     async list(signal?: AbortSignal) {
-      const data = await request("", "GET", undefined, signal);
+      const data = await request("/admin", "GET", undefined, signal);
       if (!Array.isArray(data)) throw new ManagerApiError(0, "Resposta inválida do catálogo.");
       return data.map(normalize);
     },

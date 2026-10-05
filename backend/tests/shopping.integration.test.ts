@@ -1,3 +1,4 @@
+import { categoryRelation } from "./helpers/category.js";
 import "dotenv/config";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -26,7 +27,7 @@ test("account shopping persists, isolates users and enforces stock in PostgreSQL
         };
         let a = await login(emails[0]);
         const b = await login(emails[1]), admin = await login(emails[2]);
-        const product = await prisma.product.create({ data: { name: "Shopping fixture", price: 10, public: "unissex", category: "camisetas", colors: { create: { colorName: "Preto", colorValue: "#111111", images: [], variants: { create: [{ value: "P", stock: 3 }, { value: "M", stock: 2 }] } } } } });
+        const product = await prisma.product.create({ data: { name: "Shopping fixture", price: 10, public: "unissex", category: categoryRelation, colors: { create: { colorName: "Preto", colorValue: "#111111", images: [], variants: { create: [{ value: "P", stock: 3 }, { value: "M", stock: 2 }] } } } } });
         productId = product.id;
         const selection = { productId, size: "P", quantity: 1 };
         const req = (path: string, method = "GET", body?: unknown, token = a) => server.request(path, method, body, token);

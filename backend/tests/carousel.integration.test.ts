@@ -1,3 +1,4 @@
+import { fixtureCategory } from "./helpers/category.js";
 import "dotenv/config";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -18,7 +19,7 @@ test("carousel persists, authorizes ADMIN and enforces five even with concurrent
     await createUser({ name: "Carousel Customer", email: userEmail, password });
     const admin = (await (await server.request("/auth/login", "POST", { email, password })).json()).accessToken;
     const user = (await (await server.request("/auth/login", "POST", { email: userEmail, password })).json()).accessToken;
-    const input = { name: "Carousel integration", price: 10, public: "unissex", category: "camisetas", colors: [{ colorName: "Preto", colorValue: "#111111", images: ["/image.png"], variants: [{ value: "M", stock: 2 }] }] };
+    const input = { name: "Carousel integration", price: 10, public: "unissex", categoryId: (await fixtureCategory()).id, colors: [{ colorName: "Preto", colorValue: "#111111", images: ["/image.png"], variants: [{ value: "M", stock: 2 }] }] };
     for (let i = 0; i < 6; i++) {
       const response = await server.request("/produtos", "POST", input, admin);
       assert.equal(response.status, 201);

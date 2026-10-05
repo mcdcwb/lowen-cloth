@@ -1,7 +1,5 @@
-export const categories = ["camisetas", "jaquetas", "calcas", "bermudas", "vestidos", "calcados"];
 export const audiences = ["masculino", "feminino", "unissex", "infantil"];
 export const labels: Record<string, string> = {
-  camisetas: "Camisetas", jaquetas: "Jaquetas", calcas: "Calças", bermudas: "Bermudas", vestidos: "Vestidos", calcados: "Calçados",
   masculino: "Masculino", feminino: "Feminino", unissex: "Unissex", infantil: "Infantil"
 };
 export interface ColorInput {
@@ -9,16 +7,16 @@ export interface ColorInput {
   variants: { id?: number; value: string; stock: number }[];
 }
 export interface ProductInput {
-  name: string; description: string; price: number; public: string; category: string;
+  name: string; description: string; price: number; public: string; categoryId: number; isPublished: boolean;
   badge: string | null; colors: ColorInput[];
 }
-export interface ManagedProduct extends ProductInput { id: number; inCarousel: boolean }
+export interface ManagedProduct extends ProductInput { id: number; inCarousel: boolean; category: string }
 export interface ColorDraft {
   key: string; id?: number; colorName: string; colorValue: string; imageUrl: string; images: string;
   variants: { id?: number; value: string; stock: string }[];
 }
 export interface ProductDraft {
-  name: string; description: string; price: string; public: string; category: string; badge: string;
+  name: string; description: string; price: string; public: string; categoryId: string; isPublished: boolean; badge: string;
   colors: ColorDraft[];
 }
 export const totalStock = (product: Pick<ProductInput, "colors">) => product.colors.reduce((sum, color) => sum + color.variants.reduce((n, v) => n + v.stock, 0), 0);
@@ -59,14 +57,14 @@ export function colorDraft(color?: ColorInput): ColorDraft {
 }
 export function toDraft(product?: ManagedProduct): ProductDraft {
   return { name: product?.name ?? "", description: product?.description ?? "", price: product ? String(product.price) : "",
-    public: product?.public ?? "unissex", category: product?.category ?? "camisetas", badge: product?.badge ?? "",
+    public: product?.public ?? "unissex", categoryId: product?.categoryId ? String(product.categoryId) : "", isPublished: product?.isPublished ?? true, badge: product?.badge ?? "",
     colors: product?.colors.map(colorDraft) ?? [colorDraft()] };
 }
 export function validateDraft(draft: ProductDraft): string[] {
   const errors: string[] = [];
   if (draft.name.trim().length < 3) errors.push("O nome deve ter pelo menos 3 caracteres.");
   if (!draft.price.trim() || !Number.isFinite(Number(draft.price)) || Number(draft.price) <= 0) errors.push("Informe um preço maior que zero.");
-  if (!draft.public.trim() || !draft.category.trim()) errors.push("Informe o público e a categoria.");
+  if (!draft.public.trim() || !Number.isSafeInteger(Number(draft.categoryId)) || Number(draft.categoryId) <= 0) errors.push("Informe o público e a categoria.");
   if (!draft.colors.length) errors.push("Adicione pelo menos uma cor válida.");
   draft.colors.forEach((color, index) => {
     const prefix = `Cor ${index + 1} (${color.colorName || "sem nome"}): `;
@@ -85,7 +83,7 @@ export function validateDraft(draft: ProductDraft): string[] {
   return errors;
 }
 export function toInput(draft: ProductDraft): ProductInput {
-  return { name: draft.name.trim(), description: draft.description, price: Number(draft.price), public: draft.public, category: draft.category,
+  return { name: draft.name.trim(), description: draft.description, price: Number(draft.price), public: draft.public, categoryId: Number(draft.categoryId), isPublished: draft.isPublished,
     badge: draft.badge.trim() || null, colors: draft.colors.map(color => ({ id: color.id,
       colorName: color.colorName.trim(), colorValue: normalizeHex(color.colorValue)!, imageUrl: color.imageUrl.trim(),
       images: color.images.split(/\r?\n/).map(i => i.trim()).filter(Boolean),

@@ -52,7 +52,7 @@ test.beforeAll(async ({ request }) => {
   const response = await request.post("/api/auth/login", { data: accounts.admin });
   adminHeaders = { Authorization: `Bearer ${(await response.json()).accessToken}` };
   const created = await request.post("/api/produtos", { headers: adminHeaders, data: {
-    name: "Session Tabs Product", price: 31, public: "unissex", category: "camisetas",
+    name: "Session Tabs Product", price: 31, public: "unissex", categoryId: (await (await request.get("/api/categorias", { headers: adminHeaders })).json()).find((c: { name: string }) => c.name === "camisetas").id,
     colors: [{ colorName: "Preto", colorValue: "#111111", images: [], variants: [{ value: "M", stock: 10 }] }]
   } });
   expect(created.status()).toBe(201);

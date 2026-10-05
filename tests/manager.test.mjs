@@ -1,9 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createManagerApi } from "../src/app/manager/api.ts";
+
+test("category API uses authenticated dynamic CRUD and validates administrative list responses", async () => {
+  const calls = [], category = { id: 91, name: "Acessórios", productCount: 3 };
+  const api = createManagerApi("admin", "/api", async (url, init) => {
+    calls.push({ url, init }); return Response.json(init.method === "GET" ? [category] : category);
+  });
+  assert.deepEqual(await api.categories(), [category]);
+  await api.saveCategory("Acessórios"); await api.saveCategory("Novo nome", 91); await api.deleteCategory(91);
+  assert.deepEqual(calls.map(c => [c.url, c.init.method]), [["/api/categorias", "GET"], ["/api/categorias", "POST"], ["/api/categorias/91", "PUT"], ["/api/categorias/91", "DELETE"]]);
+  assert.ok(calls.every(c => c.init.headers.Authorization === "Bearer admin"));
+  for (const invalid of [{}, [{ id: 0, name: "Invalid" }], [category, category], [{ ...category, productCount: -1 }], [{ ...category, productCount: 1.5 }]]) {
+    const bad = createManagerApi("admin", "/api", async () => Response.json(invalid));
+    await assert.rejects(bad.categories(), /Resposta inválida/);
+  }
+});
 import { matchesStock, productStats, toDraft, toInput, validateDraft, normalizeHex, isLowStock, isProductOutOfStock, hasOutOfStockVariant, hasLowStockVariant, getOutOfStockVariants, getLowStockVariants, colorDraft } from "../src/app/manager/products.ts";
 const color = { colorName: "Preto", colorValue: "#111111", images: [], imageUrl: "", variants: [] };
-const draft = () => ({ ...toDraft(), name: "Produto teste", price: "19.90", colors: [colorDraft(color)] });
+const draft = () => ({ ...toDraft(), categoryId: "1", name: "Produto teste", price: "19.90", colors: [colorDraft(color)] });
 
 for (const threshold of [5, 10]) test(`variant low stock uses the configured boundary ${threshold}`, () => {
   const stocks = [0, 1, threshold, threshold + 1];
@@ -48,7 +63,7 @@ test("draft roundtrip retains color/variant IDs, separate images and a single pr
 });
 test("manager never saves placeholder images and sends nested JWT-protected CRUD", async () => {
   const input = toInput(draft()), calls = [];
-  const raw = { ...input, id: 5, colors: [{ ...color, id: 10, imageUrl: null }] };
+  const raw = { ...input, id: 5, category: { id: 1, name: "Camisetas" }, colors: [{ ...color, id: 10, imageUrl: null }] };
   const api = createManagerApi("verified-token", "/api/", async (url, init) => {
     calls.push({ url, init }); return new Response(JSON.stringify(init.method === "GET" ? [raw] : raw));
   });
@@ -89,7 +104,7 @@ test("variant availability counts combinations, not products, including empty co
 });
 
 test("carousel API sends an explicit selection and preserves backend limit errors", async () => {
-  const raw = { ...toInput(draft()), id: 5, inCarousel: true, colors: [{ ...color, id: 10 }] };
+  const raw = { ...toInput(draft()), id: 5, category: { id: 1, name: "Camisetas" }, inCarousel: true, colors: [{ ...color, id: 10 }] };
   const api = createManagerApi("verified-token", "/api", async (url, init) => {
     assert.equal(url, "/api/produtos/5/carrossel");
     assert.equal(init.method, "PATCH");

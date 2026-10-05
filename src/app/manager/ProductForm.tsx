@@ -1,16 +1,20 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Pipette, Plus, Trash2 } from "lucide-react";
 import { ProductImage } from "../components/ProductImage";
-import { audiences, categories, labels, normalizeHex, toDraft, toInput, validateDraft, type ManagedProduct, colorDraft, type ColorDraft, type ProductDraft, type ProductInput } from "./products";
+import { audiences, labels, normalizeHex, toDraft, toInput, validateDraft, type ManagedProduct, colorDraft, type ColorDraft, type ProductDraft, type ProductInput } from "./products";
+import type { Category } from "../lib/categories";
+import { CategoryEditor } from "./CategoryEditor";
 
 type EyeDropperConstructor = new () => { open: (options?: { signal: AbortSignal }) => Promise<{ sRGBHex: string }> };
 
 const inputClass = "w-full rounded-lg border border-border bg-card px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40";
-export function ProductForm({ product, busy, onSave, onCancel, onUpload }: {
+export function ProductForm({ product, categories, onSaveCategory, busy, onSave, onCancel, onUpload }: {
+  categories: Category[]; onSaveCategory: (name: string, id?: number) => Promise<Category | null>;
   onUpload: (file: File, signal: AbortSignal) => Promise<string>;
   product?: ManagedProduct; busy: boolean; onSave: (input: ProductInput) => Promise<void>; onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState(() => toDraft(product));
+  const [draft, setDraft] = useState(() => ({ ...toDraft(product), categoryId: product ? String(product.categoryId) : categories[0] ? String(categories[0].id) : "" }));
+  const [addingCategory, setAddingCategory] = useState(false);
   const [activeKey, setActiveKey] = useState(draft.colors[0].key);
   const active = draft.colors.find(c => c.key === activeKey) ?? draft.colors[0];
   const [removing, setRemoving] = useState<string | null>(null);
@@ -65,7 +69,7 @@ export function ProductForm({ product, busy, onSave, onCancel, onUpload }: {
   const previewImages = [...new Set([active.imageUrl, ...active.images.split(/\r?\n/)].map(value => value.trim()).filter(Boolean))];
   const hex = normalizeHex(active.colorValue);
   useEffect(() => () => selection.current?.abort(), []);
-  const change = (key: keyof Omit<ProductDraft, "colors">, value: string) => setDraft(previous => ({ ...previous, [key]: value }));
+  const change = (key: keyof Omit<ProductDraft, "colors" | "isPublished">, value: string) => setDraft(previous => ({ ...previous, [key]: value }));
   async function pickFromImage() {
     if (!supportsEyeDropper || busy || selection.current || !imageSource) return;
     const controller = new AbortController();
@@ -92,7 +96,7 @@ export function ProductForm({ product, busy, onSave, onCancel, onUpload }: {
   }
   const variant = (index: number, key: "value" | "stock", value: string) => changeColor("variants", active.variants.map((item, i) => i === index ? { ...item, [key]: value } : item));
   const colorField = (label: string, key: "colorName" | "imageUrl") => <label className="block space-y-2 text-sm font-medium">{label}<input className={inputClass} value={active[key]} onChange={event => changeColor(key, event.target.value)} /></label>;
-  const field = (label: string, key: keyof Omit<ProductDraft, "colors">, type = "text") => (
+  const field = (label: string, key: keyof Omit<ProductDraft, "colors" | "isPublished">, type = "text") => (
     <label className="block space-y-2 text-sm font-medium">{label}
       <input className={inputClass} value={draft[key]} onChange={event => change(key, event.target.value)} type={type}
         {...(key === "price" ? { min: "0.01", step: "any" } : {})} />
@@ -118,9 +122,19 @@ export function ProductForm({ product, busy, onSave, onCancel, onUpload }: {
             <label className="block space-y-2 text-sm font-medium">Público<select aria-label="Público" className={inputClass} value={draft.public} onChange={event => change("public", event.target.value)}>
               {[...new Set([...audiences, draft.public])].map(value => <option key={value} value={value}>{labels[value] ?? value}</option>)}
             </select></label>
-            <label className="block space-y-2 text-sm font-medium">Categoria<select aria-label="Categoria" className={inputClass} value={draft.category} onChange={event => change("category", event.target.value)}>
-              {[...new Set([...categories, draft.category])].map(value => <option key={value} value={value}>{labels[value] ?? value}</option>)}
-            </select></label>
+            <div className="space-y-2">
+              <label className="block space-y-2 text-sm font-medium">Categoria<select aria-label="Categoria" className={inputClass} value={draft.categoryId} onChange={event => change("categoryId", event.target.value)}>
+                <option value="">Selecione uma categoria</option>
+                {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select></label>
+              <button type="button" aria-expanded={addingCategory} onClick={() => setAddingCategory(!addingCategory)} className="min-h-11 text-sm text-primary">+ Nova categoria</button>
+              {addingCategory && <CategoryEditor busy={busy} onCancel={() => setAddingCategory(false)} onSave={async name => {
+                const category = await onSaveCategory(name);
+                if (category) change("categoryId", String(category.id));
+                return category;
+              }} />}
+            </div>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={draft.isPublished} onChange={event => setDraft(previous => ({ ...previous, isPublished: event.target.checked }))} />Publicado na loja</label>
             </div>
         </section>
         <section className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-5">

@@ -13,9 +13,10 @@ try {
     });
     await seedDevelopmentProducts();
     // Read persisted data after the transaction commits.
-    const products = await prisma.product.findMany({ where: seedWhere, include: { colors: { include: { variants: true } } } });
+    const products = await prisma.product.findMany({ where: seedWhere, include: { category: true, colors: { include: { variants: true } } } });
     const countBy = (field: "category" | "public") => products.reduce<Record<string, number>>((counts, product) => {
-        counts[product[field]] = (counts[product[field]] ?? 0) + 1;
+        const value = field === "category" ? product.category.name : product.public;
+        counts[value] = (counts[value] ?? 0) + 1;
         return counts;
     }, {});
     console.log(JSON.stringify({

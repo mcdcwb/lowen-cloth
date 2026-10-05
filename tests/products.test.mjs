@@ -26,6 +26,15 @@ test("one sort criterion toggles direction and changing criterion starts ascendi
 });
 import { adaptProduct as adaptNested, selectProductColor, catalogCategories, catalogSizes, stockFor, productImagePlaceholder } from "../src/app/lib/products.ts";
 
+test("dynamic category IDs support arbitrary names, publication, exhaustion and restock", () => {
+  const make = (id, name, stock, isPublished = true) => adaptNested({ id, name: "Dynamic product", price: 10, public: "unissex", categoryId: id,
+    category: { id, name }, isPublished, colors: [{ id, colorName: "Preto", colorValue: "#111111", images: [], variants: [{ id, value: "P", stock }] }] });
+  const stocked = make(77, "Acessórios", 2);
+  assert.deepEqual(catalogCategories([stocked, make(78, "Hidden", 5, false), make(79, "Empty", 0)]), [{ value: "77", label: "Acessórios" }]);
+  assert.deepEqual(catalogCategories([make(77, "Acessórios", 0)]), []);
+  assert.deepEqual(catalogCategories([make(77, "Nome novo", 1)]), [{ value: "77", label: "Nome novo" }]);
+});
+
 const adaptProduct = ({ images, imageUrl, colorName, colorValue, variants, ...product } = {}) => adaptNested({ ...product,
   colors: [{ id: 10, images, imageUrl, colorName: colorName ?? "Cor não informada", colorValue: colorValue ?? "#000000", variants: variants?.map((v, i) => ({ id: i + 1, ...v })) }] });
 

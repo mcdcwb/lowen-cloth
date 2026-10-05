@@ -1,3 +1,4 @@
+import { categoryRelation } from "./helpers/category.js";
 import "dotenv/config";
 import assert from "node:assert/strict";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -19,14 +20,14 @@ test("public reading and administrative authorization", async (t) => {
     try {
         const admin = await createAdmin({ email, password });
         const product = await prisma.product.create({
-            data: { name: "Authorization test", price: 12, public: "unissex", category: "camisetas", colors: { create: { colorName: "Preto", colorValue: "#111111", images: [], variants: { create: [{ value: "Unico", stock: 3 }] } } } }
+            data: { name: "Authorization test", price: 12, public: "unissex", category: categoryRelation, colors: { create: { colorName: "Preto", colorValue: "#111111", images: [], variants: { create: [{ value: "Unico", stock: 3 }] } } } }
         });
         productId = product.id;
         const login = await http.request("/auth/login", "POST", { email, password });
         assert.equal(login.status, 200);
         const { accessToken } = await login.json();
         const mutations = [
-            { method: "POST", path: "/produtos", body: { name: "Unauthorized", price: 5, public: "unissex", category: "camisetas", images: [], variants: [{ value: "Unico", stock: 1 }] } },
+            { method: "POST", path: "/produtos", body: { name: "Unauthorized", price: 5, public: "unissex", category: categoryRelation, images: [], variants: [{ value: "Unico", stock: 1 }] } },
             { method: "PUT", path: "/produtos/" + product.id, body: { variants: [{ value: "Unico", stock: 99 }] } },
             { method: "DELETE", path: "/produtos/" + product.id, body: undefined }
         ];

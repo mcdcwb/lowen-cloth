@@ -19,7 +19,9 @@ model Product {
   price       Decimal
 
   public      String
-  category    String
+  categoryId  Int
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  isPublished Boolean @default(true)
 
   badge       String?
   inCarousel  Boolean @default(false)
@@ -29,6 +31,16 @@ model Product {
 
   colors ProductColor[]
   favorites Favorite[]
+  @@index([categoryId])
+}
+
+model Category {
+  id             Int @id @default(autoincrement())
+  name           String
+  normalizedName String @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  products       Product[]
 }
 
 model ProductColor {

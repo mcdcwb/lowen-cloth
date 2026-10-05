@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { expectSuccess } from "./toast-helpers";
 
 const products = [0, 2, 5, 6, 10, 11].map((stock, index) => ({
-  id: index + 1, name: `Peça ${stock}`, price: 30, public: "unissex", category: "camisetas", inCarousel: index === 3,
+  id: index + 1, name: `Peça ${stock}`, price: 30, public: "unissex", category: "camisetas", categoryId: 1, inCarousel: index === 3,
   colors: [{ id: index + 1, colorName: "Preto", colorValue: "#111111", images: [], variants: [{ id: index + 1, value: "M", stock }] }]
 }));
 products.push({ ...products[0], id: 7, name: "Misto", colors: [{ ...products[0].colors[0], id: 7, variants: [{ id: 7, value: "P", stock: 0 }, { id: 8, value: "M", stock: 6 }, { id: 9, value: "G", stock: 11 }] }] });
@@ -12,7 +12,8 @@ async function setup(page: Page) {
   const account = { id: 1, name: "Administrador", email: "settings@example.test", role: "ADMIN" };
   await page.route("**/api/auth/me", route => route.fulfill({ json: { account } }));
   await page.route("**/api/auth/login", route => route.fulfill({ json: { account, accessToken: "settings-test", tokenType: "Bearer", expiresIn: 3600, expiresAt: Date.now() + 3600000 } }));
-  await page.route("**/api/produtos", route => route.fulfill({ json: products }));
+  await page.route("**/api/categorias", route => route.fulfill({ json: [{ id: 1, name: "camisetas" }] }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: products }));
   await page.route("**/api/settings", async route => {
     if (fail) return route.fulfill({ status: 500, json: { error: "Falha de configuração" } });
     if (route.request().method() === "PUT") {
@@ -70,7 +71,7 @@ for (const width of [1440, 390, 320]) test(`settings persist and update product 
   await page.reload();
   await expect(page.getByRole("article")).toHaveCount(5);
   await page.screenshot({ path: testInfo.outputPath(`settings-list-${width}.png`), fullPage: true });
-  await page.getByLabel("Categoria", { exact: true }).selectOption("camisetas");
+  await page.getByLabel("Categoria", { exact: true }).selectOption({ label: "camisetas" });
   await page.getByLabel("Público", { exact: true }).selectOption("unissex");
   await page.getByRole("checkbox", { name: /carrossel/i }).check();
   await page.getByRole("searchbox").fill("Peça 6");

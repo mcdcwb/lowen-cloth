@@ -1,3 +1,4 @@
+import { categoryRelation } from "./helpers/category.js";
 import "dotenv/config";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -27,7 +28,7 @@ test("customer profile, address and password use the authenticated identity", as
         const adminToken = (await (await login(emails[2])).json()).accessToken;
         const req = (path = "/conta", method = "GET", body?: unknown, accessToken = token) => server.request(path, method, body, accessToken);
         const address = { cep: "01001-000", street: "Praça da Sé", number: "10", complement: "", neighborhood: "Sé", city: "São Paulo", state: "sp" };
-        const product = await prisma.product.create({ data: { name: "Account fixture", price: 10, public: "unissex", category: "camisetas", colors: { create: { colorName: "Preto", colorValue: "#111111", images: [], variants: { create: { value: "P", stock: 2 } } } } } });
+        const product = await prisma.product.create({ data: { name: "Account fixture", price: 10, public: "unissex", category: categoryRelation, colors: { create: { colorName: "Preto", colorValue: "#111111", images: [], variants: { create: { value: "P", stock: 2 } } } } } });
         productId = product.id;
         assert.equal((await req(`/favoritos/${product.id}`, "PUT")).status, 200);
         assert.equal((await req("/carrinho", "POST", { productId, size: "P", quantity: 1 })).status, 200);

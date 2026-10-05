@@ -1,3 +1,4 @@
+import { categoryRelation } from "./helpers/category.js";
 import "dotenv/config";
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -8,7 +9,7 @@ test("repeating the development seed replaces only its own products and variants
     const unrelated = await prisma.product.create({
         data: {
             name: "Seed preservation test", price: 10, public: "unissex",
-            category: "camisetas", description: null,
+            category: categoryRelation, description: null,
             colors: { create: { colorName: "Preto", colorValue: "#111111", images: [], variants: { create: [{ value: "Livre", stock: 7 }] } } }
         },
         include: { colors: { include: { variants: true } } }

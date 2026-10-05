@@ -13,6 +13,8 @@ export interface Product {
   price: number;
   public: string;
   category: string;
+  categoryId?: number;
+  isPublished: boolean;
   imageUrl: string;
   images: string[];
   badge?: string;
@@ -32,10 +34,14 @@ export function selectProductColor(product: Product, colorId: number): Product {
 export function adaptProduct(value: unknown): Product {
   if (!value || typeof value !== "object") throw new Error("Produto inválido.");
   const p = value as Record<string, unknown>;
+  const category = typeof p.category === "object" && p.category !== null ? p.category as { id: number; name: string } : null;
+  const categoryName = category?.name ?? p.category;
+  const categoryId = category?.id ?? p.categoryId;
+  if (category && (!Number.isSafeInteger(categoryId) || Number(categoryId) <= 0 || typeof categoryName !== "string")) throw new Error("Categoria inválida.");
   const price = typeof p.price === "string" && p.price.trim() ? Number(p.price) : p.price;
   if (!Number.isSafeInteger(p.id) || Number(p.id) <= 0 || typeof p.name !== "string" ||
       typeof price !== "number" || !Number.isFinite(price) || price <= 0 ||
-      typeof p.public !== "string" || typeof p.category !== "string" || !Array.isArray(p.colors) || !p.colors.length)
+      typeof p.public !== "string" || typeof categoryName !== "string" || !Array.isArray(p.colors) || !p.colors.length)
     throw new Error("Produto inválido.");
   const colors: ProductColor[] = p.colors.map((raw: unknown) => {
     if (!raw || typeof raw !== "object") throw new Error("Cor inválida.");
@@ -55,7 +61,7 @@ export function adaptProduct(value: unknown): Product {
   });
   if (new Set(colors.map(c => c.id)).size !== colors.length) throw new Error("Cor duplicada.");
   const first = colors[0];
-  return { id: p.id as number, name: p.name, price, public: p.public, category: p.category, inCarousel: p.inCarousel === true,
+  return { id: p.id as number, name: p.name, price, public: p.public, category: categoryName, categoryId: categoryId as number | undefined, isPublished: p.isPublished !== false, inCarousel: p.inCarousel === true,
     description: typeof p.description === "string" ? p.description : "", badge: typeof p.badge === "string" ? p.badge : undefined,
     colors, colorId: first.id, color: { name: first.colorName, value: first.colorValue }, images: first.images, imageUrl: first.imageUrl,
     variants: first.variants, sizes: first.variants.map(v => v.value) };
@@ -77,9 +83,12 @@ export function catalogSizes(products: Product[]) {
 
 // Only the unfiltered public catalog belongs here. Availability follows the
 // same positive-stock rule across all colors as the catalog's size options.
-export function catalogCategories<T extends string>(products: Product[], options: readonly { value: T; label: string }[]) {
-  const available = new Set(products.filter(product => catalogSizes([product]).length > 0).map(product => product.category));
-  return options.filter(option => available.has(option.value));
+export const categoryValue = (product: Pick<Product, "category" | "categoryId">) => product.categoryId === undefined ? product.category : String(product.categoryId);
+export function catalogCategories(products: Product[], options?: readonly { value: string; label: string }[]) {
+  const available = products.filter(product => product.isPublished !== false && product.colors.some(color => color.variants.some(variant => variant.stock > 0)));
+  if (options) return options.filter(option => available.some(product => categoryValue(product) === option.value));
+  return [...new Map(available.map(product => [categoryValue(product), { value: categoryValue(product), label: product.category }])).values()]
+    .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
 }
 
 export async function fetchProducts(baseUrl = "/api", signal?: AbortSignal): Promise<Product[]> {
@@ -87,5 +96,5 @@ export async function fetchProducts(baseUrl = "/api", signal?: AbortSignal): Pro
   if (!response.ok) throw new Error("Não foi possível carregar os produtos. Tente novamente.");
   const body: unknown = await response.json();
   if (!Array.isArray(body)) throw new Error("Resposta inválida do catálogo.");
-  return body.map(adaptProduct);
+  return body.map(adaptProduct).filter(product => product.isPublished);
 }
