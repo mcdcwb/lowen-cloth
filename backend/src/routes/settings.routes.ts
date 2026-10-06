@@ -4,6 +4,7 @@ import { requireAdmin } from "../middlewares/require-admin.js";
 import { settingsSchema, storeDetailsSchema } from "../schemas/settings.schema.js";
 
 import { storeDetailsSelect, publicStoreDetails, storeDetailsData } from "../services/settings.service.js";
+import { dayLabels, type WeekDay } from "../lib/business-hours.js";
 
 export function createSettingsRoutes(database: Pick<typeof prisma, "storeSettings"> = prisma) {
   const router = Router();
@@ -30,10 +31,11 @@ export function createSettingsRoutes(database: Pick<typeof prisma, "storeSetting
   });
   router.put("/store", async (req, res) => {
     const parsed = storeDetailsSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message || "Verifique os dados da loja.", errors: parsed.error.issues });
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.map(issue => issue.path[0] === "businessHours"
+      ? `${dayLabels[issue.path[1] as WeekDay] ?? "Horário de funcionamento"}: ${issue.message}` : issue.message).join(" ") || "Verifique os dados da loja.", errors: parsed.error.issues });
     try {
       const row = await database.storeSettings.update({ where: { id: 1 },
-        data: storeDetailsData(parsed.data.address, parsed.data.whatsapp), select: storeDetailsSelect });
+        data: { ...storeDetailsData(parsed.data.address, parsed.data.whatsapp), ...(parsed.data.businessHours ? { businessHours: parsed.data.businessHours } : {}) }, select: storeDetailsSelect });
       res.json(publicStoreDetails(row));
     } catch (error) {
       console.error(error);

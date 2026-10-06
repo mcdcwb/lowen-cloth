@@ -6,9 +6,11 @@ export const settingsSchema = z.object({
 
 import { addressSchema } from "./account.schema.js";
 import { normalizeWhatsapp } from "../lib/store-contact.js";
+import { businessHoursSchema } from "./business-hours.schema.js";
 
 export const storeDetailsSchema = z.object({
-  address: addressSchema.nullable(),
+  businessHours: businessHoursSchema.optional(),
+  address: addressSchema.nullable().optional(),
   whatsapp: z.string().trim().max(40).transform((value, ctx) => {
     if (!value) return null;
     const normalized = normalizeWhatsapp(value);
@@ -17,5 +19,5 @@ export const storeDetailsSchema = z.object({
       return z.NEVER;
     }
     return normalized;
-  }).nullable()
-}).strict();
+  }).nullable().optional()
+}).strict().refine(row => row.address !== undefined || row.whatsapp !== undefined || row.businessHours !== undefined, "Informe os dados da loja a atualizar.");

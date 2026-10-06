@@ -17,6 +17,7 @@ model StoreSettings {
   storeNeighborhood String?
   storeCity         String?
   storeState        String?
+  businessHours     Json @default("{\"MONDAY\":{\"isOpen\":true,\"openingTime\":\"09:00\",\"closingTime\":\"18:00\"},\"TUESDAY\":{\"isOpen\":true,\"openingTime\":\"09:00\",\"closingTime\":\"18:00\"},\"WEDNESDAY\":{\"isOpen\":true,\"openingTime\":\"09:00\",\"closingTime\":\"18:00\"},\"THURSDAY\":{\"isOpen\":true,\"openingTime\":\"09:00\",\"closingTime\":\"18:00\"},\"FRIDAY\":{\"isOpen\":true,\"openingTime\":\"09:00\",\"closingTime\":\"18:00\"},\"SATURDAY\":{\"isOpen\":true,\"openingTime\":\"10:00\",\"closingTime\":\"15:00\"},\"SUNDAY\":{\"isOpen\":false,\"openingTime\":null,\"closingTime\":null}}")
   whatsapp          String?
 }
 

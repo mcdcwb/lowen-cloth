@@ -3,6 +3,8 @@ import { toast } from "sonner";
 import { notify } from "../lib/notifications";
 import { emptyAddress, formatCep, lookupCep, type Address } from "../lib/address";
 import { formatWhatsapp, storeDetailsRequest } from "../lib/store-settings";
+import { hoursDraft, hoursToInput } from "../lib/business-hours";
+import { BusinessHoursFields } from "./BusinessHoursFields";
 
 const fields: { key: keyof Address; label: string; max: number }[] = [
   { key: "cep", label: "CEP", max: 9 }, { key: "street", label: "Rua / Logradouro", max: 200 },
@@ -15,6 +17,8 @@ export function StoreDetailsForm({ token, onUnauthorized, onBusy, disabled = fal
 }) {
   const [address, setAddress] = useState<Address>({ ...emptyAddress });
   const [phone, setPhone] = useState("");
+  const [hours, setHours] = useState(() => hoursDraft(null));
+  const [saveError, setSaveError] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -36,6 +40,7 @@ export function StoreDetailsForm({ token, onUnauthorized, onBusy, disabled = fal
       if (!active || controller.signal.aborted) return;
       setAddress(details.address ? { ...details.address, cep: formatCep(details.address.cep) } : { ...emptyAddress });
       setPhone(details.whatsapp ? formatWhatsapp(details.whatsapp) : ""); setLoaded(true);
+      setHours(hoursDraft(details.businessHours));
     }).catch(reason => {
       if (!active) return;
       if (controller.signal.aborted) { setError("Não foi possível carregar os dados da loja. Tente novamente."); return; }
@@ -68,18 +73,21 @@ export function StoreDetailsForm({ token, onUnauthorized, onBusy, disabled = fal
     <form onSubmit={async event => {
       event.preventDefault(); if (pending.current || disabled) return;
       pending.current = true; setSaving(true); setCepChanged(false); callbacks.current.onBusy(true);
+      setSaveError("");
       const controller = new AbortController(); requestController.current = controller;
       const timer = setTimeout(() => controller.abort(), 15000);
       try {
-        const details = await storeDetailsRequest(token, { address: hasAddress ? address : null, whatsapp: phone.trim() || null }, controller.signal);
+        const details = await storeDetailsRequest(token, { address: hasAddress ? address : null, whatsapp: phone.trim() || null, businessHours: hoursToInput(hours) }, controller.signal);
         if (!alive.current) return;
         setAddress(details.address ? { ...details.address, cep: formatCep(details.address.cep) } : { ...emptyAddress });
         setPhone(details.whatsapp ? formatWhatsapp(details.whatsapp) : "");
+        setHours(previous => hoursDraft(details.businessHours, previous));
         notify.positive("Dados da loja salvos com sucesso!"); window.dispatchEvent(new Event("store-details-updated"));
       } catch (reason) {
         if (!alive.current) return;
         const message = reason instanceof Error && reason.name !== "AbortError" ? reason.message : "Não foi possível salvar. Tente novamente.";
         toast.error(message);
+        setSaveError(message);
         if (message.includes("não está autorizada")) callbacks.current.onUnauthorized(message);
       } finally { clearTimeout(timer); pending.current = false; requestController.current = null; callbacks.current.onBusy(false); if (alive.current) setSaving(false); }
     }}>
@@ -102,6 +110,8 @@ export function StoreDetailsForm({ token, onUnauthorized, onBusy, disabled = fal
           <input type="tel" value={phone} maxLength={40} aria-describedby="store-phone-help" onChange={event => setPhone(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-border bg-background px-3 focus-visible:outline-2 focus-visible:outline-primary" />
         </label>
         <p id="store-phone-help" className="text-sm text-muted-foreground">Informe DDD e número, com ou sem +55. Deixe vazio para ocultar o contato por WhatsApp.</p>
+        <BusinessHoursFields value={hours} onChange={(day, update) => setHours(previous => ({ ...previous, [day]: { ...previous[day], ...update } }))} />
+        {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
         <button disabled={saving} aria-busy={saving} className="min-h-11 rounded-lg bg-primary text-primary-foreground px-5 py-2.5 font-medium disabled:opacity-50">{saving ? "Salvando dados da loja..." : "Salvar dados da loja"}</button>
       </fieldset>
     </form>}

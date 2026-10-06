@@ -1,4 +1,5 @@
 import { useStoreDetails } from "./hooks/useStoreDetails";
+import { businessHoursLines } from "./lib/business-hours";
 import { formatWhatsapp, whatsappUrl } from "./lib/store-settings";
 import { formatCep } from "./lib/address";
 import { CheckoutPage } from "./components/CheckoutPage";
@@ -753,9 +754,7 @@ export default function App() {
             <div className="md:text-right">
               <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Horário loja física</h4>
               <ul className="space-y-2 text-sm text-foreground/80">
-                <li>Segunda a Sexta: 9h – 18h</li>
-                <li>Sábados: 10h – 15h</li>
-                <li>Domingos e feriados: Fechado</li>
+                {store.businessHours ? businessHoursLines(store.businessHours).map(line => <li key={line}>{line}</li>) : <li>{store.loading ? "Carregando horários..." : "Horários de funcionamento indisponíveis."}</li>}
               </ul>
             </div>
           </div>

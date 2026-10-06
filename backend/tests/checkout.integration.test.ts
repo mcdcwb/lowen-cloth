@@ -28,7 +28,7 @@ test("checkout persists orders without changing cart/stock and confirms atomical
   const pickupAddress = { ...address, street: "Rua da Loja", number: "456", complement: "" };
   try {
     await db.query(`CREATE SCHEMA "${schema}"`); await db.query(`SET search_path TO "${schema}"`);
-    for (const migration of ["20261001000000_store_settings", "20261005000000_store_business_details"])
+    for (const migration of ["20261001000000_store_settings", "20261005000000_store_business_details", "20261006010000_store_business_hours"])
       await db.query(await readFile(`prisma/migrations/${migration}/migration.sql`, "utf8"));
     const user = await createUser({ name: "João da Silva", email, password });
     await createAdmin({ email: adminEmail, password });
@@ -142,13 +142,13 @@ test("checkout persists orders without changing cart/stock and confirms atomical
         await prisma.order.deleteMany({ where: { userId: { in: peers.map(p => p.id) } } });
         await prisma.user.deleteMany({ where: { id: { in: peers.map(p => p.id) } } });
       }
-      const count = await prisma.order.count();
+      const count = await prisma.order.count({ where: { userId: user.id } });
       const counter = await prisma.orderCounter.findUniqueOrThrow({ where: { id: 1 } });
       try {
         await prisma.orderCounter.update({ where: { id: 1 }, data: { value: 9999 } });
         const limit = await req("/checkout/whatsapp", "POST", await body("PICKUP"));
         assert.equal(limit.status, 409); assert.match((await limit.json()).error, /Limite de numeração/);
-        assert.equal(await prisma.order.count(), count);
+        assert.equal(await prisma.order.count({ where: { userId: user.id } }), count);
       } finally { await prisma.orderCounter.update({ where: { id: 1 }, data: { value: counter.value } }); }
       const fresh = await (await req("/checkout/whatsapp", "POST", await body("PICKUP"))).json();
       const samePending = await Promise.all([1, 2].map(() => server.request(`/orders/${fresh.order.id}/confirm`, "POST", {}, admin)));

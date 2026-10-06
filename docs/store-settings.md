@@ -1,6 +1,7 @@
 # Dados comerciais da loja
 
-`StoreSettings` (registro único, ID 1) é a fonte do endereço comercial e WhatsApp.
+`StoreSettings` (registro único, ID 1) é a fonte do endereço comercial, WhatsApp e
+[dias/horários de funcionamento](business-hours.md).
 O endereço do cliente continua exclusivamente em `UserAddress`.
 
 ## Armazenamento
@@ -18,11 +19,11 @@ derivam dessa mesma regra, sem duplicar `55`.
 
 ## API
 
-- `GET /settings/public`: público, retorna apenas `{ address, whatsapp }`.
+- `GET /settings/public`: público, retorna apenas `{ address, whatsapp, businessHours }`.
 - Outros métodos em `/settings/public`: 405, sem escrita.
 - `GET /settings/store` e `PUT /settings/store`: somente ADMIN.
-- PUT recebe `{ address: objeto | null, whatsapp: string | null }` e rejeita
-  campos desconhecidos. Não altera `lowStockThreshold`.
+- PUT recebe address, whatsapp e/ou businessHours e rejeita campos desconhecidos.
+  Campos omitidos são preservados. Não altera `lowStockThreshold`.
 - `GET /settings` e `PUT /settings`: contrato existente de estoque preservado.
 
 O frontend usa a base `VITE_API_URL`, ou `/api` por padrão.
@@ -37,8 +38,9 @@ consultas não sobrescrevem campos corrigidos durante a busca.
 `useStoreDetails` fornece os dados públicos para consumidores presentes e futuros.
 Atualiza ao recuperar foco, a cada 30 segundos com página visível e após salvar.
 O footer mostra endereço neutro quando ausente; o telefone e botão WhatsApp ficam
-ocultos quando não configurados. O e-mail e horários existentes permanecem fora
-do escopo desta configuração.
+ocultos quando não configurados. Horários são configurados no mesmo formulário e
+exibidos no footer por agrupamento de dias consecutivos idênticos. O e-mail permanece
+fora do escopo desta configuração.
 
 ## Migration e verificação
 
