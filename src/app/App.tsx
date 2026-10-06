@@ -1,6 +1,8 @@
 import { useStoreDetails } from "./hooks/useStoreDetails";
 import { formatWhatsapp, whatsappUrl } from "./lib/store-settings";
 import { formatCep } from "./lib/address";
+import { CheckoutPage } from "./components/CheckoutPage";
+import { clearCheckoutDraft } from "./lib/checkout";
 import type { GetAddState } from "./hooks/useAddFeedback";
 import { sortCatalog, toggleCatalogSort, type CatalogSort } from "./lib/catalog-sort";
 import { Fragment, useState, useEffect, useRef, useMemo } from "react";
@@ -62,6 +64,7 @@ export default function App() {
   const navigate = useNavigate();
   const accountPath = location.pathname.replace(/\/$/, "");
   const isAccountPage = accountPath === "/minha-conta" || accountPath === "/favoritos";
+  const isCheckoutPage = accountPath === "/checkout";
   const [activePublic, setActivePublic] = useState<Public | "todos">("todos");
   const [selectedCategory, setActiveCategory] = useState<Category | null>(null);
   const activeCategory = availableCategories.some(option => option.value === selectedCategory) ? selectedCategory : null;
@@ -74,6 +77,8 @@ export default function App() {
   const [cartOpen, setCartOpen] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [checkoutIntent, setCheckoutIntent] = useState(false);
+  const checkoutOwner = useRef<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [catDropdownOpen, setCatDropdownOpen] = useState(false);
   const [featuredIndex, setFeaturedIndex] = useState(0);
@@ -87,8 +92,31 @@ export default function App() {
     if (accessToken) setAuthOpen(false);
   }, [accessToken]);
 
-  const shopping = useShopping(products, accessToken, validating, user);
+  const shopping = useShopping(products, accessToken, validating, user,
+    isCheckoutPage || (accountPath === "/minha-conta" && new URLSearchParams(location.search).get("returnTo") === "/checkout"));
   const { items: cartItems, add: addToCart, remove: removeFromCart, clear: clearCart, changeQty } = shopping;
+  useEffect(() => {
+    if (validating) return;
+    const owner = user ? `${user.role}:${user.id}` : null;
+    if (!owner || (checkoutOwner.current && owner !== checkoutOwner.current)) clearCheckoutDraft();
+    checkoutOwner.current = owner;
+    if (user?.role === "ADMIN") setCheckoutIntent(false);
+  }, [user?.id, user?.role, validating]);
+  useEffect(() => {
+    if (checkoutIntent && user?.role === "USER" && !validating && shopping.ready && !shopping.busy && !shopping.error) {
+      setCheckoutIntent(false); setCartOpen(false); setDetailProduct(null); navigate("/checkout");
+    }
+  }, [checkoutIntent, user?.role, validating, shopping.ready, shopping.busy, shopping.error, navigate]);
+  function startCheckout() {
+    if (validating || shopping.busy) return;
+    if (user?.role === "ADMIN") { setCartOpen(false); navigate("/checkout"); return; }
+    setCheckoutIntent(true); setCartOpen(false);
+    if (!user) { setAuthMode("login"); setAuthOpen(true); }
+  }
+  function closeAuth() {
+    setAuthOpen(false); setCheckoutIntent(false);
+    if (isCheckoutPage && !user) navigate("/");
+  }
   const shoppingStatus = (shopping.busy || shopping.error || shopping.notice) && (
     <div className="fixed bottom-4 left-4 right-4 z-[100] mx-auto max-w-xl rounded-lg border bg-card p-3 shadow-lg" role={shopping.error ? "alert" : "status"}>
       {shopping.busy ? "Sincronizando favoritos e carrinho..." : shopping.error || shopping.notice}
@@ -150,12 +178,13 @@ export default function App() {
   }
 
   function handleLogout() {
+    clearCheckoutDraft(); setCheckoutIntent(false);
     logout();
-    if (location.pathname.startsWith("/manager")) navigate("/");
+    if (location.pathname.startsWith("/manager") || isCheckoutPage) navigate("/");
   }
 
   function selectPublic(publicValue: Public | "todos") {
-    if (isAccountPage) navigate("/");
+    if (isAccountPage || isCheckoutPage) navigate("/");
     setActivePublic(publicValue);
     setCatDropdownOpen(false);
     setMobileMenuOpen(false);
@@ -163,7 +192,7 @@ export default function App() {
   }
 
   function selectCategory(category: Category | null) {
-    if (isAccountPage) navigate("/");
+    if (isAccountPage || isCheckoutPage) navigate("/");
     setActiveCategory(category);
     setCatDropdownOpen(false);
     setMobileMenuOpen(false);
@@ -239,7 +268,7 @@ export default function App() {
     </>;
   }
 
-  if (detailProduct && !isAccountPage) {
+  if (detailProduct && !isAccountPage && !isCheckoutPage) {
     return (
       <>
         {shoppingStatus}
@@ -271,6 +300,7 @@ export default function App() {
             onRemove={removeFromCart}
             onChangeQty={changeQty}
             onClearCart={clearCart}
+            onCheckout={startCheckout}
             onOpenAuth={() => { setCartOpen(false); setAuthOpen(true); }}
           />
         )}
@@ -278,7 +308,7 @@ export default function App() {
         {authOpen && (
           <AuthModal
             mode={authMode}
-            onClose={() => setAuthOpen(false)}
+            onClose={closeAuth}
             onLogin={handleLogin}
             onRegister={handleRegister}
             onSwitchMode={() => setAuthMode(mode => mode === "login" ? "register" : "login")}
@@ -365,7 +395,7 @@ export default function App() {
 
             {/* Right actions */}
             <div className="flex items-center gap-2">
-              {user ? <AccountMenu name={user.name} role={user.role} onLogout={handleLogout} /> : (<button
+              {user ? <AccountMenu name={user.name} role={user.role} onLogout={handleLogout} compactMobile={isCheckoutPage} /> : (<button
                 onClick={() => { setAuthOpen(true); }}
                 className="hidden md:flex items-center gap-1.5 text-[15px] font-medium px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:text-primary transition-all"
               >
@@ -403,7 +433,7 @@ export default function App() {
           {mobileMenuOpen && (
             <div className="md:hidden border-t border-border py-4 space-y-1">
               <button
-                onClick={() => { clearFilters(); setMobileMenuOpen(false); if (isAccountPage) navigate("/"); }}
+                onClick={() => { clearFilters(); setMobileMenuOpen(false); if (isAccountPage || isCheckoutPage) navigate("/"); }}
                 className="w-full text-left px-3 py-2.5 text-[15px] font-medium rounded-lg hover:bg-muted"
               >
                 <a href="#home">Todas as Peças</a>
@@ -442,7 +472,8 @@ export default function App() {
         </div>
       </header>
 
-      {isAccountPage ? <AccountPage accessToken={accessToken} onUpdated={updateAccount} user={user} favorites={accountPath === "/favoritos"} onLogin={() => setAuthOpen(true)}>
+      {isCheckoutPage ? <CheckoutPage user={user} token={accessToken} validating={validating} shopping={shopping} store={store} cartOpen={cartOpen}
+        onOpenCart={() => { setCartOpen(true); shopping.retry(); }} onLogin={startCheckout} onUnauthorized={message => invalidate(accessToken, message)} /> : isAccountPage ? <AccountPage accessToken={accessToken} onUpdated={updateAccount} user={user} favorites={accountPath === "/favoritos"} onLogin={() => setAuthOpen(true)}>
         {shopping.ready && !shopping.favorites.length && <p className="mt-4">Nenhum favorito salvo.</p>}
         <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
           {shopping.favorites.map(product => <ProductCard key={product.id} product={product} liked onFavorite={() => toggleFavorite(product.id)} favoriteBusy={shopping.busy} availableStock={availableStock} onAddToCart={addToCart} addState={shopping.addState} />)}
@@ -745,6 +776,7 @@ export default function App() {
           onRemove={removeFromCart}
           onChangeQty={changeQty}
           onClearCart={clearCart}
+          onCheckout={startCheckout}
           onOpenAuth={() => { setCartOpen(false); setAuthOpen(true); }}
         />
       )}
@@ -765,7 +797,7 @@ export default function App() {
       {authOpen && (
         <AuthModal
           mode={authMode}
-          onClose={() => setAuthOpen(false)}
+          onClose={closeAuth}
           onLogin={handleLogin}
           onRegister={handleRegister}
           onSwitchMode={() => setAuthMode(mode => mode === "login" ? "register" : "login")}
@@ -1172,6 +1204,7 @@ function CartDrawer({
   onChangeQty,
   onClearCart,
   onOpenAuth,
+  onCheckout,
 }: {
   busy: boolean;
   items: CartItem[];
@@ -1182,6 +1215,7 @@ function CartDrawer({
   onChangeQty: (id: number, size: Size, delta: number, colorId: number) => void;
   onOpenAuth: () => void;
   onClearCart: () => void;
+  onCheckout: () => void;
 }) {
   const drawerRef = useRef<HTMLDivElement>(null);
   // Trap focus, close on ESC
@@ -1272,11 +1306,13 @@ function CartDrawer({
                     Cor: <span className="font-semibold text-foreground">{item.product.color.name}</span>{" · "}Tamanho: <span className="font-semibold text-foreground">{item.size}</span>
                   </p>
                   <p className="text-sm font-bold text-primary">{formatPrice(item.product.price)}</p>
+                  {item.quantity > stockFor(item.product, item.size) && <p className="text-xs text-destructive">Disponíveis: {stockFor(item.product, item.size)}. Revise a quantidade ou remova este item.</p>}
                   {/* Qty controls */}
                   <div className="flex items-center gap-2 mt-auto">
                     <button
                       disabled={busy}
                       aria-label="Diminuir quantidade"
+                      title={item.quantity > stockFor(item.product, item.size) ? `Ajustar para ${stockFor(item.product, item.size)} unidades disponíveis` : undefined}
                       onClick={() => onChangeQty(item.product.id, item.size, -1, item.colorId)}
                       className="w-7 h-7 rounded-lg border border-border flex items-center justify-center hover:bg-muted transition-colors"
                     >
@@ -1319,7 +1355,7 @@ function CartDrawer({
               <span className="text-sm text-muted-foreground">Subtotal</span>
               <span className="font-bold text-lg text-foreground">{formatPrice(totalPrice)}</span>
             </div>
-            <button className="w-full py-3 rounded-none bg-primary text-primary-foreground font-semibold hover:opacity-90 active:scale-[0.98] transition-all">
+            <button disabled={busy} onClick={onCheckout} className="w-full py-3 rounded-none bg-primary text-primary-foreground font-semibold hover:opacity-90 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               Finalizar compra
             </button>
             {!user && (

@@ -19,7 +19,7 @@ function readGuest(storageKey = key): CartItem[] {
 function saveGuest(items: CartItem[]) {
   try { localStorage.setItem(key, JSON.stringify(items)); } catch { /* Guest cart still works in memory. */ }
 }
-export function useShopping(products: Product[], accessToken: string | undefined, validating: boolean, user: Account | null) {
+export function useShopping(products: Product[], accessToken: string | undefined, validating: boolean, user: Account | null, reviewing = false) {
   const token = user?.role === "USER" ? accessToken : undefined;
   const owner = user ? `${user.role}:${user.id}` : "guest";
   const additions = useAddFeedback(`${owner}:${accessToken ?? ""}`);
@@ -60,6 +60,7 @@ export function useShopping(products: Product[], accessToken: string | undefined
   }, []);
   async function request(path: string, method = "GET", body?: unknown) {
     if (!isCurrent()) throw new Error("A sessão mudou. Aguarde a atualização da conta.");
+    if (reviewing && method !== "GET" && path.startsWith("/carrinho") && path !== "/carrinho/sincronizar") path += "?conferencia=1";
     const response = await fetch((import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "") + path, {
       method, cache: "no-store", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: body === undefined ? undefined : JSON.stringify(body)
@@ -72,7 +73,7 @@ export function useShopping(products: Product[], accessToken: string | undefined
   useEffect(() => {
     const current = ++generation.current;
     locked.current = false;
-    setAccount(null);
+    setAccount(previous => reviewing && previous?.token === token ? previous : null);
     setError("");
     setNotice("");
     setBusy(false);
@@ -107,7 +108,7 @@ export function useShopping(products: Product[], accessToken: string | undefined
           }
           if (current !== generation.current || !isCurrent()) return null;
           // Ordinary account reads must not hold the cross-tab guest lock.
-          return merged ?? request("/carrinho");
+          return merged ?? request(reviewing ? "/carrinho/conferencia" : "/carrinho");
         };
         const [cart, favorites] = await Promise.all([
           loadAccountCart(),
@@ -123,7 +124,7 @@ export function useShopping(products: Product[], accessToken: string | undefined
       }
     })();
     return () => { generation.current++; };
-  }, [accessToken, owner, validating, revision]);
+  }, [accessToken, owner, validating, revision, reviewing]);
 
   const localItems = user?.role === "ADMIN" ? adminCart?.owner === owner && adminCart.token === accessToken ? adminCart.items : [] : readGuest();
   const guestItems = localItems.reduce<CartItem[]>((items, item) => {
@@ -219,7 +220,7 @@ export function useShopping(products: Product[], accessToken: string | undefined
     if (!ready || locked.current) return;
     const item = items.find(i => i.product.id === productId && i.colorId === colorId && i.size === size);
     if (!item) return;
-    const quantity = item.quantity + delta;
+    const quantity = reviewing && delta < 0 ? Math.min(item.quantity + delta, stockFor(item.product, size)) : item.quantity + delta;
     if (quantity <= 0) return remove(productId, size, colorId);
     const reportQuantity = (confirmed: number) => {
       if (delta > 0 ? confirmed <= item.quantity : confirmed >= item.quantity) return;

@@ -15,7 +15,10 @@ export function formatWhatsapp(value: string): string {
   const local = canonical.slice(2);
   return `(${local.slice(0, 2)}) ${local.slice(2, -4)}-${local.slice(-4)}`;
 }
-export function whatsappUrl(value: string | null): string | null {
+export function whatsappUrl(value: string | null, message?: string): string | null {
   const canonical = value ? normalizeWhatsapp(value) : null;
-  return canonical ? `https://wa.me/${canonical}` : null;
+  if (!canonical) return null;
+  const url = new URL(`https://wa.me/${canonical}`);
+  if (message !== undefined) url.searchParams.set("text", message);
+  return url.toString();
 }

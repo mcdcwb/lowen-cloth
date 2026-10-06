@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { User } from "lucide-react";
 
-export function AccountMenu({ name, role, onLogout }: { name: string; role: "USER" | "ADMIN"; onLogout: () => void }) {
+export function AccountMenu({ name, role, onLogout, compactMobile = false }: { name: string; role: "USER" | "ADMIN"; onLogout: () => void; compactMobile?: boolean }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -30,7 +30,7 @@ export function AccountMenu({ name, role, onLogout }: { name: string; role: "USE
         onClick={event => setOpen(value => event.detail > 0 && mouseHovering.current ? true : !value)}
         className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-muted text-muted-foreground hover:text-primary focus-visible:outline-2 focus-visible:outline-primary">
         <User aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
-        <span className="text-[15px] font-medium max-w-24 sm:max-w-40 truncate">{name.trim().split(/\s+/)[0]}</span>
+        <span className={`${compactMobile ? "sr-only sm:not-sr-only " : ""}text-[15px] font-medium max-w-24 sm:max-w-40 truncate`}>{name.trim().split(/\s+/)[0]}</span>
       </button>
       {open && (
         <div id={id} className="absolute top-full right-0 pt-2 w-44 z-50">

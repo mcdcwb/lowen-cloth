@@ -17,8 +17,15 @@ export async function favorite(userId: number, productId: number, remove = false
     return favorites(userId);
 }
 type Selection = { productId: number; colorId?: number; size: string; quantity: number };
+// Checkout reads must preserve requested quantities, including unavailable selections.
+export async function cartForReview(userId: number, database: Prisma.TransactionClient = prisma) {
+    const rows = await database.cartItem.findMany({ where: { userId },
+        include: { variant: { include: { color: { include: { product: { include: productInclude } } } } } }, orderBy: { variantId: "asc" } });
+    return { items: rows.map(row => ({ product: row.variant.color.product, colorId: row.variant.colorId,
+        variantId: row.variantId, size: row.variant.value, quantity: row.quantity })), notices: [] as string[] };
+}
 // Serializable transactions also protect against concurrent stock edits and cart writes.
-export async function cart(userId: number, action: "read" | "add" | "set" | "remove" | "clear" | "merge", selections: Selection[] = []) {
+export async function cart(userId: number, action: "read" | "add" | "set" | "remove" | "clear" | "merge", selections: Selection[] = [], reconcile = true) {
     for (let attempt = 0; ; attempt++) {
         try {
             return await prisma.$transaction(async tx => {
@@ -47,7 +54,7 @@ export async function cart(userId: number, action: "read" | "add" | "set" | "rem
                 const rows = await tx.cartItem.findMany({ where: { userId }, include: { variant: { include: { color: { include: { product: { include: productInclude } } } } } }, orderBy: { variantId: "asc" } });
                 const items = [];
                 for (const row of rows) {
-                    const quantity = Math.min(row.quantity, row.variant.stock);
+                    const quantity = reconcile ? Math.min(row.quantity, row.variant.stock) : row.quantity;
                     if (quantity !== row.quantity) {
                         notices.push(`${row.variant.color.product.name}, tamanho ${row.variant.value}: quantidade ajustada ao estoque (${quantity}).`);
                         if (quantity) await tx.cartItem.update({ where: { userId_variantId: { userId, variantId: row.variantId } }, data: { quantity } });

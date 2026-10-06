@@ -11,6 +11,7 @@ router.get("/favoritos", shopping("favorites"));
 router.put("/favoritos/:productId", shopping("favorite"));
 router.delete("/favoritos/:productId", shopping("unfavorite"));
 router.get("/carrinho", shopping("read"));
+router.get("/carrinho/conferencia", shopping("review"));
 router.post("/carrinho", shopping("add"));
 router.patch("/carrinho", shopping("set"));
 router.delete("/carrinho/item", shopping("remove"));

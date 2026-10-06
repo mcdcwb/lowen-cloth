@@ -7,6 +7,7 @@ import productRoutes from "./routes/product.routes.js";
 import categoryRoutes from "./routes/category.routes.js";
 import shoppingRoutes from "./routes/shopping.routes.js";
 import accountRoutes from "./routes/account.routes.js";
+import { createCheckoutRoutes } from "./routes/checkout.routes.js";
 import { createUploadRoutes } from "./routes/upload.routes.js";
 import type { ProductImageUploader } from "./services/upload.service.js";
 import { createSettingsRoutes } from "./routes/settings.routes.js";
@@ -22,6 +23,7 @@ export function createApp(options: { uploadProductImage?: ProductImageUploader; 
     app.use("/uploads", createUploadRoutes(options.uploadProductImage));
     app.use("/auth", createAuthRoutes());
     app.use("/conta", accountRoutes);
+    app.use("/checkout", createCheckoutRoutes(options.settingsDatabase));
     app.use(shoppingRoutes);
 
     app.get("/", async (req, res) => {

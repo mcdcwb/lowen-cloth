@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode, type FormEvent } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 import type { Account } from "../lib/auth";
 import { accountRequest, emptyAddress, formatCep, lookupCep, type Address, type Profile } from "../lib/account";
 
@@ -7,9 +7,12 @@ export function AccountPage({ user, favorites, onLogin, children, accessToken, o
   children?: ReactNode; user: Account | null; favorites: boolean; onLogin: () => void;
   accessToken?: string; onUpdated: (token: string, account: Account) => void;
 }) {
+  const location = useLocation();
+  const checkoutReturn = !favorites && new URLSearchParams(location.search).get("returnTo") === "/checkout";
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-16 min-h-[60vh]">
       <Link to="/" className="text-sm text-muted-foreground hover:text-primary">← Voltar para a loja</Link>
+      {checkoutReturn && user?.role === "USER" && <Link to="/checkout" className="ml-4 inline-flex min-h-11 items-center text-sm text-primary underline focus-visible:outline-2 focus-visible:outline-primary">Voltar ao checkout</Link>}
       <section className="mt-8 p-6 sm:p-8 bg-card border border-border rounded-xl">
         {user?.role === "USER" ? (
           <>
@@ -18,7 +21,7 @@ export function AccountPage({ user, favorites, onLogin, children, accessToken, o
               ? "Seus favoritos salvos na conta."
               : `Olá, ${user.name.trim().split(/\s+/)[0]}! Este é o espaço da sua conta.`}</p>
             {favorites && children}
-            {!favorites && accessToken && <AccountForm key={accessToken} user={user} token={accessToken} onUpdated={onUpdated} />}
+            {!favorites && accessToken && <AccountForm key={accessToken} user={user} token={accessToken} onUpdated={onUpdated} checkoutReturn={checkoutReturn} />}
           </>
         ) : (
           <>
@@ -44,7 +47,7 @@ const addressFields: { key: keyof Address; label: string; max: number; autoCompl
   { key: "state", label: "Estado / UF", max: 2, autoComplete: "address-level1" }
 ];
 
-function AccountForm({ user, token, onUpdated }: { user: Account; token: string; onUpdated: (token: string, account: Account) => void }) {
+function AccountForm({ user, token, onUpdated, checkoutReturn }: { user: Account; token: string; onUpdated: (token: string, account: Account) => void; checkoutReturn: boolean }) {
   const [email, setEmail] = useState(user.email);
   const [address, setAddress] = useState<Address>({ ...emptyAddress });
   const [loaded, setLoaded] = useState(false);
@@ -162,6 +165,7 @@ function AccountForm({ user, token, onUpdated }: { user: Account; token: string;
           </section>
           <button className={buttonClass} type="submit">{saving ? "Salvando..." : "Salvar alterações"}</button>
           {success && <p role="status" className="text-sm text-primary">{success}</p>}
+          {success && checkoutReturn && <Link to="/checkout" className="inline-flex min-h-11 items-center rounded-lg bg-primary text-primary-foreground px-5 py-2 focus-visible:outline-2 focus-visible:outline-primary">Voltar ao checkout com alterações salvas</Link>}
         </fieldset>
       </form>
       <section aria-labelledby="security-title" className="space-y-4 border-t border-border pt-6">
