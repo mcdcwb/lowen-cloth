@@ -1,3 +1,6 @@
+import { useStoreDetails } from "./hooks/useStoreDetails";
+import { formatWhatsapp, whatsappUrl } from "./lib/store-settings";
+import { formatCep } from "./lib/address";
 import type { GetAddState } from "./hooks/useAddFeedback";
 import { sortCatalog, toggleCatalogSort, type CatalogSort } from "./lib/catalog-sort";
 import { Fragment, useState, useEffect, useRef, useMemo } from "react";
@@ -50,6 +53,8 @@ function formatPrice(val: number) {
 const sizeButtonClass = "inline-flex h-[48px] w-[48px] shrink-0 items-center justify-center p-0 text-center [overflow-wrap:anywhere]";
 
 export default function App() {
+  const store = useStoreDetails();
+  const contactUrl = whatsappUrl(store.whatsapp);
   const { products, loading: productsLoading, error: productsError, retry: retryProducts } = useProducts();
   const allSizes = catalogSizes(products);
   const availableCategories = useMemo(() => catalogCategories(products), [products]);
@@ -706,9 +711,12 @@ export default function App() {
             <div className="md:text-center">
               <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Contato</h4>
               <ul className="space-y-2 text-sm text-foreground/80">
-                <li>📍 Curitiba, PR — Brasil</li>
+                {store.address ? <li><address className="not-italic break-words">
+                  {store.address.street}, {store.address.number}{store.address.complement ? ` · ${store.address.complement}` : ""}<br />
+                  {store.address.neighborhood}<br />{store.address.city} - {store.address.state}<br />CEP {formatCep(store.address.cep)}
+                </address></li> : <li>Endereço da loja ainda não informado.</li>}
                 <li>✉️ contato@lowen.com.br</li>
-                <li>📱 (41) 9 9745-8063</li>
+                {store.whatsapp && <li>📱 {formatWhatsapp(store.whatsapp)}</li>}
               </ul>
             </div>
             <div className="md:text-right">
@@ -741,9 +749,9 @@ export default function App() {
         />
       )}
 
-      {!cartOpen && (
+      {!cartOpen && contactUrl && (
         <a
-          href="https://wa.me/5541997458063"
+          href={contactUrl}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Falar conosco pelo WhatsApp"

@@ -25,6 +25,7 @@ test("global settings default, validation, ADMIN authorization and persistence i
     await db.query(`CREATE SCHEMA "${schema}"`);
     await db.query(`SET search_path TO "${schema}"`);
     await db.query(await readFile("prisma/migrations/20261001000000_store_settings/migration.sql", "utf8"));
+    await db.query(await readFile("prisma/migrations/20261005000000_store_business_details/migration.sql", "utf8"));
     await createAdmin({ email, password });
     await createUser({ name: "Settings Test", email: userEmail, password });
     const admin = (await (await server.request("/auth/login", "POST", { email, password })).json()).accessToken;
@@ -42,6 +43,26 @@ test("global settings default, validation, ADMIN authorization and persistence i
       assert.deepEqual(await (await server.request("/settings", "GET", undefined, admin)).json(), { lowStockThreshold: value });
       assert.equal((await db.query('SELECT "lowStockThreshold" FROM "StoreSettings" WHERE id=1')).rows[0].lowStockThreshold, value);
     }
+    const address = { cep: "80000-000", street: "Rua Teste", number: "123", complement: "Sala 2", neighborhood: "Centro", city: "Curitiba", state: "pr" };
+    const details = { address, whatsapp: "(41) 99999-9999" };
+    for (const method of ["GET", "PUT"]) for (const [token, status] of [[undefined, 401], [user, 403]] as const)
+      assert.equal((await server.request("/settings/store", method, method === "PUT" ? details : undefined, token)).status, status);
+    assert.deepEqual(await (await server.request("/settings/public")).json(), { address: null, whatsapp: null });
+    for (const method of ["PUT", "POST", "PATCH", "DELETE"])
+      assert.equal((await server.request("/settings/public", method, details, admin)).status, 405);
+    for (const body of [ { ...details, whatsapp: "abc" }, { ...details, whatsapp: "123" }, { ...details, address: { ...address, cep: "123" } },
+      { ...details, address: { ...address, street: "" } }, { ...details, address: { ...address, state: "ZZ" } }, { ...details, lowStockThreshold: 50 } ])
+      assert.equal((await server.request("/settings/store", "PUT", body, admin)).status, 400);
+    const expected = { address: { ...address, cep: "80000000", state: "PR" }, whatsapp: "5541999999999" };
+    assert.deepEqual(await (await server.request("/settings/store", "PUT", details, admin)).json(), expected);
+    assert.deepEqual(await (await server.request("/settings/public")).json(), expected);
+    assert.deepEqual(await (await server.request("/settings/store", "GET", undefined, admin)).json(), expected);
+    assert.equal((await isolated.storeSettings.findUniqueOrThrow({ where: { id: 1 } })).whatsapp, expected.whatsapp);
+    assert.equal((await isolated.storeSettings.findUniqueOrThrow({ where: { id: 1 } })).lowStockThreshold, 10);
+    await server.request("/settings", "PUT", { lowStockThreshold: 10 }, admin);
+    assert.deepEqual(await (await server.request("/settings/public")).json(), expected);
+    await server.request("/settings/store", "PUT", { address: null, whatsapp: null }, admin);
+    assert.deepEqual(await (await server.request("/settings/public")).json(), { address: null, whatsapp: null });
     const otherSession = (await (await server.request("/auth/login", "POST", { email, password })).json()).accessToken;
     assert.deepEqual(await (await server.request("/settings", "GET", undefined, otherSession)).json(), { lowStockThreshold: 10 });
     await assert.rejects(db.query('INSERT INTO "StoreSettings" (id) VALUES (2)'));

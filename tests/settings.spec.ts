@@ -22,6 +22,8 @@ async function setup(page: Page) {
     }
     return route.fulfill({ json: { lowStockThreshold: threshold } });
   });
+  await page.route("**/api/settings/store", route => route.fulfill({ json: { address: null, whatsapp: null } }));
+  await page.route("**/api/settings/public", route => route.fulfill({ json: { address: null, whatsapp: null } }));
   await page.goto("/manager");
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await page.getByLabel("E-mail", { exact: true }).fill(account.email);
@@ -110,7 +112,7 @@ test("settings failures preserve draft, prevent repeated submits and allow retry
   });
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("button", { name: "Salvando..." })).toBeDisabled();
-  await page.locator("main form").evaluate(form => { (form as HTMLFormElement).requestSubmit(); (form as HTMLFormElement).requestSubmit(); });
+  await page.locator("main form").first().evaluate(form => { (form as HTMLFormElement).requestSubmit(); (form as HTMLFormElement).requestSubmit(); });
   expect(calls).toBe(1);
   release();
   await expectSuccess(page, "Configurações salvas com sucesso!", "positive");
@@ -136,4 +138,80 @@ test("settings page remains restricted to ADMIN", async ({ page }) => {
   await page.locator('form button[type="submit"]').click();
   await expect(page.getByRole("heading", { name: "Acesso restrito" })).toBeVisible();
   await expect(page.getByLabel("Limite de estoque baixo")).toHaveCount(0);
+});
+
+for (const width of [1440, 390, 320]) test(`store details save and feed public contact at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await setup(page);
+  let details: any = { address: null, whatsapp: null };
+  let writes = 0;
+  let fail = false;
+  await page.route("**/api/settings/store", async route => {
+    if (route.request().method() === "PUT") {
+      writes++;
+      if (fail) return route.fulfill({ status: 500, json: { error: "Falha ao salvar dados da loja" } });
+      const body = route.request().postDataJSON();
+      details = { ...body, address: { ...body.address, cep: "80000000" }, whatsapp: "5541999999999" };
+    }
+    return route.fulfill({ json: details });
+  });
+  await page.route("**/api/settings/public", route => route.fulfill({ json: details }));
+  await page.route("https://viacep.com.br/**", route => route.fulfill({ json: { logradouro: "Rua Teste", bairro: "Centro", localidade: "Curitiba", uf: "PR" } }));
+  await page.getByRole("link", { name: "Configurações", exact: true }).click();
+  await expect(page.getByLabel("CEP", { exact: true })).toBeVisible();
+  await page.getByLabel("CEP", { exact: true }).fill("80000000");
+  await expect(page.getByLabel("Rua / Logradouro")).toHaveValue("Rua Teste");
+  await page.getByLabel("Número", { exact: true }).fill("123");
+  await page.getByLabel("Complemento (opcional)").fill("Sala 2");
+  await page.getByLabel("Telefone / WhatsApp").fill("(41) 99999-9999");
+  fail = true;
+  await page.getByRole("button", { name: "Salvar dados da loja", exact: true }).click();
+  await expect(page.locator('[data-sonner-toast][data-type="error"]')).toContainText("Falha ao salvar");
+  await page.locator('[data-sonner-toast][data-type="error"]').getByRole("button", { name: "Fechar notificação" }).click();
+  await expect(page.locator('[data-sonner-toast][data-type="error"]')).toHaveCount(0);
+  await expect(page.getByLabel("Número", { exact: true })).toHaveValue("123");
+  fail = false;
+  await page.getByRole("button", { name: "Salvar dados da loja", exact: true }).click();
+  await expectSuccess(page, "Dados da loja salvos com sucesso!", "positive");
+  expect(writes).toBe(2);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.reload();
+  await expect(page.getByLabel("Número", { exact: true })).toHaveValue("123");
+  await page.getByRole("link", { name: "Ver loja", exact: true }).click();
+  await expect(page.locator("footer address")).toContainText("Rua Teste, 123 · Sala 2");
+  await expect(page.locator("footer address")).toContainText("CEP 80000-000");
+  await expect(page.locator("footer")).toContainText("(41) 99999-9999");
+  await expect(page.getByRole("link", { name: "Falar conosco pelo WhatsApp" })).toHaveAttribute("href", "https://wa.me/5541999999999");
+  await expect(page.locator("footer")).not.toContainText("9745-8063");
+  details = { address: null, whatsapp: null };
+  await page.reload();
+  await expect(page.locator("footer")).toContainText("Endereço da loja ainda não informado.");
+  await expect(page.locator("footer address")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Falar conosco pelo WhatsApp" })).toHaveCount(0);
+  await page.route("**/api/settings/public", route => route.fulfill({ status: 500, json: { error: "Indisponível" } }));
+  await page.reload();
+  await expect(page.getByRole("link", { name: "Falar conosco pelo WhatsApp" })).toHaveCount(0);
+});
+
+test("store details prevent repeated submits while saving", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("link", { name: "Configurações", exact: true }).click();
+  await expect(page.getByLabel("Telefone / WhatsApp")).toBeVisible();
+  await page.getByLabel("Telefone / WhatsApp").fill("(41) 99999-9999");
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let calls = 0;
+  await page.route("**/api/settings/store", async route => {
+    if (route.request().method() !== "PUT") return route.fallback();
+    calls++; await gate;
+    return route.fulfill({ json: { address: null, whatsapp: "5541999999999" } });
+  });
+  await page.getByRole("button", { name: "Salvar dados da loja", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Salvando dados da loja..." })).toBeDisabled();
+  await page.getByRole("heading", { name: "Dados da loja", exact: true }).locator("..").locator("form").evaluate(form => {
+    (form as HTMLFormElement).requestSubmit(); (form as HTMLFormElement).requestSubmit();
+  });
+  expect(calls).toBe(1);
+  release();
+  await expectSuccess(page, "Dados da loja salvos com sucesso!", "positive");
 });

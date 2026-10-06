@@ -10,6 +10,14 @@ datasource db {
 model StoreSettings {
   id                Int @id @default(1)
   lowStockThreshold Int @default(5)
+  storeCep          String?
+  storeStreet       String?
+  storeNumber       String?
+  storeComplement   String?
+  storeNeighborhood String?
+  storeCity         String?
+  storeState        String?
+  whatsapp          String?
 }
 
 model Product {
