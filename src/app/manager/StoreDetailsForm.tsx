@@ -5,6 +5,7 @@ import { emptyAddress, formatCep, lookupCep, type Address } from "../lib/address
 import { formatWhatsapp, storeDetailsRequest } from "../lib/store-settings";
 import { hoursDraft, hoursToInput } from "../lib/business-hours";
 import { BusinessHoursFields } from "./BusinessHoursFields";
+import { SettingsSectionContent } from "./SettingsSectionContent";
 
 const fields: { key: keyof Address; label: string; max: number }[] = [
   { key: "cep", label: "CEP", max: 9 }, { key: "street", label: "Rua / Logradouro", max: 200 },
@@ -67,7 +68,7 @@ export function StoreDetailsForm({ token, onUnauthorized, onBusy, disabled = fal
   }, [address.cep, cepChanged, saving]);
   const hasAddress = Object.values(address).some(value => value.trim());
   return <section className="mt-6 max-w-2xl rounded-xl border border-border bg-card p-6 sm:p-8" aria-labelledby="store-details-title">
-    <h2 id="store-details-title" className="text-lg font-semibold mb-3">Dados da loja</h2>
+    <SettingsSectionContent title="Dados da loja" headingId="store-details-title" className="mb-3">
     <p className="text-sm text-muted-foreground mb-5">Endereço comercial e contato exibidos na loja. O endereço é opcional; se preencher, informe todos os campos obrigatórios.</p>
     {!loaded ? <>{error ? <><p role="alert" className="text-destructive">{error}</p><button onClick={() => setRevision(n => n + 1)} className="min-h-11 underline text-primary">Recarregar dados da loja</button></> : <p role="status">Carregando dados da loja...</p>}</> :
     <form onSubmit={async event => {
@@ -115,5 +116,6 @@ export function StoreDetailsForm({ token, onUnauthorized, onBusy, disabled = fal
         <button disabled={saving} aria-busy={saving} className="min-h-11 rounded-lg bg-primary text-primary-foreground px-5 py-2.5 font-medium disabled:opacity-50">{saving ? "Salvando dados da loja..." : "Salvar dados da loja"}</button>
       </fieldset>
     </form>}
+    </SettingsSectionContent>
   </section>;
 }

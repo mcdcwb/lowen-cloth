@@ -33,6 +33,82 @@ async function setup(page: Page) {
   return { get writes() { return writes; }, get threshold() { return threshold; }, fail: (value: boolean) => { fail = value; } };
 }
 
+for (const width of [320, 390, 768, 1440]) test(`settings sections collapse independently and retain drafts at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 1000 });
+  const state = await setup(page);
+  await page.getByRole("link", { name: "Configurações", exact: true }).click();
+  const stock = page.getByRole("button", { name: "Estoque", exact: true });
+  const store = page.getByRole("button", { name: "Dados da loja", exact: true });
+  const categories = page.getByRole("button", { name: "Categorias de produtos", exact: true });
+  const threshold = page.locator("#low-stock-threshold");
+  const phone = page.getByLabel("Telefone / WhatsApp", { exact: true });
+  const street = page.getByLabel("Rua / Logradouro", { exact: true });
+  const opening = page.getByLabel("Abertura Segunda-feira", { exact: true });
+  const category = page.getByLabel("Nova categoria", { exact: true });
+  await expect(phone).toBeVisible(); await expect(category).toBeVisible();
+  for (const header of [stock, store, categories]) {
+    await expect(header).toHaveAttribute("aria-expanded", "true");
+    const id = await header.getAttribute("aria-controls");
+    expect(id).toBeTruthy();
+    await expect(page.locator(`[id="${id}"]`)).toBeVisible();
+  }
+  await threshold.fill("8"); await street.fill("Rua do rascunho");
+  await phone.fill("11999999999");
+  await page.getByRole("checkbox", { name: "Segunda-feira aberto", exact: true }).check();
+  await opening.fill("08:30"); await category.fill("Categoria pendente");
+  const calls: string[] = [];
+  page.on("request", request => { if (request.url().includes("/api/")) calls.push(request.method() + " " + request.url()); });
+  await stock.click(); await expect(stock).toHaveAttribute("aria-expanded", "false");
+  await expect(threshold).toBeHidden(); await expect(phone).toBeVisible(); await expect(category).toBeVisible();
+  await store.click(); await expect(store).toHaveAttribute("aria-expanded", "false");
+  await expect(phone).toBeHidden(); await expect(opening).toBeHidden(); await expect(category).toBeVisible();
+  await categories.click(); await expect(categories).toHaveAttribute("aria-expanded", "false");
+  await expect(category).toBeHidden();
+  const headers = [stock, store, categories];
+  const cardGeometry = async () => Promise.all(headers.map(header => header.evaluate(button => {
+    const card = button.closest("section, form")!;
+    const rect = card.getBoundingClientRect(), style = getComputedStyle(card);
+    const center = rect.top + rect.height / 2;
+    const title = button.querySelector("span")!, icon = button.querySelector("svg")!;
+    return { height: rect.height, width: rect.width, top: rect.top, bottom: rect.bottom,
+      paddingTop: style.paddingTop, paddingBottom: style.paddingBottom,
+      titleOffset: title.getBoundingClientRect().top + title.getBoundingClientRect().height / 2 - center,
+      iconOffset: icon.getBoundingClientRect().top + icon.getBoundingClientRect().height / 2 - center,
+      titleFits: title.scrollWidth <= title.clientWidth };
+  })));
+  const collapsed = await cardGeometry();
+  expect(new Set(collapsed.map(card => card.height)).size).toBe(1);
+  expect(new Set(collapsed.map(card => card.width)).size).toBe(1);
+  expect(collapsed[1].top - collapsed[0].bottom).toBe(collapsed[2].top - collapsed[1].bottom);
+  for (const card of collapsed) {
+    expect(card.paddingTop).toBe(card.paddingBottom);
+    expect(card.titleOffset).toBe(0); expect(card.iconOffset).toBe(0); expect(card.titleFits).toBe(true);
+  }
+  await page.screenshot({ path: info.outputPath(`settings-collapsed-${width}.png`), fullPage: true });
+  for (let index = 0; index < headers.length; index++) {
+    await headers[index].click();
+    const expanded = await cardGeometry();
+    expect(expanded[index].height).toBeGreaterThan(collapsed[index].height);
+    expect(expanded[index].width).toBe(collapsed[index].width);
+    await headers[index].click();
+    expect((await cardGeometry())[index].height).toBe(collapsed[index].height);
+  }
+  await categories.focus(); await page.keyboard.press("Enter");
+  await expect(categories).toHaveAttribute("aria-expanded", "true"); await expect(category).toHaveValue("Categoria pendente");
+  await store.focus(); await page.keyboard.press("Space");
+  await expect(store).toHaveAttribute("aria-expanded", "true");
+  await expect(phone).toHaveValue("11999999999"); await expect(street).toHaveValue("Rua do rascunho"); await expect(opening).toHaveValue("08:30");
+  await stock.click(); await expect(threshold).toHaveValue("8");
+  expect(state.writes).toBe(0); expect(calls).toEqual([]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath(`settings-sections-${width}.png`), fullPage: true });
+  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  expect(state.writes).toBe(1); expect(state.threshold).toBe(8);
+  await page.reload();
+  for (const title of ["Estoque", "Dados da loja", "Categorias de produtos"]) await expect(page.getByRole("button", { name: title, exact: true })).toHaveAttribute("aria-expanded", "true");
+  await expect(threshold).toHaveValue("8");
+});
+
 for (const width of [1440, 390, 320]) test(`settings persist and update product and variant filters at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 1000 });
   const state = await setup(page);

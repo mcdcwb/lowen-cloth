@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { Category } from "../lib/categories";
 import { CategoryEditor } from "./CategoryEditor";
+import { SettingsSectionContent } from "./SettingsSectionContent";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "../components/ui/alert-dialog";
 
 export function CategoryManagement({ categories, busy, onSave, onDelete, settings = false }: {
@@ -10,8 +11,7 @@ export function CategoryManagement({ categories, busy, onSave, onDelete, setting
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Category | "new" | null>(null);
   const [deleting, setDeleting] = useState<Category | null>(null);
-  return <section aria-label={settings ? "Categorias de produtos" : "Gerenciar categorias"} className={settings ? "mt-6 max-w-2xl rounded-xl border border-border bg-card p-6 sm:p-8" : "rounded-xl border border-border bg-card p-4 mb-5"}>
-    {settings ? <><h2 className="text-lg font-semibold">Categorias de produtos</h2><p className="mt-2 text-sm text-muted-foreground">Gerencie as categorias utilizadas para organizar os produtos da loja.</p></> : <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="min-h-11 text-sm font-medium text-primary">Gerenciar categorias</button>}
+  const content = <>
     {(settings || open) && <div className="mt-3 space-y-3">
       <p className="text-sm text-muted-foreground">Categorias com produtos associados só podem ser excluídas após transferir esses produtos para outra categoria.</p>
       {settings ? <CategoryEditor persistent settings busy={busy} onSave={onSave} onCancel={() => {}} /> : <button type="button" disabled={busy} onClick={() => setEditing("new")} className="min-h-11 text-sm text-primary">+ Nova categoria</button>}
@@ -30,5 +30,8 @@ export function CategoryManagement({ categories, busy, onSave, onDelete, setting
         <AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel><button type="button" disabled={busy} aria-busy={busy} className="rounded-lg bg-destructive px-4 py-2 text-white disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={async () => { if (deleting && await onDelete(deleting.id)) setDeleting(null); }}>{busy ? "Excluindo..." : "Confirmar exclusão de categoria"}</button></AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+  </>;
+  return <section aria-label={settings ? "Categorias de produtos" : "Gerenciar categorias"} className={settings ? "mt-6 max-w-2xl rounded-xl border border-border bg-card p-6 sm:p-8" : "rounded-xl border border-border bg-card p-4 mb-5"}>
+    {settings ? <SettingsSectionContent title="Categorias de produtos"><p className="mt-2 text-sm text-muted-foreground">Gerencie as categorias utilizadas para organizar os produtos da loja.</p>{content}</SettingsSectionContent> : <><button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="min-h-11 text-sm font-medium text-primary">Gerenciar categorias</button>{content}</>}
   </section>;
 }

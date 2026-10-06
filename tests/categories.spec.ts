@@ -126,7 +126,7 @@ test("Initial category loading failure keeps its retry banner and recovers witho
   await expect(page.locator('main [role="alert"]')).toHaveCount(0);
 });
 
-for (const width of [1440, 768, 390, 320]) test(`ADMIN manages categories inline and product associations at ${width}px`, async ({ page }) => {
+for (const width of [1440, 768, 390, 320]) test(`ADMIN manages categories in settings and product associations at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 }); await login(page);
   const token = await page.evaluate(() => JSON.parse(localStorage.getItem("lowen-cloth_auth_v1")!).accessToken);
   const headers = { Authorization: `Bearer ${token}` };
@@ -151,15 +151,18 @@ for (const width of [1440, 768, 390, 320]) test(`ADMIN manages categories inline
     await page.getByRole("button", { name: "Salvar produto", exact: true }).click();
     const result = await (await created).json(); productId = result.id; expect(result.categoryId).toBe(id);
     await expect(page.getByLabel("Categoria", { exact: true }).locator("option")).toContainText([name]);
-    await page.getByRole("button", { name: "Gerenciar categorias", exact: true }).click();
-    await page.getByRole("button", { name: `Renomear ${name}`, exact: true }).click();
+    await expect(page.getByRole("button", { name: "Gerenciar categorias", exact: true })).toHaveCount(0);
+    await page.getByRole("link", { name: "Configurações", exact: true }).click();
+    await page.getByRole("button", { name: `Editar ${name}`, exact: true }).click();
     await page.getByLabel("Renomear categoria", { exact: true }).fill(name + " Editada");
-    await page.getByRole("button", { name: "Salvar nome", exact: true }).click();
-    await expect(page.getByRole("article", { name, exact: true })).toContainText(name + " Editada");
+    await page.getByRole("button", { name: "Salvar", exact: true }).click();
+    await expect(page.getByRole("button", { name: `Editar ${name} Editada`, exact: true })).toBeVisible();
     await page.getByRole("button", { name: `Excluir ${name} Editada`, exact: true }).click();
     await page.getByRole("button", { name: "Confirmar exclusão de categoria" }).click();
     await expectOnlyCategoryError(page, "existem produtos associados");
     await page.getByRole("alertdialog").getByRole("button", { name: "Cancelar", exact: true }).click();
+    await page.getByRole("link", { name: "Produtos", exact: true }).click();
+    await expect(page.getByRole("article", { name, exact: true })).toContainText(name + " Editada");
     await page.getByRole("article", { name, exact: true }).getByRole("link", { name: "Editar" }).click();
     await page.getByRole("button", { name: "+ Nova categoria", exact: true }).click();
     await page.getByLabel("Nova categoria", { exact: true }).fill(second);
@@ -174,10 +177,11 @@ for (const width of [1440, 768, 390, 320]) test(`ADMIN manages categories inline
     await page.getByLabel("Estoque", { exact: true }).selectOption("variante-baixo");
     await page.getByRole("searchbox").fill(name);
     await expect(page.getByRole("article")).toHaveCount(1);
-    await page.getByRole("button", { name: "Gerenciar categorias" }).click();
+    await page.getByRole("link", { name: "Configurações", exact: true }).click();
     await page.getByRole("button", { name: `Excluir ${name} Editada`, exact: true }).click();
     await page.getByRole("button", { name: "Confirmar exclusão de categoria" }).click();
     await expect(page.getByRole("alertdialog")).toHaveCount(0);
+    await page.getByRole("link", { name: "Produtos", exact: true }).click();
     await expect(page.getByLabel("Categoria", { exact: true }).locator(`option[value="${ids[0]}"]`)).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   } finally {
