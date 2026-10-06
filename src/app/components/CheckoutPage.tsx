@@ -9,8 +9,10 @@ import { formatCep, type Address } from "../lib/address";
 import { whatsappUrl } from "../lib/store-settings";
 import type { useStoreDetails } from "../hooks/useStoreDetails";
 import type { useShopping } from "../hooks/useShopping";
-import { CheckoutRequestError, fetchCheckoutReview, moneyFromCents, prepareWhatsapp, readCheckoutMethod, saveCheckoutMethod,
-  type CheckoutReview, type FulfillmentMethod } from "../lib/checkout";
+import {
+  CheckoutRequestError, fetchCheckoutReview, moneyFromCents, prepareWhatsapp, readCheckoutMethod, saveCheckoutMethod,
+  type CheckoutReview, type FulfillmentMethod
+} from "../lib/checkout";
 import { ProductImage } from "./ProductImage";
 
 const action = "min-h-11 rounded-lg px-4 py-2.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
@@ -112,9 +114,11 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
     const request = new AbortController(); controller.current = request;
     const timeout = setTimeout(() => request.abort(), 15000);
     try {
-      const prepared = await prepareWhatsapp(token, method, review.reviewKey, { customerName: profile.account.name,
+      const prepared = await prepareWhatsapp(token, method, review.reviewKey, {
+        customerName: profile.account.name,
         address: method === "DELIVERY" ? profile.address : null, pickupAddress: method === "PICKUP" ? store.address : null,
-        whatsapp: store.whatsapp }, request.signal);
+        whatsapp: store.whatsapp
+      }, request.signal);
       if (!alive.current || tab.closed) { tab.close(); return; }
       if (!sessionIsCurrent()) throw new Error("A sessão mudou durante a validação. Entre novamente para continuar.");
       if (live.current.currentSelection !== selection || live.current.cartOpen || live.current.shoppingBusy)
@@ -188,8 +192,8 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
       <aside className={panel + " lg:sticky lg:top-24"} aria-labelledby="checkout-summary-title">
         <h2 id="checkout-summary-title" className="font-serif text-xl font-bold">Resumo dos produtos</h2>
         <p className="mt-5 text-sm">Valor total dos produtos</p><p className="text-2xl font-bold text-primary mt-1">{review ? `R$ ${moneyFromCents(review.totalCents)}` : "—"}</p>
-        {method === "DELIVERY" && <p className="mt-4 text-sm text-muted-foreground">O valor de entrega será informado e combinado com a loja pelo WhatsApp. Ele não está incluído no total dos produtos.</p>}
-        {method === "PICKUP" && <p className="mt-4 text-sm text-muted-foreground">Retirada na loja.</p>}
+        {method === "DELIVERY" && <p className="mt-4 text-sm text-destructive">O valor de entrega será informado e combinado com a loja pelo WhatsApp. Ele não está incluído no total dos produtos.</p>}
+        {method === "PICKUP" && <p className="mt-4 text-sm text-muted-foreground">Retirada na loja. Por favor, verifique a disponibilidade pelo WhatsApp.</p>}
         {!method && <p className="mt-4 text-sm">Escolha entrega ou retirada para continuar.</p>}
         {profileError && <p role="alert" className="mt-4 text-sm text-destructive">{profileError}</p>}
         {store.error ? <p role="alert" className="mt-4 text-sm text-destructive">{store.error}</p> : !store.loading && !whatsappUrl(store.whatsapp) && <p role="alert" className="mt-4 text-sm text-destructive">O contato da loja está temporariamente indisponível.</p>}

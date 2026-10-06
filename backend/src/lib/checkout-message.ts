@@ -18,7 +18,7 @@ export function addressLine(address: MessageAddress): string {
 export function checkoutMessage(name: string, items: MessageItem[], method: "DELIVERY" | "PICKUP", address: MessageAddress | null, totalCents: number): string {
   if (method === "DELIVERY" && !address) throw new Error("Endereço de entrega necessário.");
   return [ `Olá, meu nome é ${plain(name)}.`, "Este é o meu pedido:",
-    ...items.map(item => `- Qtd: ${item.quantity}x ${plain(item.name)}, cor ${plain(item.color)} tamanho ${plain(item.size)}.\nPreço: R$${moneyFromCents(item.subtotalCents)}.`),
+    ...items.map(item => `- Qtd: ${item.quantity}x ${plain(item.name)}.\nCor: *${plain(item.color)}*\nTamanho: *${plain(item.size)}*\nPreço: R$${moneyFromCents(item.subtotalCents)}.`),
     `Precisa de entrega? *${method === "DELIVERY" ? "Sim" : "Não"}*.`,
     ...(method === "DELIVERY" && address ? [`Endereço: ${addressLine(address)}.`] : []),
     `Valor Total de produtos: *R$${moneyFromCents(totalCents)}*.` ].join("\n\n");

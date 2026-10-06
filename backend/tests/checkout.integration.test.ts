@@ -68,8 +68,8 @@ test("checkout validates authoritative data and prepares WhatsApp without writes
         const data = await response.json(), url = new URL(data.url);
         assert.equal(url.pathname, "/5541999999999"); assert.equal(url.searchParams.get("text"), data.message);
         assert.match(data.message, /^Olá, meu nome é João da Silva\./);
-        assert.match(data.message, /Qtd: 2x Camiseta São João, cor Preto tamanho M\.\nPreço: R\$159,80\./);
-        assert.match(data.message, /cor Azul Céu tamanho 42/);
+        assert.match(data.message, /Qtd: 2x Camiseta São João\.\nCor: \*Preto\*\nTamanho: \*M\*\nPreço: R\$159,80\./);
+        assert.match(data.message, /Cor: \*Azul Céu\*\nTamanho: \*42\*/);
         assert.ok(data.message.includes(`Precisa de entrega? *${method === "DELIVERY" ? "Sim" : "Não"}*.`));
         assert.ok(data.message.includes("Valor Total de produtos: *R$319,60*."));
         assert.equal(data.message.includes("Endereço:"), method === "DELIVERY");
