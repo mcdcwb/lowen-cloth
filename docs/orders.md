@@ -93,8 +93,10 @@ Criar pedido, conferir checkout e abrir WhatsApp NÃO reservam nem reduzem estoq
 SOMENTE a confirmação ADMIN reduz estoque nesta funcionalidade. O carrinho não é
 limpo. Abrir WhatsApp não confirma venda nem envia automaticamente uma mensagem.
 
-Ficam adiados Manager/Pedidos, listagem, busca, filtros, UI de confirmação/status,
-rastreamento, frete, gateway, pagamentos, reserva, cancelamento e reposição.
+A etapa seguinte adicionou Manager/Pedidos, listagem, busca, filtros e UI de
+confirmação, descritos em [Manager → Pedidos](manager-orders.md). Ficam adiados
+outras transições de status, rastreamento, frete, gateway, pagamentos, reserva,
+cancelamento e reposição.
 CANCELLED é apenas estado preparado; não há lógica de restituição de estoque.
 
 ## Exemplos ilustrativos (IDs e dados não são inseridos no banco local)

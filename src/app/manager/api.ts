@@ -1,10 +1,12 @@
 import { adaptCategories, type Category } from "../lib/categories.ts";
 import { adaptProduct } from "../lib/products.ts";
 import type { ManagedProduct, ProductInput } from "./products.ts";
+import { orderQueryString, type OrderQuery, type OrderPage, type OrderDetails, type StockConflict, type OrderSummary } from "./orders.ts";
 
 export class ManagerApiError extends Error {
   status: number;
-  constructor(status: number, message: string) { super(message); this.status = status; }
+  conflicts?: StockConflict[];
+  constructor(status: number, message: string, conflicts?: StockConflict[]) { super(message); this.status = status; this.conflicts = conflicts; }
 }
 function normalize(value: unknown): ManagedProduct {
   const product = adaptProduct(value);
@@ -33,7 +35,7 @@ export function createManagerApi(token: string, baseUrl = "/api", fetcher: typeo
       const data = await response.json().catch(() => null);
       if (!response.ok) {
         const issues = Array.isArray(data?.errors) ? data.errors.map((issue: { message: string }) => issue.message).join(" ") : "";
-        throw new ManagerApiError(response.status, issues || data?.error || "Não foi possível concluir a operação.");
+        throw new ManagerApiError(response.status, issues || data?.error || "Não foi possível concluir a operação.", Array.isArray(data?.conflicts) ? data.conflicts : undefined);
       }
       return data;
     } catch (error) {
@@ -45,6 +47,9 @@ export function createManagerApi(token: string, baseUrl = "/api", fetcher: typeo
     }
   }
   return {
+    async orders(query: OrderQuery, signal?: AbortSignal): Promise<OrderPage> { return request(`?${orderQueryString(query)}`, "GET", undefined, signal, "/orders"); },
+    async order(id: number, signal?: AbortSignal): Promise<OrderDetails> { return request(`/${id}`, "GET", undefined, signal, "/orders"); },
+    async confirmOrder(id: number, signal?: AbortSignal): Promise<Pick<OrderSummary, "id" | "number" | "status">> { return request(`/${id}/confirm`, "POST", {}, signal, "/orders"); },
     async categories(signal?: AbortSignal): Promise<Category[]> { return adaptCategories(await request("", "GET", undefined, signal, "/categorias")); },
     async saveCategory(name: string, id?: number): Promise<Category> { return request(id === undefined ? "" : `/${id}`, id === undefined ? "POST" : "PUT", { name }, undefined, "/categorias"); },
     async deleteCategory(id: number) { await request(`/${id}`, "DELETE", undefined, undefined, "/categorias"); },

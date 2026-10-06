@@ -337,7 +337,7 @@ test("ADMIN login redirects to manager, dashboard uses real totals and mobile na
   const { lowStockThreshold } = await (await page.request.get("/api/settings", { headers: { Authorization: `Bearer ${await token(page)}` } })).json();
   const checks = [
     ["Total de produtos", products.length],
-    ["Total de variantes", products.reduce((sum: number, p: StockProduct) => sum + p.colors.reduce((n, c) => n + c.variants.length, 0), 0)],
+    ["Total de variantes (cor/tamanho)", products.reduce((sum: number, p: StockProduct) => sum + p.colors.reduce((n, c) => n + c.variants.length, 0), 0)],
     ["Produtos sem estoque", products.filter((p: StockProduct) => variantsOf(p).length > 0 && variantsOf(p).every(v => v.stock === 0)).length],
     ["Variantes com estoque baixo", products.reduce((n: number, p: StockProduct) => n + variantsOf(p).filter(v => v.stock >= 1 && v.stock <= lowStockThreshold).length, 0)]
   ];

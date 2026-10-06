@@ -1,6 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createManagerApi } from "../src/app/manager/api.ts";
+import { orderMoney, orderDate, orderQueryString, orderStatusLabels } from "../src/app/manager/orders.ts";
+
+test("order API sends combined validated controls and keeps stock conflicts", async () => {
+  const calls = [], query = { search: " João & Silva ", status: "PREPARING", sort: "number", direction: "asc", page: 2 };
+  const api = createManagerApi("admin", "/api/", async (url, init) => { calls.push({ url, init }); return Response.json({}); });
+  await api.orders(query); await api.order(7); await api.confirmOrder(7);
+  const params = new URL(calls[0].url, "https://example.test").searchParams;
+  assert.equal(params.get("search"), "João & Silva"); assert.equal(params.get("status"), "PREPARING");
+  assert.equal(params.get("sort"), "number"); assert.equal(params.get("direction"), "asc"); assert.equal(params.get("page"), "2");
+  assert.equal(calls[1].url, "/api/orders/7"); assert.equal(calls[2].url, "/api/orders/7/confirm");
+  assert.equal(calls[2].init.method, "POST"); assert.equal(calls[2].init.body, "{}");
+  assert.ok(calls.every(c => c.init.headers.Authorization === "Bearer admin"));
+  const conflicts = [{ variantId: 42, productName: "Produto histórico", colorName: "Branco", size: "GG", requested: 2, available: 1 }];
+  const failing = createManagerApi("admin", "/api", async () => Response.json({ error: "Estoque insuficiente", conflicts }, { status: 409 }));
+  await assert.rejects(failing.confirmOrder(7), error => error.status === 409 && JSON.stringify(error.conflicts) === JSON.stringify(conflicts));
+});
+test("order display uses exact Decimal amounts, shared timezone and all existing statuses", () => {
+  assert.equal(orderMoney("129"), "R$ 129,00"); assert.equal(orderMoney("129.9"), "R$ 129,90");
+  assert.equal(orderMoney("90071992547409.91"), "R$ 90.071.992.547.409,91");
+  assert.throws(() => orderMoney("NaN")); assert.throws(() => orderMoney("1.999"));
+  assert.equal(orderDate("2026-11-01T02:30:00Z", true), "31/10/2026, 23:30");
+  assert.equal(Object.keys(orderStatusLabels).length, 5);
+  const params = new URLSearchParams(orderQueryString({ search: "", status: "", sort: "date", direction: "desc", page: 1 }));
+  assert.equal(params.has("status"), false); assert.equal(params.has("search"), false);
+});
 
 test("category API uses authenticated dynamic CRUD and validates administrative list responses", async () => {
   const calls = [], category = { id: 91, name: "Acessórios", productCount: 3 };

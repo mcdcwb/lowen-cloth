@@ -1,0 +1,139 @@
+import { test, expect, type Page } from "@playwright/test";
+import { execFileSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
+const tag = `order-browser-${randomUUID()}`;
+let fixture: { orders: { id: number; number: string; sequence: number }[]; productId: number; variantId: number };
+const run = (action: string) => execFileSync(process.execPath, ["--import", "tsx", "tests/helpers/orders-browser-fixture.ts", action, tag], { cwd: "backend", env: process.env, windowsHide: true, encoding: "utf8" });
+test.beforeAll(() => { fixture = JSON.parse(run("create")); });
+test.afterAll(() => { run("delete"); });
+async function admin(page: Page) {
+  const response = await page.request.post("/api/auth/login", { data: { email: process.env.E2E_ADMIN_EMAIL, password: process.env.E2E_ADMIN_PASSWORD } });
+  const session = await response.json();
+  await page.addInitScript(session => localStorage.setItem("lowen-cloth_auth_v1", JSON.stringify({ accessToken: session.accessToken, expiresAt: session.expiresAt })), session);
+  await page.goto("/manager");
+  await page.getByRole("link", { name: "Pedidos", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Pedidos", exact: true })).toBeVisible();
+  await page.getByLabel("Pesquisar pedidos").fill(tag);
+  await expect(page.locator('section[aria-label="Lista de pedidos"] article')).toHaveCount(20);
+  await expect(page.getByText("25 pedido(s)", { exact: true })).toBeVisible();
+  return session.accessToken as string;
+}
+const rows = (page: Page) => page.locator('section[aria-label="Lista de pedidos"] article');
+async function search(page: Page, text: string, count: number) {
+  await page.getByLabel("Pesquisar pedidos").fill(text); await expect(rows(page)).toHaveCount(count);
+}
+async function details(page: Page, index: number) {
+  await search(page, fixture.orders[index].number, 1);
+  await rows(page).getByRole("button", { name: /Ver detalhes/ }).click();
+  const dialog = page.getByRole("dialog"); await expect(dialog.getByRole("heading", { name: `Pedido #${fixture.orders[index].number}`, exact: true })).toBeVisible();
+  return dialog;
+}
+test("navigation, combined search/status, number/date arrows and pagination", async ({ page }) => {
+  await admin(page);
+  await expect(rows(page).first()).toContainText(fixture.orders[0].number);
+  await page.getByRole("button", { name: "Próxima", exact: true }).click();
+  await expect(page.getByText("Página 2 de 2", { exact: true })).toBeVisible(); await expect(rows(page)).toHaveCount(5);
+  await search(page, `mArIa ${tag}`, 12); await expect(page.getByText("Página 1 de 1", { exact: true })).toBeVisible();
+  await page.getByLabel("Status", { exact: true }).selectOption("PREPARING"); await expect(rows(page)).toHaveCount(2);
+  await expect(rows(page).first()).toContainText("Em preparação");
+  await page.getByLabel("Status", { exact: true }).selectOption(""); await search(page, tag, 20);
+  await page.getByRole("button", { name: /Ordenar por número/ }).click(); await expect(rows(page).first()).toContainText(fixture.orders[0].number);
+  await page.getByRole("button", { name: /Ordenar por número/ }).click(); await expect(rows(page).first()).toContainText(fixture.orders[24].number);
+  await page.getByRole("button", { name: /Ordenar por data/ }).click(); await expect(rows(page).first()).toContainText(fixture.orders[24].number);
+  await page.getByRole("button", { name: /Ordenar por data/ }).click(); await expect(rows(page).first()).toContainText(fixture.orders[0].number);
+  for (const status of ["PENDING_CONFIRMATION", "PREPARING", "READY_OR_SHIPPED", "COMPLETED", "CANCELLED"]) {
+    await page.getByLabel("Status", { exact: true }).selectOption(status);
+    await expect(rows(page).first()).toBeVisible();
+  }
+  await search(page, "no-such-customer-xyz", 0); await expect(page.getByText("Nenhum pedido corresponde aos filtros selecionados.")).toBeVisible();
+});
+test("historical DELIVERY/PICKUP details, confirmation dialog, repeated submit protection and success", async ({ page }) => {
+  const token = await admin(page);
+  let dialog = await details(page, 1);
+  await expect(dialog).toContainText("Retirada na loja"); await expect(dialog).toContainText("Loja Histórica, 456");
+  await expect(dialog).not.toContainText("Rua Histórica"); await page.keyboard.press("Escape");
+  await page.getByLabel("Status", { exact: true }).selectOption("PENDING_CONFIRMATION");
+  dialog = await details(page, 0);
+  await expect(dialog).toContainText("Rua Histórica, 123"); await expect(dialog).not.toContainText("Rua Atual Diferente");
+  await expect(dialog).toContainText("2x Camiseta Histórica"); await expect(dialog).toContainText("Unitário: R$ 129,00");
+  await dialog.getByRole("button", { name: "Confirmar pedido", exact: true }).click();
+  const alert = page.getByRole("alertdialog"); await expect(alert).toContainText("o estoque das variantes deste pedido será reduzido");
+  await alert.getByRole("button", { name: "Cancelar", exact: true }).click(); await expect(dialog).toContainText("Aguardando confirmação");
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); let requests = 0;
+  await page.route(`**/api/orders/${fixture.orders[0].id}/confirm`, async route => { requests++; await gate; await route.continue(); });
+  await dialog.getByRole("button", { name: "Confirmar pedido", exact: true }).click();
+  await alert.getByRole("button", { name: "Confirmar pedido", exact: true }).click();
+  const button = alert.getByRole("button", { name: "Confirmando...", exact: true }); await expect(button).toBeDisabled();
+  await button.evaluate(element => { (element as HTMLButtonElement).click(); (element as HTMLButtonElement).click(); });
+  expect(requests).toBe(1); release();
+  await expect(dialog).toContainText("Em preparação"); await expect(dialog.getByRole("button", { name: "Confirmar pedido", exact: true })).toHaveCount(0);
+  await expect(page.locator('[data-sonner-toast][data-type="success"]')).toContainText("Pedido confirmado com sucesso!");
+  await page.keyboard.press("Escape"); await expect(rows(page)).toHaveCount(0);
+  await expect(page.getByText("Nenhum pedido corresponde aos filtros selecionados.")).toBeVisible();
+  await page.getByLabel("Status", { exact: true }).selectOption("PREPARING");
+  await expect(rows(page)).toContainText("Em preparação");
+  const product = (await (await page.request.get("/api/produtos")).json()).find((p: any) => p.id === fixture.productId);
+  expect(product.colors[0].variants.find((v: any) => v.id === fixture.variantId).stock).toBe(98);
+  expect((await page.request.post(`/api/orders/${fixture.orders[0].id}/confirm`, { headers: { Authorization: `Bearer ${token}` }, data: {} })).status()).toBe(409);
+});
+test("stock conflicts keep pending status and show all useful fields", async ({ page }) => {
+  await admin(page); const dialog = await details(page, 2);
+  await dialog.getByRole("button", { name: "Confirmar pedido", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Confirmar pedido", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Estoque insuficiente");
+  for (const text of ["Camiseta Histórica", "Cor: Branco", "Tamanho: P", "Solicitado: 2", "Disponível: 0"]) await expect(dialog.getByRole("alert")).toContainText(text);
+  await expect(dialog.getByRole("alert")).toContainText("Segundo Item Histórico");
+  await expect(dialog.getByRole("alert")).toContainText("Disponível: 1");
+  await expect(dialog).toContainText("Aguardando confirmação"); await expect(dialog.getByRole("button", { name: "Confirmar pedido", exact: true })).toBeEnabled();
+});
+for (const width of [1440, 768, 390, 320]) test(`order list and details fit ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 900 }); await admin(page);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const dialog = await details(page, 1); await expect(dialog).toContainText("Loja Histórica");
+  expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+  await expect(dialog).toHaveCSS("opacity", "1");
+  await page.screenshot({ path: info.outputPath(`orders-${width}.png`), fullPage: true });
+  await page.keyboard.press("Escape"); await expect(dialog).toHaveCount(0);
+  await expect(rows(page).getByRole("button", { name: /Ver detalhes/ })).toBeFocused();
+});
+test("search debounce avoids per-keystroke requests and discards stale responses", async ({ page }) => {
+  await admin(page);
+  let requests = 0;
+  await page.route("**/api/orders?**", async route => { requests++; await route.continue(); });
+  const response = page.waitForResponse(response => response.url().includes("/api/orders?") && response.url().includes("search=Maria"));
+  await page.getByLabel("Pesquisar pedidos").fill("");
+  await page.getByLabel("Pesquisar pedidos").pressSequentially("Maria", { delay: 15 });
+  await response; await expect(rows(page)).toHaveCount(12); expect(requests).toBe(1);
+  await page.unroute("**/api/orders?**");
+  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+  let reached!: () => void; const started = new Promise<void>(resolve => { reached = resolve; });
+  await page.route("**/api/orders?**", async route => {
+    if (new URL(route.request().url()).searchParams.get("search") === "stale") {
+      reached(); await gate; await route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 } });
+    } else await route.continue();
+  });
+  try {
+    await page.getByLabel("Pesquisar pedidos").fill("stale"); await started;
+    await search(page, fixture.orders[9].number, 1); await expect(rows(page)).toContainText(fixture.orders[9].number);
+  } finally { release(); }
+  await expect(rows(page)).toContainText(fixture.orders[9].number);
+});
+test("list/detail failures allow retry, empty state, loading and forbidden USER", async ({ page }) => {
+  await admin(page);
+  await page.route("**/api/orders?**", route => route.fulfill({ status: 500, json: { error: "Falha temporária nos pedidos." } }));
+  await search(page, "trigger-failure", 0); await expect(page.getByRole("alert")).toContainText("Falha temporária nos pedidos.");
+  await page.unroute("**/api/orders?**"); await page.getByRole("button", { name: "Tentar novamente", exact: true }).click();
+  await expect(page.getByText("Nenhum pedido corresponde aos filtros selecionados.")).toBeVisible();
+  await search(page, fixture.orders[1].number, 1);
+  await page.route(`**/api/orders/${fixture.orders[1].id}`, route => route.fulfill({ status: 500, json: { error: "Falha nos detalhes." } }));
+  await rows(page).getByRole("button", { name: /Ver detalhes/ }).click(); await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Falha nos detalhes.");
+  await page.unroute(`**/api/orders/${fixture.orders[1].id}`); await page.getByRole("button", { name: "Tentar carregar detalhes novamente" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Loja Histórica"); await page.keyboard.press("Escape");
+  await page.route("**/api/orders?**", route => route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 } }));
+  await search(page, "", 0); await expect(page.getByText("Nenhum pedido encontrado.")).toBeVisible();
+  const session = await (await page.request.post("/api/auth/login", { data: { email: process.env.E2E_USER_EMAIL, password: process.env.E2E_USER_PASSWORD } })).json();
+  const userPage = await page.context().newPage();
+  await userPage.addInitScript(session => localStorage.setItem("lowen-cloth_auth_v1", JSON.stringify({ accessToken: session.accessToken, expiresAt: session.expiresAt })), session);
+  await userPage.goto("/manager/pedidos"); await expect(userPage.getByRole("heading", { name: "Acesso restrito" })).toBeVisible();
+  await expect(userPage.getByRole("navigation", { name: "Navegação administrativa" })).toHaveCount(0);
+});

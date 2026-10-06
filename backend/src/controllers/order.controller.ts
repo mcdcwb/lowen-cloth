@@ -1,6 +1,21 @@
 import type { Request, Response } from "express";
-import { orderIdSchema, confirmOrderSchema } from "../schemas/order.schema.js";
-import { confirmOrder, OrderError } from "../services/order.service.js";
+import { orderIdSchema, confirmOrderSchema, orderListSchema } from "../schemas/order.schema.js";
+import { confirmOrder, getOrder, listOrders, OrderError } from "../services/order.service.js";
+export async function list(req: Request, res: Response) {
+  const input = orderListSchema.safeParse(req.query);
+  if (!input.success) return res.status(400).json({ error: "Filtros ou paginação inválidos." });
+  try { return res.json(await listOrders(input.data)); }
+  catch (error) { console.error(error); return res.status(500).json({ error: "Não foi possível carregar os pedidos. Tente novamente." }); }
+}
+export async function details(req: Request, res: Response) {
+  const id = orderIdSchema.safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: "Pedido inválido." });
+  try { return res.json(await getOrder(id.data)); }
+  catch (error) {
+    if (error instanceof OrderError) return res.status(error.status).json({ error: error.message });
+    console.error(error); return res.status(500).json({ error: "Não foi possível carregar os detalhes. Tente novamente." });
+  }
+}
 export async function confirm(req: Request, res: Response) {
   const id = orderIdSchema.safeParse(req.params.id);
   if (!id.success || !confirmOrderSchema.safeParse(req.body ?? {}).success) return res.status(400).json({ error: "Pedido ou dados inválidos." });

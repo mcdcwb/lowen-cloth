@@ -1,5 +1,42 @@
 import { prisma } from "../lib/prisma.js";
 import { Prisma } from "../generated/prisma/client.js";
+import type { z } from "zod";
+import type { orderListSchema } from "../schemas/order.schema.js";
+
+const orderSummarySelect = {
+  id: true, number: true, sequence: true, customerName: true, createdAt: true,
+  total: true, fulfillmentMethod: true, status: true
+} satisfies Prisma.OrderSelect;
+
+export async function listOrders(input: z.infer<typeof orderListSchema>) {
+  const where: Prisma.OrderWhereInput = {
+    ...(input.status ? { status: input.status } : {}),
+    ...(input.search ? { OR: [
+      { number: { contains: input.search.replace(/^#/, "") } },
+      { customerName: { contains: input.search, mode: "insensitive" } }
+    ] } : {})
+  };
+  return prisma.$transaction(async tx => {
+    const total = await tx.order.count({ where });
+    const totalPages = Math.max(1, Math.ceil(total / input.pageSize));
+    const page = Math.min(input.page, totalPages);
+    const items = await tx.order.findMany({ where, select: orderSummarySelect,
+      orderBy: input.sort === "number" ? [{ sequence: input.direction }] : [{ createdAt: input.direction }, { sequence: input.direction }],
+      skip: (page - 1) * input.pageSize, take: input.pageSize });
+    return { items, total, page, pageSize: input.pageSize, totalPages };
+  }, { isolationLevel: "RepeatableRead" });
+}
+
+export async function getOrder(id: number) {
+  const order = await prisma.order.findUnique({ where: { id }, select: {
+    ...orderSummarySelect, updatedAt: true, deliveryAddress: true, pickupAddress: true,
+    items: { orderBy: { id: "asc" }, select: {
+      id: true, productName: true, colorName: true, size: true, quantity: true, unitPrice: true, subtotal: true
+    } }
+  } });
+  if (!order) throw new OrderError(404, "Pedido não encontrado.");
+  return order;
+}
 export interface StockConflict {
   variantId: number; productName: string; colorName: string; size: string; requested: number; available: number;
 }
