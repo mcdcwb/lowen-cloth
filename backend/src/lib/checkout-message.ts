@@ -15,9 +15,9 @@ export function addressLine(address: MessageAddress): string {
   return [ `${plain(address.street)}, ${plain(address.number)}`, address.complement ? plain(address.complement) : "",
     plain(address.neighborhood), `${plain(address.city)} - ${plain(address.state)}`, `CEP ${cep}` ].filter(Boolean).join(" · ");
 }
-export function checkoutMessage(name: string, items: MessageItem[], method: "DELIVERY" | "PICKUP", address: MessageAddress | null, totalCents: number): string {
+export function checkoutMessage(name: string, items: MessageItem[], method: "DELIVERY" | "PICKUP", address: MessageAddress | null, totalCents: number, orderNumber?: string): string {
   if (method === "DELIVERY" && !address) throw new Error("Endereço de entrega necessário.");
-  return [ `Olá, meu nome é ${plain(name)}.`, "Este é o meu pedido:",
+  return [ `Olá, meu nome é ${plain(name)}.`, ...(orderNumber ? [`Pedido: *#${plain(orderNumber)}*`] : []), "Este é o meu pedido:",
     ...items.map(item => `- Qtd: ${item.quantity}x ${plain(item.name)}.\nCor: *${plain(item.color)}*\nTamanho: *${plain(item.size)}*\nPreço: R$${moneyFromCents(item.subtotalCents)}.`),
     `Precisa de entrega? *${method === "DELIVERY" ? "Sim" : "Não"}*.`,
     ...(method === "DELIVERY" && address ? [`Endereço: ${addressLine(address)}.`] : []),

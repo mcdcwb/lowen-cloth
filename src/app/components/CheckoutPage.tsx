@@ -57,6 +57,7 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
   const [revision, setRevision] = useState(0);
   const [sending, setSending] = useState(false);
   const [opened, setOpened] = useState(false);
+  const attempt = useRef<{ selection: string; key: string } | null>(null);
   const pending = useRef(false);
   const alive = useRef(true);
   const controller = useRef<AbortController | null>(null);
@@ -105,6 +106,7 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
     if (!sessionIsCurrent()) { setFinalError("A sessão mudou. Entre novamente para continuar."); return; }
     pending.current = true; setSending(true); setFinalError("");
     const selection = currentSelection;
+    if (attempt.current?.selection !== selection) attempt.current = { selection, key: crypto.randomUUID() };
     // Open during the click gesture, before awaiting the server, to avoid popup blockers.
     const tab = window.open("about:blank", "_blank"); popup.current = tab;
     if (!tab) { pending.current = false; setSending(false); setFinalError("Permita abrir uma nova aba para continuar no WhatsApp e tente novamente."); return; }
@@ -118,7 +120,7 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
         customerName: profile.account.name,
         address: method === "DELIVERY" ? profile.address : null, pickupAddress: method === "PICKUP" ? store.address : null,
         whatsapp: store.whatsapp
-      }, request.signal);
+      }, request.signal, attempt.current!.key);
       if (!alive.current || tab.closed) { tab.close(); return; }
       if (!sessionIsCurrent()) throw new Error("A sessão mudou durante a validação. Entre novamente para continuar.");
       if (live.current.currentSelection !== selection || live.current.cartOpen || live.current.shoppingBusy)
@@ -198,7 +200,7 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
         {profileError && <p role="alert" className="mt-4 text-sm text-destructive">{profileError}</p>}
         {store.error ? <p role="alert" className="mt-4 text-sm text-destructive">{store.error}</p> : !store.loading && !whatsappUrl(store.whatsapp) && <p role="alert" className="mt-4 text-sm text-destructive">O contato da loja está temporariamente indisponível.</p>}
         {finalError && <p role="alert" className="mt-4 text-sm text-destructive">{finalError}</p>}
-        <button onClick={() => { setRevision(value => value + 1); store.reload(); setOpened(false); }} disabled={sending || loading} className={action + " text-primary underline text-sm mt-3"}>Conferir dados novamente</button>
+        <button onClick={() => { attempt.current = null; setRevision(value => value + 1); store.reload(); setOpened(false); }} disabled={sending || loading} className={action + " text-primary underline text-sm mt-3"}>Conferir dados novamente</button>
         <button onClick={finalize} disabled={!canSend} aria-busy={sending} className={action + " w-full bg-primary text-primary-foreground font-semibold mt-4 disabled:opacity-50 disabled:cursor-not-allowed inline-flex gap-2 items-center justify-center"}>
           <MessageCircle className="w-5 h-5 shrink-0" aria-hidden="true" />{sending ? "Validando pedido..." : "Finalizar compra pelo WhatsApp"}
         </button>

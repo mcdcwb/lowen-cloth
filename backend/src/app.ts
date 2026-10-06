@@ -1,4 +1,5 @@
 import "dotenv/config";
+import orderRoutes from "./routes/order.routes.js";
 import express from "express";
 import { getJwtKey } from "./config/auth.js";
 import { createAuthRoutes } from "./routes/auth.routes.js";
@@ -23,6 +24,7 @@ export function createApp(options: { uploadProductImage?: ProductImageUploader; 
     app.use("/uploads", createUploadRoutes(options.uploadProductImage));
     app.use("/auth", createAuthRoutes());
     app.use("/conta", accountRoutes);
+    app.use("/orders", orderRoutes);
     app.use("/checkout", createCheckoutRoutes(options.settingsDatabase));
     app.use(shoppingRoutes);
 

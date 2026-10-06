@@ -13,9 +13,10 @@ import { createAdmin } from "../src/services/admin.service.js";
 import { startTestServer } from "./helpers/http.js";
 import { categoryRelation } from "./helpers/category.js";
 import { storeDetailsData } from "../src/services/settings.service.js";
+import { prepareCheckoutWhatsapp } from "../src/services/checkout.service.js";
 
 process.env.JWT_SECRET = randomBytes(32).toString("hex");
-test("checkout validates authoritative data and prepares WhatsApp without writes", async t => {
+test("checkout persists orders without changing cart/stock and confirms atomically", async t => {
   assert.match(new URL(process.env.DATABASE_URL!).pathname, /^\/lowen_test_/, "Use tests/helpers/run-isolated.mjs, never the real database.");
   const schema = "checkout_test_" + randomUUID().replaceAll("-", "");
   const db = new pg.Client({ connectionString: process.env.DATABASE_URL }); await db.connect();
@@ -37,7 +38,7 @@ test("checkout validates authoritative data and prepares WhatsApp without writes
     const review = async () => (await (await req("/checkout")).json());
     const context = (method: string) => ({ customerName: "João da Silva", address: method === "DELIVERY" ? address : null,
       pickupAddress: method === "PICKUP" ? pickupAddress : null, whatsapp: "5541999999999" });
-    const body = async (method: string) => ({ fulfillmentMethod: method, reviewKey: (await review()).reviewKey, reviewedContext: context(method) });
+    const body = async (method: string) => ({ idempotencyKey: randomUUID(), fulfillmentMethod: method, reviewKey: (await review()).reviewKey, reviewedContext: context(method) });
     await t.test("GUEST and ADMIN rejected, client cannot select another user's cart or inject prices", async () => {
       for (const path of ["/checkout", "/checkout/whatsapp", "/carrinho/conferencia"]) {
         const method = path.endsWith("whatsapp") ? "POST" : "GET";
@@ -79,6 +80,82 @@ test("checkout validates authoritative data and prepares WhatsApp without writes
       assert.deepEqual(await prisma.cartItem.findMany({ where: { userId: user.id } }), beforeCart);
       assert.deepEqual(await prisma.productVariant.findMany({ where: { color: { productId } } }), beforeStock);
     });
+    await t.test("persistent snapshots, idempotency, authorization and atomic concurrent confirmation", async () => {
+      const input = await body("DELIVERY");
+      const responses = await Promise.all(Array.from({ length: 5 }, () => req("/checkout/whatsapp", "POST", input)));
+      const results = await Promise.all(responses.map(r => r.json()));
+      assert.ok(responses.every(r => r.status === 200));
+      assert.equal(new Set(results.map(r => r.order.id)).size, 1);
+      const id = results[0].order.id;
+      const saved = await prisma.order.findUniqueOrThrow({ where: { id }, include: { items: true } });
+      assert.equal(saved.status, "PENDING_CONFIRMATION");
+      assert.deepEqual(saved.deliveryAddress, address); assert.equal(saved.pickupAddress, null);
+      assert.equal(saved.total.toString(), "319.6");
+      assert.equal(saved.items[0].productName, product.name); assert.equal(saved.items[0].unitPrice.toString(), "79.9");
+      assert.ok(saved.whatsappMessage.includes(`Pedido: *#${saved.number}*`));
+      assert.equal((await req("/checkout/whatsapp", "POST", { ...input, fulfillmentMethod: "PICKUP" })).status, 409);
+      const other = await (await req("/checkout/whatsapp", "POST", await body("PICKUP"))).json();
+      const pickup = await prisma.order.findUniqueOrThrow({ where: { id: other.order.id } });
+      assert.equal(pickup.sequence, saved.sequence + 1); assert.notEqual(pickup.number, saved.number);
+      assert.equal(pickup.deliveryAddress, null); assert.deepEqual(pickup.pickupAddress, pickupAddress);
+      assert.equal((await server.request(`/orders/${id}/confirm`, "POST")).status, 401);
+      assert.equal((await req(`/orders/${id}/confirm`, "POST")).status, 403);
+      await prisma.product.update({ where: { id: productId }, data: { name: "Renamed", price: 149 } });
+      await prisma.userAddress.update({ where: { userId: user.id }, data: { number: "999" } });
+      const historical = await prisma.order.findUniqueOrThrow({ where: { id }, include: { items: true } });
+      assert.deepEqual(historical.deliveryAddress, address); assert.equal(historical.items[0].productName, product.name);
+      assert.equal(historical.items[0].unitPrice.toString(), "79.9");
+      await prisma.product.update({ where: { id: productId }, data: { name: product.name, price: 79.9 } });
+      await prisma.userAddress.update({ where: { userId: user.id }, data: address });
+      const last = product.colors[1].variants[0];
+      await prisma.productVariant.update({ where: { id: last.id }, data: { stock: 0 } });
+      const before = await prisma.productVariant.findMany({ where: { color: { productId } }, orderBy: { id: "asc" } });
+      const failed = await server.request(`/orders/${id}/confirm`, "POST", {}, admin);
+      assert.equal(failed.status, 409); assert.equal((await failed.json()).conflicts[0].available, 0);
+      assert.deepEqual(await prisma.productVariant.findMany({ where: { color: { productId } }, orderBy: { id: "asc" } }), before);
+      assert.equal((await prisma.order.findUniqueOrThrow({ where: { id } })).status, "PENDING_CONFIRMATION");
+      await prisma.productVariant.update({ where: { id: last.id }, data: { stock: 1 } });
+      const confirmations = await Promise.all([id, other.order.id].map(orderId => server.request(`/orders/${orderId}/confirm`, "POST", {}, admin)));
+      assert.deepEqual(confirmations.map(r => r.status).sort(), [200, 409]);
+      const winner = await confirmations.find(r => r.status === 200)!.json();
+      assert.equal(winner.status, "PREPARING");
+      assert.equal((await prisma.productVariant.findUniqueOrThrow({ where: { id: last.id } })).stock, 0);
+      assert.equal((await prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } })).stock, 3);
+      const after = await prisma.productVariant.findMany({ where: { color: { productId } } });
+      const repeated = await Promise.all([1, 2].map(() => server.request(`/orders/${winner.id}/confirm`, "POST", {}, admin)));
+      assert.ok(repeated.every(r => r.status === 409));
+      assert.deepEqual(await prisma.productVariant.findMany({ where: { color: { productId } } }), after);
+      // Restore only test fixtures for the remaining checkout cases.
+      for (const v of before) await prisma.productVariant.update({ where: { id: v.id }, data: { stock: v.id === last.id ? 3 : v.stock } });
+      const peers = await Promise.all(Array.from({ length: 4 }, async () => {
+        const peer = await prisma.user.create({ data: { name: "João da Silva", email: randomUUID() + "@example.test", passwordHash: "test-only" } });
+        await prisma.cartItem.create({ data: { userId: peer.id, variantId: variant.id, quantity: 1 } });
+        return peer;
+      }));
+      try {
+        const numbers = await Promise.all(peers.map(async peer => {
+          const { getCheckoutReview } = await import("../src/services/checkout.service.js");
+          return (await prepareCheckoutWhatsapp(peer.id, { ...await body("PICKUP"), fulfillmentMethod: "PICKUP", reviewKey: (await getCheckoutReview(peer.id)).reviewKey }, isolated)).order.number;
+        }));
+        assert.equal(new Set(numbers).size, 4);
+      } finally {
+        await prisma.order.deleteMany({ where: { userId: { in: peers.map(p => p.id) } } });
+        await prisma.user.deleteMany({ where: { id: { in: peers.map(p => p.id) } } });
+      }
+      const count = await prisma.order.count();
+      const counter = await prisma.orderCounter.findUniqueOrThrow({ where: { id: 1 } });
+      try {
+        await prisma.orderCounter.update({ where: { id: 1 }, data: { value: 9999 } });
+        const limit = await req("/checkout/whatsapp", "POST", await body("PICKUP"));
+        assert.equal(limit.status, 409); assert.match((await limit.json()).error, /Limite de numeração/);
+        assert.equal(await prisma.order.count(), count);
+      } finally { await prisma.orderCounter.update({ where: { id: 1 }, data: { value: counter.value } }); }
+      const fresh = await (await req("/checkout/whatsapp", "POST", await body("PICKUP"))).json();
+      const samePending = await Promise.all([1, 2].map(() => server.request(`/orders/${fresh.order.id}/confirm`, "POST", {}, admin)));
+      assert.deepEqual(samePending.map(r => r.status).sort(), [200, 409]);
+      assert.equal((await prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } })).stock, before.find(v => v.id === variant.id)!.stock - 2);
+      for (const v of before) await prisma.productVariant.update({ where: { id: v.id }, data: { stock: v.id === last.id ? 3 : v.stock } });
+    });
     await t.test("stock conflict and zero block WhatsApp and read-only cart keeps requested quantity", async () => {
       for (const stock of [1, 0]) {
         await prisma.productVariant.update({ where: { id: variant.id }, data: { stock } });
@@ -116,7 +193,7 @@ test("checkout validates authoritative data and prepares WhatsApp without writes
       assert.equal((await req("/checkout/whatsapp", "POST", stale)).status, 409);
       const spoof = await body("PICKUP"); spoof.reviewedContext.customerName = "Outro Nome";
       assert.equal((await req("/checkout/whatsapp", "POST", spoof)).status, 409);
-      assert.deepEqual((await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename IN ('Order','OrderItem')")).rows, []);
+
     });
     await t.test("editing one selection in review mode never silently adjusts another stock conflict", async () => {
       await prisma.productVariant.update({ where: { id: variant.id }, data: { stock: 0 } });
@@ -129,6 +206,7 @@ test("checkout validates authoritative data and prepares WhatsApp without writes
   } finally {
     await server.close(); await isolated.$disconnect();
     if (productId) await prisma.product.deleteMany({ where: { id: productId } });
+    await prisma.order.deleteMany({ where: { user: { email } } });
     await prisma.user.deleteMany({ where: { email } }); await prisma.admin.deleteMany({ where: { email: adminEmail } });
     await db.query("SET search_path TO public"); await db.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`); await db.end(); await prisma.$disconnect();
   }

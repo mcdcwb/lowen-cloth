@@ -34,8 +34,8 @@ async function request(token: string, signal: AbortSignal, body?: unknown) {
   return data;
 }
 export async function fetchCheckoutReview(token: string, signal: AbortSignal) { return adaptReview(await request(token, signal)); }
-export async function prepareWhatsapp(token: string, method: FulfillmentMethod, reviewKey: string, reviewedContext: ReviewedContext, signal: AbortSignal): Promise<{ url: string }> {
-  const data = await request(token, signal, { fulfillmentMethod: method, reviewKey, reviewedContext });
+export async function prepareWhatsapp(token: string, method: FulfillmentMethod, reviewKey: string, reviewedContext: ReviewedContext, signal: AbortSignal, idempotencyKey: string): Promise<{ url: string }> {
+  const data = await request(token, signal, { fulfillmentMethod: method, reviewKey, reviewedContext, idempotencyKey });
   const url = new URL(data.url);
   if (url.protocol !== "https:" || url.hostname !== "wa.me" || !/^\/55\d{10,11}$/.test(url.pathname) || url.username || url.password || url.port)
     throw new Error("O contato da loja retornou um link inválido.");

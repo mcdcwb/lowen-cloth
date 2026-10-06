@@ -37,7 +37,7 @@ Logout e troca de identidade limpam o rascunho; a escolha é isolada por aba/usu
 - `POST /checkout/whatsapp`: somente USER; recebe método, reviewKey e os dados
   de nome/endereço/contato vistos pelo usuário, exclusivamente para comparação.
   Nunca recebe preços ou quantidades como autoridade. Revalida o carrinho, perfil
-  e StoreSettings em uma transação de leitura RepeatableRead e monta a mensagem
+  e StoreSettings na transação de criação do pedido e monta a mensagem
   com os valores do banco. Retorna 409 se houver conflito ou informação alterada.
 - Mutações do drawer no contexto de checkout usam `?conferencia=1`: mantém a
   validação de estoque da seleção editada sem ajustar silenciosamente outras.
@@ -71,10 +71,11 @@ informa como permitir a abertura. Cliques repetidos ficam bloqueados; nova abert
 depende de uma nova conferência ou escolha. Troca de sessão durante a validação
 impede o encaminhamento de uma resposta antiga.
 
-Não existe confirmação transacional da venda, reserva, baixa de estoque,
-Order/OrderItem, pagamento ou cálculo de frete. O carrinho permanece após abrir
-WhatsApp. Disponibilidade pode mudar depois da validação; o atendimento precisa
-confirmá-la. Os testes verificam o link e texto sem enviar mensagem real à loja.
+O fluxo persiste Order/OrderItem antes de retornar o WhatsApp, incluindo número
+público e snapshots. A confirmação ADMIN é a única operação que baixa estoque;
+checkout continua sem reserva e mantém o carrinho. Veja [fundação de pedidos](orders.md)
+para contrato, migration, idempotência e concorrência. Os testes verificam o link e
+texto sem enviar mensagem real à loja.
 
-Nenhuma migration é necessária. Execute os testes de banco/navegador pelo helper
+Existe uma migration incremental para pedidos. Execute os testes de banco/navegador pelo helper
 `backend/tests/helpers/run-isolated.mjs` para utilizar somente bancos temporários.

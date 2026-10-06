@@ -80,7 +80,7 @@ test("GUEST checkout login cancellation preserves cart, then login merges and re
   await expect(page.locator('input[type="radio"]:checked')).toHaveCount(0);
 });
 
-for (const width of [1440, 390, 320]) test(`DELIVERY/PICKUP, exact message, repeated click guard and no writes at ${width}px`, async ({ page }, testInfo) => {
+for (const width of [1440, 390, 320]) test(`DELIVERY/PICKUP, exact message, repeated click guard and unchanged cart/stock at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 900 });
   const user = await customer(page); await fakePopup(page);
   const beforeCart = await (await page.request.get("/api/carrinho/conferencia", { headers: api(user.token) })).json();
@@ -122,7 +122,8 @@ for (const width of [1440, 390, 320]) test(`DELIVERY/PICKUP, exact message, repe
   expect(message).toContain("Olá, meu nome é João da Silva.");
   expect(message).toContain("Qtd: 2x Camiseta Checkout.\nCor: *Preto*\nTamanho: *M*\nPreço: R$159,80.");
   const expectedItems = "Olá, meu nome é João da Silva.\n\nEste é o meu pedido:\n\n- Qtd: 2x Camiseta Checkout.\nCor: *Preto*\nTamanho: *M*\nPreço: R$159,80.\n\n- Qtd: 1x Calça Cargo Checkout.\nCor: *Bege*\nTamanho: *42*\nPreço: R$149,90.";
-  expect(message).toBe(`${expectedItems}\n\nPrecisa de entrega? *Sim*.\n\nEndereço: Rua São João, 123 · Apto 7 · Centro · Curitiba - PR · CEP 80000-000.\n\nValor Total de produtos: *R$309,70*.`);
+  expect(message).toMatch(/Pedido: \*#\d{8}\*/);
+  expect(message.replace(/\n\nPedido: \*#\d{8}\*/, "")).toBe(`${expectedItems}\n\nPrecisa de entrega? *Sim*.\n\nEndereço: Rua São João, 123 · Apto 7 · Centro · Curitiba - PR · CEP 80000-000.\n\nValor Total de produtos: *R$309,70*.`);
   expect(message).toContain("Precisa de entrega? *Sim*.");
   expect(message).toContain("Endereço: Rua São João, 123 · Apto 7 · Centro · Curitiba - PR · CEP 80000-000.");
   expect(message).toContain("Valor Total de produtos: *R$309,70*.");
@@ -134,7 +135,7 @@ for (const width of [1440, 390, 320]) test(`DELIVERY/PICKUP, exact message, repe
   const pickup = new URL((await received(page)).urls[1]);
   expect(pickup.pathname).toBe("/5541999999999"); expect(pickup.searchParams.get("text")).toContain("Precisa de entrega? *Não*.");
   expect(pickup.searchParams.get("text")).not.toContain("Endereço:");
-  expect(pickup.searchParams.get("text")).toBe(`${expectedItems}\n\nPrecisa de entrega? *Não*.\n\nValor Total de produtos: *R$309,70*.`);
+  expect(pickup.searchParams.get("text")!.replace(/\n\nPedido: \*#\d{8}\*/, "")).toBe(`${expectedItems}\n\nPrecisa de entrega? *Não*.\n\nValor Total de produtos: *R$309,70*.`);
   expect(await (await page.request.get("/api/carrinho/conferencia", { headers: api(user.token) })).json()).toEqual(beforeCart);
   expect((await (await page.request.get("/api/produtos")).json()).find((product: any) => product.id === shirt.id)).toEqual(beforeProduct);
 });

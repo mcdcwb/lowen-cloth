@@ -71,6 +71,7 @@ model ProductVariant {
   colorId Int
   color ProductColor @relation(fields: [colorId], references: [id], onDelete: Cascade)
   cartItems CartItem[]
+  orderItems OrderItem[]
   @@unique([colorId, value])
 }
 
@@ -87,6 +88,7 @@ model User {
   address UserAddress?
   favorites Favorite[]
   cartItems CartItem[]
+  orders Order[]
   id Int @id @default(autoincrement())
   name String
   email String @unique
@@ -124,5 +126,64 @@ model CartItem {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
   @@id([userId, variantId])
+  @@index([variantId])
+}
+
+
+enum OrderStatus {
+  PENDING_CONFIRMATION
+  PREPARING
+  READY_OR_SHIPPED
+  COMPLETED
+  CANCELLED
+}
+
+enum FulfillmentMethod {
+  DELIVERY
+  PICKUP
+}
+
+model OrderCounter {
+  id Int @id @default(1)
+  value Int @default(0)
+}
+
+model Order {
+  id Int @id @default(autoincrement())
+  number String @unique
+  sequence Int @unique
+  userId Int
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  status OrderStatus @default(PENDING_CONFIRMATION)
+  fulfillmentMethod FulfillmentMethod
+  customerName String
+  deliveryAddress Json?
+  pickupAddress Json?
+  total Decimal @db.Decimal(18, 2)
+  idempotencyKey String
+  requestHash String
+  whatsappUrl String
+  whatsappMessage String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  items OrderItem[]
+  @@unique([userId, idempotencyKey])
+  @@index([status, createdAt])
+}
+
+model OrderItem {
+  id Int @id @default(autoincrement())
+  orderId Int
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId Int?
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  originalVariantId Int
+  productName String
+  colorName String
+  size String
+  quantity Int
+  unitPrice Decimal @db.Decimal(18, 2)
+  subtotal Decimal @db.Decimal(18, 2)
+  @@index([orderId])
   @@index([variantId])
 }

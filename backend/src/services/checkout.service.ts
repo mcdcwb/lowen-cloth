@@ -1,3 +1,4 @@
+import { orderNumber } from "../lib/order-number.js";
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { Prisma } from "../generated/prisma/client.js";
@@ -41,8 +42,18 @@ export const getCheckoutReview = (userId: number) => prisma.$transaction(tx => r
 });
 
 export async function prepareCheckoutWhatsapp(userId: number, input: z.infer<typeof checkoutSchema>, storeDatabase: Pick<typeof prisma, "storeSettings"> = prisma) {
-  // Read-only snapshot: no cart updates, stock writes, reservations or order creation.
+  // Serialize attempts for this user; retries see committed orders under ReadCommitted.
   return prisma.$transaction(async tx => {
+    await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
+    const requestHash = createHash("sha256").update(JSON.stringify([input.fulfillmentMethod, input.reviewKey,
+      input.reviewedContext.customerName, input.reviewedContext.whatsapp,
+      input.reviewedContext.address && addressSchema.parse(input.reviewedContext.address),
+      input.reviewedContext.pickupAddress && addressSchema.parse(input.reviewedContext.pickupAddress)])).digest("hex");
+    const previous = await tx.order.findUnique({ where: { userId_idempotencyKey: { userId, idempotencyKey: input.idempotencyKey } } });
+    if (previous) {
+      if (previous.requestHash !== requestHash) throw new CheckoutError(409, "Esta tentativa já foi utilizada com outros dados.");
+      return { order: { id: previous.id, number: previous.number, status: previous.status }, url: previous.whatsappUrl, message: previous.whatsappMessage };
+    }
     const current = await review(userId, tx);
     if (!current.items.length) throw new CheckoutError(409, "Seu carrinho está vazio.", current);
     if (current.conflicts.length) throw new CheckoutError(409, "Revise os itens com disponibilidade alterada.", current);
@@ -67,9 +78,24 @@ export async function prepareCheckoutWhatsapp(userId: number, input: z.infer<typ
     if (context.customerName !== input.reviewedContext.customerName || context.whatsapp !== input.reviewedContext.whatsapp ||
       !sameAddress(context.address, input.reviewedContext.address) || !sameAddress(context.pickupAddress, input.reviewedContext.pickupAddress))
       throw new CheckoutError(409, "Os dados de endereço ou contato mudaram. Confira os dados atualizados antes de finalizar.");
+    const counters = await tx.$queryRaw<{ value: number }[]>`UPDATE "OrderCounter" SET value = value + 1 WHERE id = 1 AND value < 9999 RETURNING value`;
+    if (!counters.length) throw new CheckoutError(409, "Limite de numeração de pedidos atingido. Entre em contato com a loja.");
+    const [{ createdAt }] = await tx.$queryRaw<{ createdAt: Date }[]>`SELECT clock_timestamp() AS "createdAt"`;
+    const number = orderNumber(counters[0].value, createdAt);
     const message = checkoutMessage(user.name, current.items.map(item => ({ name: item.product.name,
       color: item.product.colors.find(color => color.id === item.colorId)!.colorName, size: item.size,
-      quantity: item.quantity, subtotalCents: item.subtotalCents })), input.fulfillmentMethod, context.address, current.totalCents);
-    return { url: whatsappUrl(store.whatsapp, message)!, message };
-  }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+      quantity: item.quantity, subtotalCents: item.subtotalCents })), input.fulfillmentMethod, context.address, current.totalCents, number);
+    const url = whatsappUrl(store.whatsapp, message)!;
+    const money = (cents: number) => new Prisma.Decimal(cents).div(100);
+    const order = await tx.order.create({ data: {
+      number, sequence: counters[0].value, userId, fulfillmentMethod: input.fulfillmentMethod,
+      customerName: user.name, deliveryAddress: context.address ?? Prisma.DbNull,
+      pickupAddress: context.pickupAddress ?? Prisma.DbNull, total: money(current.totalCents),
+      idempotencyKey: input.idempotencyKey, requestHash, whatsappUrl: url, whatsappMessage: message, createdAt,
+      items: { create: current.items.map(item => ({ variantId: item.variantId, originalVariantId: item.variantId,
+        productName: item.product.name, colorName: item.product.colors.find(color => color.id === item.colorId)!.colorName,
+        size: item.size, quantity: item.quantity, unitPrice: money(item.unitPriceCents), subtotal: money(item.subtotalCents) })) }
+    }, select: { id: true, number: true, status: true } });
+    return { order, url, message };
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 }
