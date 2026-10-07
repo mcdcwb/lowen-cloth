@@ -47,6 +47,7 @@ export function createManagerApi(token: string, baseUrl = "/api", fetcher: typeo
     }
   }
   return {
+    async advanceOrder(id: number, expectedStatus: "PREPARING" | "READY_OR_SHIPPED", signal?: AbortSignal): Promise<Pick<OrderDetails, "id" | "number" | "status" | "updatedAt">> { return request(`/${id}/advance`, "POST", { expectedStatus }, signal, "/orders"); },
     async orders(query: OrderQuery, signal?: AbortSignal): Promise<OrderPage> { return request(`?${orderQueryString(query)}`, "GET", undefined, signal, "/orders"); },
     async order(id: number, signal?: AbortSignal): Promise<OrderDetails> { return request(`/${id}`, "GET", undefined, signal, "/orders"); },
     async confirmOrder(id: number, signal?: AbortSignal): Promise<Pick<OrderSummary, "id" | "number" | "status">> { return request(`/${id}/confirm`, "POST", {}, signal, "/orders"); },

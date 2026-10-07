@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createManagerApi } from "../src/app/manager/api.ts";
-import { orderMoney, orderDate, orderQueryString, orderStatusLabels } from "../src/app/manager/orders.ts";
+import { orderMoney, orderDate, orderQueryString, orderStatusLabels, orderStatusLabel, orderAction } from "../src/app/manager/orders.ts";
 
 test("order API sends combined validated controls and keeps stock conflicts", async () => {
   const calls = [], query = { search: " João & Silva ", status: "PREPARING", sort: "number", direction: "asc", page: 2 };
@@ -190,4 +190,20 @@ test("low stock counts individual variants even when product totals exceed thres
   assert.equal(productStats(products, 5).lowVariants, 3);
   assert.equal(products.filter(product => matchesStock(product, "variante-baixo", 5)).length, 2);
   assert.equal(productStats([{ colors: [{ variants: [] }] }], 5).empty, 0);
+});
+
+ test("order advancement sends an expected state and displays fulfillment-specific actions", async () => {
+  let call;
+  const api = createManagerApi("admin", "/api", async (url, init) => { call = { url, init }; return Response.json({}); });
+  await api.advanceOrder(7, "PREPARING");
+  assert.equal(call.url, "/api/orders/7/advance"); assert.equal(call.init.method, "POST");
+  assert.deepEqual(JSON.parse(call.init.body), { expectedStatus: "PREPARING" });
+  assert.equal(orderStatusLabel("READY_OR_SHIPPED", "DELIVERY"), "Enviado");
+  assert.equal(orderStatusLabel("READY_OR_SHIPPED", "PICKUP"), "Pronto para retirada");
+  assert.equal(orderStatusLabel("COMPLETED", "PICKUP"), "Finalizado");
+  const order = { number: "26100015", fulfillmentMethod: "DELIVERY", status: "PREPARING" };
+  assert.equal(orderAction(order).label, "Marcar como enviado");
+  assert.equal(orderAction({ ...order, fulfillmentMethod: "PICKUP" }).label, "Marcar como pronto para retirada");
+  assert.equal(orderAction({ ...order, status: "READY_OR_SHIPPED" }).label, "Finalizar pedido");
+  for (const status of ["COMPLETED", "CANCELLED"]) assert.equal(orderAction({ ...order, status }), null);
 });

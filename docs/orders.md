@@ -66,8 +66,8 @@ credenciais ou os snapshots residenciais em campos adicionais.
 ## Status e confirmação
 
 Estados persistentes: PENDING_CONFIRMATION (inicial obrigatório), PREPARING,
-READY_OR_SHIPPED, COMPLETED, CANCELLED. Nesta etapa só há transição
-PENDING_CONFIRMATION → PREPARING.
+READY_OR_SHIPPED, COMPLETED, CANCELLED. O ciclo normal segue PENDING_CONFIRMATION → PREPARING →
+READY_OR_SHIPPED → COMPLETED.
 
 `POST /orders/:id/confirm`, corpo vazio `{}`, é ADMIN-only. USER recebe 403,
 GUEST 401, ID/corpo inválido 400, inexistente 404 e status incompatível 409.
@@ -95,7 +95,7 @@ limpo. Abrir WhatsApp não confirma venda nem envia automaticamente uma mensagem
 
 A etapa seguinte adicionou Manager/Pedidos, listagem, busca, filtros e UI de
 confirmação, descritos em [Manager → Pedidos](manager-orders.md). Ficam adiados
-outras transições de status, rastreamento, frete, gateway, pagamentos, reserva,
+rastreamento, frete, gateway, pagamentos, reserva,
 cancelamento e reposição.
 CANCELLED é apenas estado preparado; não há lógica de restituição de estoque.
 

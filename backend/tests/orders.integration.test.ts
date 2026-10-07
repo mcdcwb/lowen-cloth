@@ -74,6 +74,44 @@ test("ADMIN order reads validate filters, pagination and historical snapshots", 
       assert.equal((await server.request("/orders/invalid", "GET", undefined, admin)).status, 400);
       assert.equal((await server.request("/orders/2147483647", "GET", undefined, admin)).status, 404);
     });
+    await t.test("advance is ADMIN-only, sequential, atomic and never changes stock", async () => {
+      const category = await prisma.category.findFirstOrThrow();
+      const product = await prisma.product.create({ data: { name: tag, price: "129", categoryId: category.id, public: "unissex",
+        colors: { create: { colorName: "Branco", colorValue: "#FFFFFF", images: [], variants: { create: { value: "GG", stock: 0 } } } }
+      }, include: { colors: { include: { variants: true } } } });
+      const variant = product.colors[0].variants[0];
+      await prisma.orderItem.updateMany({ where: { orderId: { in: orders.map(o => o.id) } }, data: { variantId: variant.id, originalVariantId: variant.id } });
+      const advance = (id: number, body: unknown, token = admin) => server.request(`/orders/${id}/advance`, "POST", body, token);
+      const preparing = orders.find(o => o.status === "PREPARING")!;
+      assert.equal((await server.request(`/orders/${preparing.id}/advance`, "POST", { expectedStatus: "PREPARING" })).status, 401);
+      assert.equal((await advance(preparing.id, { expectedStatus: "PREPARING" }, customer)).status, 403);
+      assert.equal((await advance(2147483647, { expectedStatus: "PREPARING" })).status, 404);
+      assert.equal((await advance(preparing.id, {})).status, 400);
+      for (const status of ["PENDING_CONFIRMATION", "PREPARING", "COMPLETED", "CANCELLED"]) {
+        const order = orders.find(o => o.status === status)!;
+        for (const expectedStatus of ["PREPARING", "READY_OR_SHIPPED"]) {
+          if (status === expectedStatus) continue;
+          assert.equal((await advance(order.id, { expectedStatus })).status, 409);
+        }
+        for (const target of ["PREPARING", "READY_OR_SHIPPED", "COMPLETED", "CANCELLED"])
+          assert.equal((await advance(order.id, { expectedStatus: status, status: target })).status, 400);
+        if (["PENDING_CONFIRMATION", "COMPLETED", "CANCELLED"].includes(status))
+          assert.equal((await advance(order.id, { expectedStatus: status })).status, 400);
+      }
+      for (const fulfillmentMethod of ["DELIVERY", "PICKUP"]) {
+        const order = orders.find(o => o.status === "PREPARING" && o.fulfillmentMethod === fulfillmentMethod)!;
+        const responses = await Promise.all([1, 2].map(() => advance(order.id, { expectedStatus: "PREPARING" })));
+        assert.deepEqual(responses.map(r => r.status).sort(), [200, 409]);
+        assert.match((await responses.find(r => r.status === 409)!.json()).error, /status.*mudou/);
+        assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: order.id } })).status, "READY_OR_SHIPPED");
+        assert.equal((await advance(order.id, { expectedStatus: "PREPARING" })).status, 409);
+        const completed = await advance(order.id, { expectedStatus: "READY_OR_SHIPPED" });
+        assert.equal(completed.status, 200); assert.equal((await completed.json()).status, "COMPLETED");
+        assert.equal((await advance(order.id, { expectedStatus: "READY_OR_SHIPPED" })).status, 409);
+        assert.equal((await server.request(`/orders/${order.id}/confirm`, "POST", {}, admin)).status, 409);
+      }
+      assert.equal((await prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } })).stock, 0);
+    });
     await t.test("details use snapshots only and omit internal checkout/security fields", async () => {
       for (const index of [0, 1]) {
         const detail = await (await server.request(`/orders/${orders[index].id}`, "GET", undefined, admin)).json();
@@ -86,6 +124,7 @@ test("ADMIN order reads validate filters, pagination and historical snapshots", 
     });
   } finally {
     await server.close(); await prisma.order.deleteMany({ where: { user: { email } } });
+    await prisma.product.deleteMany({ where: { name: tag } });
     await prisma.user.deleteMany({ where: { email } }); await prisma.admin.deleteMany({ where: { email: adminEmail } });
     await prisma.$disconnect();
   }

@@ -137,3 +137,65 @@ test("list/detail failures allow retry, empty state, loading and forbidden USER"
   await userPage.goto("/manager/pedidos"); await expect(userPage.getByRole("heading", { name: "Acesso restrito" })).toBeVisible();
   await expect(userPage.getByRole("navigation", { name: "Navegação administrativa" })).toHaveCount(0);
 });
+
+for (const width of [320, 390, 768, 1440]) test(`normal order cycle and confirmation fit ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 }); await admin(page);
+  for (const [index, method] of [[16, "DELIVERY"], [21, "PICKUP"]] as const) {
+    const id = fixture.orders[index].id;
+    const preparing = { id, number: fixture.orders[index].number, status: "PREPARING", fulfillmentMethod: method };
+    let current: any;
+    await page.route(`**/api/orders/${id}`, async route => {
+      if (!current) { const response = await route.fetch(); current = { ...await response.json(), ...preparing }; }
+      await route.fulfill({ json: current });
+    });
+    let release!: () => void; let gate = new Promise<void>(resolve => { release = resolve; }); let requests = 0;
+    await page.route(`**/api/orders/${id}/advance`, async route => {
+      requests++; expect(route.request().postDataJSON()).toEqual({ expectedStatus: current.status });
+      await gate; current = { ...current, status: current.status === "PREPARING" ? "READY_OR_SHIPPED" : "COMPLETED" };
+      await route.fulfill({ json: current });
+    });
+    const dialog = await details(page, index);
+    const label = method === "DELIVERY" ? "Marcar como enviado" : "Marcar como pronto para retirada";
+    await dialog.getByRole("button", { name: label, exact: true }).click();
+    const alert = page.getByRole("alertdialog");
+    await expect(alert).toContainText(`Marcar o pedido #${preparing.number} como ${method === "DELIVERY" ? "enviado" : "pronto para retirada"}?`);
+    expect(requests).toBe(0);
+    expect(await alert.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await alert.getByRole("button", { name: "Cancelar", exact: true }).click(); expect(requests).toBe(0);
+    await dialog.getByRole("button", { name: label, exact: true }).click();
+    await alert.getByRole("button", { name: label, exact: true }).click();
+    const updating = alert.getByRole("button", { name: "Atualizando...", exact: true }); await expect(updating).toBeDisabled();
+    await updating.evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click(); });
+    release();
+    await expect(dialog.getByText(method === "DELIVERY" ? "Enviado" : "Pronto para retirada", { exact: true })).toBeVisible();
+    expect(requests).toBe(1); expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+    await dialog.getByRole("button", { name: "Finalizar pedido", exact: true }).click();
+    await expect(alert).toContainText(`Finalizar o pedido #${preparing.number}?`);
+    await alert.getByRole("button", { name: "Finalizar pedido", exact: true }).click();
+    await expect(dialog.getByText("Finalizado", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /Marcar como|Finalizar pedido|Confirmar pedido/ })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+  }
+  const cancelled = await details(page, 4);
+  await expect(cancelled).toContainText("Cancelado");
+  await expect(cancelled.getByRole("button", { name: /Marcar como|Finalizar pedido|Confirmar pedido/ })).toHaveCount(0);
+});
+
+test("real advance respects active filters and stale ADMIN state recovers", async ({ page }) => {
+  const token = await admin(page); const index = 6, id = fixture.orders[index].id;
+  await page.getByLabel("Status", { exact: true }).selectOption("PREPARING");
+  await page.getByRole("button", { name: /Ordenar por número/ }).click();
+  const dialog = await details(page, index);
+  const calls: string[] = [];
+  await page.route("**/api/orders?**", async route => { calls.push(route.request().url()); await route.continue(); });
+  await dialog.getByRole("button", { name: "Marcar como enviado", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Marcar como enviado", exact: true }).click();
+  await expect(dialog.getByText("Enviado", { exact: true })).toBeVisible();
+  await expect(rows(page)).toHaveCount(0);
+  expect(calls.some(url => { const q = new URL(url).searchParams; return q.get("status") === "PREPARING" && q.get("search") === fixture.orders[index].number && q.get("sort") === "number" && q.get("direction") === "asc"; })).toBe(true);
+  expect((await page.request.post(`/api/orders/${id}/advance`, { headers: { Authorization: `Bearer ${token}` }, data: { expectedStatus: "READY_OR_SHIPPED" } })).status()).toBe(200);
+  await dialog.getByRole("button", { name: "Finalizar pedido", exact: true }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Finalizar pedido", exact: true }).click();
+  await expect(dialog).toContainText("Finalizado"); await expect(dialog.getByRole("alert")).toContainText("status do pedido mudou");
+  await expect(dialog.getByRole("button", { name: "Finalizar pedido", exact: true })).toHaveCount(0);
+});

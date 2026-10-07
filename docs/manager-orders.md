@@ -1,5 +1,49 @@
 # Manager → Pedidos
 
+## Ciclo normal de status
+
+`POST /orders/:id/advance` é ADMIN-only (GUEST 401, USER 403). Corpo obrigatório
+e strict: `{ "expectedStatus": "PREPARING" }` ou
+`{ "expectedStatus": "READY_OR_SHIPPED" }`. O cliente informa o estado observado,
+não o destino. O servidor determina PREPARING → READY_OR_SHIPPED ou
+READY_OR_SHIPPED → COMPLETED. Nenhum outro estado ou campo é aceito (400).
+ID inválido retorna 400, pedido inexistente 404, estado incompatível/alterado 409.
+Resposta: `{ id, number, status, updatedAt }`.
+
+O update condicional por ID e status ocorre em uma transação ReadCommitted.
+PostgreSQL reavalia a condição após aguardar o update concorrente: só uma chamada
+com o mesmo expectedStatus vence. A outra retorna 409, mesmo se chegar após o
+commit. Repetir o mesmo corpo nunca avança novamente. Uma nova etapa exige uma
+nova confirmação visual com o novo estado observado. Não há acesso a estoque,
+reserva ou revalidação de variantes nesta operação.
+
+PENDING_CONFIRMATION continua usando exclusivamente `/confirm`, cuja transação
+e baixa de estoque permanecem intactas. CANCELLED e COMPLETED não avançam.
+Não há cancelamento, restituição, histórico, alteração de schema ou nova migration.
+
+Na listagem e nos detalhes, READY_OR_SHIPPED aparece como “Enviado” em DELIVERY
+e “Pronto para retirada” em PICKUP. O filtro mantém “Enviado / Pronto”. PREPARING
+oferece “Marcar como enviado” ou “Marcar como pronto para retirada”; o estado
+seguinte oferece “Finalizar pedido”. Todas as ações usam o AlertDialog existente,
+proteção de submit por ref, botões desabilitados e feedback “Atualizando...”.
+Sucesso atualiza o pedido aberto e recarrega a listagem mantendo os critérios;
+o filtro ativo pode remover o pedido da lista. Somente `/confirm` recarrega o
+catálogo de estoque. Erros mantêm a mensagem do servidor e relêem os detalhes
+antes de oferecer outra ação, inclusive após conflito ou resposta perdida.
+
+Testes adicionais cobrem autorização, contrato strict, etapas inválidas,
+concorrência, replay, DELIVERY/PICKUP e estoque zero sem alteração. Playwright
+cobre confirmação, submit único, finalização, ausência de ações terminais,
+filtros, recuperação após mudança por outro ADMIN e larguras 320/390/768/1440px.
+
+Validação do ciclo normal: 94 testes backend, 60 testes frontend e 14 cenários
+Playwright de Pedidos passaram. Typecheck, builds frontend/backend e
+`git diff --check` passaram. A função confirmOrder foi comparada com HEAD e
+permanece idêntica. A primeira execução ampla teve interferência entre fixtures
+(incluindo carrossel); o teste novo passou a usar uma variante própria, e a
+execução ampla seguinte passou. O helper isolado agora aceita caminhos de testes
+para permitir validações direcionadas, sempre em banco temporário lowen_test_*.
+
 A rota `/manager/pedidos` usa a navegação, proteção ADMIN, cards, tokens de cor e
 notificações Sonner do Manager existente. Não houve mudança de schema, migration,
 numeração ou confirmação transacional de estoque.
@@ -58,14 +102,14 @@ controle de foco e rolagem vertical. DELIVERY mostra deliveryAddress; PICKUP mos
 "Retirada na loja" e pickupAddress. Itens mostram quantidade, produto, cor,
 tamanho, preço unitário e subtotal; o total é apenas dos produtos.
 
-Somente PENDING_CONFIRMATION oferece "Confirmar pedido". Antes de qualquer POST,
+Somente PENDING_CONFIRMATION oferece "Confirmar pedido". Antes do POST de confirmação,
 AlertDialog exige confirmação explícita e informa a baixa de estoque. Cancelar
 fecha o alerta sem enviar requisição. Durante o envio, o botão mostra
 "Confirmando...", um ref bloqueia submits repetidos e fechar/navegar pelo Manager
 fica impedido.
 
 A interface chama exclusivamente o `POST /orders/:id/confirm` já existente. Sucesso
-atualiza os detalhes para o status retornado pelo servidor, remove a ação, recarrega
+atualiza os detalhes para o status retornado pelo servidor, oferece a próxima ação, recarrega
 a página atual (mantendo filtros), atualiza o catálogo administrativo e exibe toast.
 Nenhum decremento ou cálculo de estoque é executado no frontend.
 
@@ -81,7 +125,7 @@ Mantêm-se intactos Order, OrderItem, OrderCounter, enums, timezone, formato AAM
 e transação de confirmação. Criar pedido, carrinho, checkout e WhatsApp continuam
 sem baixa ou reserva. Somente confirmar como ADMIN baixa estoque.
 
-Ficam adiados cancelar/reposição, marcar enviado/pronto, finalizar, pagamento,
+Ficam adiados cancelar/reposição, pagamento,
 frete, rastreamento, editar itens, excluir pedidos e acompanhamento público.
 
 Testes da API verificam autorização, pesquisa, os cinco status, filtros combinados,

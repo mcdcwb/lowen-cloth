@@ -43,6 +43,21 @@ export interface StockConflict {
 export class OrderError extends Error {
   constructor(public status: number, message: string, public conflicts?: StockConflict[]) { super(message); }
 }
+export async function advanceOrder(id: number, expectedStatus: "PREPARING" | "READY_OR_SHIPPED") {
+  // Validate here as well: callers cannot bypass confirmation or choose a target.
+  if (expectedStatus !== "PREPARING" && expectedStatus !== "READY_OR_SHIPPED")
+    throw new OrderError(409, "Transição de status inválida.");
+  const status = expectedStatus === "PREPARING" ? "READY_OR_SHIPPED" : "COMPLETED";
+  return prisma.$transaction(async tx => {
+    const updated = await tx.order.updateMany({ where: { id, status: expectedStatus }, data: { status } });
+    if (updated.count !== 1) {
+      const order = await tx.order.findUnique({ where: { id }, select: { id: true } });
+      if (!order) throw new OrderError(404, "Pedido não encontrado.");
+      throw new OrderError(409, "O status do pedido mudou ou não permite esta ação. Confira os dados atualizados.");
+    }
+    return tx.order.findUniqueOrThrow({ where: { id }, select: { id: true, number: true, status: true, updatedAt: true } });
+  }, { isolationLevel: "ReadCommitted" });
+}
 export async function confirmOrder(id: number) {
   return prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${id} FOR UPDATE`;

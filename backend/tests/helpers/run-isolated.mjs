@@ -22,7 +22,8 @@ try {
     await run(["--import", "tsx", "--input-type=module", "-e", "const {seedDevelopmentProducts}=await import('./src/lib/development-products.ts'); const {prisma}=await import('./src/lib/prisma.ts'); try { await seedDevelopmentProducts(); } finally { await prisma.$disconnect(); }"], process.cwd(), env);
     await run([resolve("../node_modules/@playwright/test/cli.js"), "test", ...process.argv.slice(3)], resolve(".."), env);
   } else {
-    const files = (await readdir("tests")).filter(f => f.endsWith(".test.ts")).map(f => "tests/" + f);
+    const files = process.argv.length > 2 ? process.argv.slice(2)
+      : (await readdir("tests")).filter(f => f.endsWith(".test.ts")).map(f => "tests/" + f);
     await run(["--import", "tsx", "--test", ...files], process.cwd(), env);
   }
 } finally {

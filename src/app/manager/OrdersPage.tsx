@@ -3,12 +3,12 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
 import { toast } from "sonner";
 import { notify } from "../lib/notifications";
 import { createManagerApi, ManagerApiError } from "./api";
-import { orderStatusLabels, orderMoney, orderDate, type OrderQuery, type OrderPage, type OrderDetails, type OrderStatus, type StockConflict } from "./orders";
+import { orderStatusLabels, orderStatusLabel, orderAction, orderMoney, orderDate, type OrderQuery, type OrderPage, type OrderDetails, type OrderStatus, type StockConflict } from "./orders";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "../components/ui/alert-dialog";
 const action = "min-h-11 rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 disabled:cursor-not-allowed";
-function Status({ status }: { status: OrderStatus }) {
-  return <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${status === "CANCELLED" ? "bg-destructive/10 text-destructive" : status === "PENDING_CONFIRMATION" ? "bg-muted text-foreground" : "bg-primary/10 text-primary"}`}>{orderStatusLabels[status]}</span>;
+function Status({ status, fulfillmentMethod }: Pick<OrderDetails, "status" | "fulfillmentMethod">) {
+  return <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${status === "CANCELLED" ? "bg-destructive/10 text-destructive" : status === "PENDING_CONFIRMATION" ? "bg-muted text-foreground" : "bg-primary/10 text-primary"}`}>{orderStatusLabel(status, fulfillmentMethod)}</span>;
 }
 export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
   token: string; onUnauthorized: (message: string) => void; onConfirmed: () => void; onBusy: (busy: boolean) => void;
@@ -68,23 +68,26 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
   function sort(field: OrderQuery["sort"]) {
     setQuery(old => ({ ...old, page: 1, sort: field, direction: old.sort === field && old.direction === "asc" ? "desc" : "asc" }));
   }
-  async function confirm() {
-    if (pending.current || !detail || detail.status !== "PENDING_CONFIRMATION") return;
+  async function updateOrder() {
+    if (pending.current || !detail || !orderAction(detail)) return;
     pending.current = true; setBusy(true); callbacks.current.onBusy(true); setConfirmError(""); setConflicts([]);
     const request = new AbortController(); confirmationRequest.current = request;
     try {
-      const updated = await api.confirmOrder(detail.id, request.signal);
+      const isConfirmation = detail.status === "PENDING_CONFIRMATION";
+      const updated = isConfirmation
+        ? await api.confirmOrder(detail.id, request.signal)
+        : await api.advanceOrder(detail.id, detail.status as "PREPARING" | "READY_OR_SHIPPED", request.signal);
       if (!mounted.current) return;
-      setDetail(old => old?.id === updated.id ? { ...old, status: updated.status } : old);
-      setConfirming(false); setRevision(old => old + 1); callbacks.current.onConfirmed();
-      notify.positive("Pedido confirmado com sucesso!");
+      setDetail(old => old?.id === updated.id ? { ...old, ...updated } : old);
+      setConfirming(false); setRevision(old => old + 1); if (isConfirmation) callbacks.current.onConfirmed();
+      notify.positive(isConfirmation ? "Pedido confirmado com sucesso!" : "Status do pedido atualizado com sucesso!");
     } catch (reason) {
       if (!mounted.current) return;
       const message = failure(reason); setConfirmError(message); setConfirming(false); toast.error(message);
       if (reason instanceof ManagerApiError && reason.conflicts?.length) setConflicts(reason.conflicts);
       else {
-        // A response can be lost after commit or another admin can have confirmed it.
-        // Re-read server state before offering another confirmation.
+        // A response can be lost after commit or another admin can have changed it.
+        // Re-read server state before offering another action.
         try { const current = await api.order(detail.id, request.signal); if (mounted.current) { setDetail(current); setRevision(old => old + 1); } }
         catch (refreshError) { if (mounted.current) { setDetail(null); setDetailError(failure(refreshError)); } }
       }
@@ -107,7 +110,7 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
     <section ref={listSection} style={{ minHeight: loading ? listHeight.current : 192 }} aria-label="Lista de pedidos" aria-busy={loading} className="min-h-48 space-y-3">
       {loading ? <p role="status" className="py-16 text-center text-muted-foreground">Carregando pedidos...</p> : error ? <div role="alert" className="rounded-xl border border-destructive/20 bg-card p-5"><p className="text-destructive">{error}</p><button type="button" onClick={() => setRevision(old => old + 1)} className={`${action} text-primary underline`}>Tentar novamente</button></div> : result?.items.length ? result.items.map(order => <article key={order.id} aria-label={`Pedido #${order.number}`} className="rounded-xl border border-border bg-card p-4 sm:p-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_auto_auto] items-center">
         <div className="min-w-0"><h2 className="font-semibold">#{order.number}</h2><p className="text-sm mt-1 break-words">{order.customerName}</p><p className="text-sm text-muted-foreground mt-1">{orderDate(order.createdAt)} · {order.fulfillmentMethod === "DELIVERY" ? "Entrega" : "Retirada"}</p></div>
-        <div className="min-w-0 space-y-2"><p className="font-semibold break-words">{orderMoney(order.total)}</p><Status status={order.status} /></div>
+        <div className="min-w-0 space-y-2"><p className="font-semibold break-words">{orderMoney(order.total)}</p><Status status={order.status} fulfillmentMethod={order.fulfillmentMethod} /></div>
         <button type="button" onClick={event => { openedFrom.current = event.currentTarget; setSelected(order.id); }} className={`${action} text-primary underline justify-self-start sm:col-span-2 lg:col-span-1`}>Ver detalhes<span className="sr-only"> do pedido #{order.number}</span></button>
       </article>) : <p className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">{query.search.trim() || query.status ? "Nenhum pedido corresponde aos filtros selecionados." : "Nenhum pedido encontrado."}</p>}
     </section>
@@ -116,7 +119,7 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
       <DialogContent onCloseAutoFocus={event => { event.preventDefault(); (openedFrom.current?.isConnected ? openedFrom.current : searchInput.current)?.focus(); }} className="max-h-[85dvh] overflow-y-auto sm:max-w-2xl min-w-0 break-words" onEscapeKeyDown={event => { if (pending.current) event.preventDefault(); }} onInteractOutside={event => { if (pending.current) event.preventDefault(); }}>
         <div ref={detailDialog} tabIndex={-1}><DialogHeader><DialogTitle>{detail ? `Pedido #${detail.number}` : "Detalhes do pedido"}</DialogTitle><DialogDescription>Dados históricos registrados na criação do pedido.</DialogDescription></DialogHeader></div>
         {detailLoading ? <p role="status" className="py-12 text-center">Carregando detalhes...</p> : detailError ? <div role="alert"><p className="text-destructive">{detailError}</p><button type="button" onClick={() => setDetailRevision(old => old + 1)} className={`${action} text-primary underline`}>Tentar carregar detalhes novamente</button></div> : detail && <>
-          <Status status={detail.status} />
+          <Status status={detail.status} fulfillmentMethod={detail.fulfillmentMethod} />
           <dl className="grid gap-3 sm:grid-cols-2 text-sm"><div><dt className="text-muted-foreground">Cliente</dt><dd>{detail.customerName}</dd></div><div><dt className="text-muted-foreground">Data e horário</dt><dd>{orderDate(detail.createdAt, true)}</dd></div><div><dt className="text-muted-foreground">Recebimento</dt><dd>{detail.fulfillmentMethod === "DELIVERY" ? "Entrega" : "Retirada na loja"}</dd></div></dl>
           <section><h3 className="font-semibold mb-2">{detail.fulfillmentMethod === "DELIVERY" ? "Endereço de entrega" : "Local de retirada"}</h3>{(() => {
             const address = detail.fulfillmentMethod === "DELIVERY" ? detail.deliveryAddress : detail.pickupAddress;
@@ -125,10 +128,10 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
           <section aria-label="Itens do pedido"><h3 className="font-semibold mb-3">Itens</h3><div className="space-y-3">{detail.items.map(item => <article key={item.id} className="rounded-lg border border-border p-3 text-sm"><h4 className="font-medium">{item.quantity}x {item.productName}</h4><p className="mt-1">Cor: {item.colorName}</p><p>Tamanho: {item.size}</p><p className="mt-2">Unitário: {orderMoney(item.unitPrice)}</p><p className="font-semibold">Subtotal: {orderMoney(item.subtotal)}</p></article>)}</div></section>
           <p className="font-semibold text-lg">Total dos produtos: {orderMoney(detail.total)}</p>
           {confirmError && <div role="alert" className="rounded-lg bg-destructive/10 text-destructive p-4 text-sm"><p>{confirmError}</p>{conflicts.length > 0 && <><p className="font-semibold mt-3">Estoque insuficiente:</p>{conflicts.map((conflict, index) => <div key={`${conflict.variantId}-${index}`} className="mt-3"><p className="font-medium">{conflict.productName}</p><p>Cor: {conflict.colorName}</p><p>Tamanho: {conflict.size}</p><p>Solicitado: {conflict.requested}</p><p>Disponível: {conflict.available}</p></div>)}</>}</div>}
-          {detail.status === "PENDING_CONFIRMATION" && <button type="button" ref={confirmButton} disabled={busy} onClick={() => setConfirming(true)} className={`${action} bg-primary text-primary-foreground`}>{busy ? "Confirmando..." : "Confirmar pedido"}</button>}
+          {orderAction(detail) && <button type="button" ref={confirmButton} disabled={busy} onClick={() => setConfirming(true)} className={`${action} max-w-full whitespace-normal bg-primary text-primary-foreground`}>{busy ? detail?.status === "PENDING_CONFIRMATION" ? "Confirmando..." : "Atualizando..." : detail && orderAction(detail)?.label}</button>}
         </>}
       </DialogContent>
     </Dialog>
-    <AlertDialog open={confirming} onOpenChange={open => { if (!pending.current) setConfirming(open); }}><AlertDialogContent onCloseAutoFocus={event => { event.preventDefault(); (confirmButton.current?.isConnected ? confirmButton.current : detailDialog.current)?.focus(); }}><AlertDialogHeader><AlertDialogTitle>Confirmar o pedido #{detail?.number}?</AlertDialogTitle><AlertDialogDescription>Ao confirmar, o estoque das variantes deste pedido será reduzido.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel><button type="button" disabled={busy} onClick={confirm} className={`${action} bg-primary text-primary-foreground`}>{busy ? "Confirmando..." : "Confirmar pedido"}</button></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={confirming} onOpenChange={open => { if (!pending.current) setConfirming(open); }}><AlertDialogContent onCloseAutoFocus={event => { event.preventDefault(); (confirmButton.current?.isConnected ? confirmButton.current : detailDialog.current)?.focus(); }}><AlertDialogHeader><AlertDialogTitle>{detail && orderAction(detail)?.title}</AlertDialogTitle><AlertDialogDescription>{detail?.status === "PENDING_CONFIRMATION" ? "Ao confirmar, o estoque das variantes deste pedido será reduzido." : "Confirme a atualização do status deste pedido."}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel><button type="button" disabled={busy} onClick={updateOrder} className={`${action} max-w-full whitespace-normal bg-primary text-primary-foreground`}>{busy ? detail?.status === "PENDING_CONFIRMATION" ? "Confirmando..." : "Atualizando..." : detail && orderAction(detail)?.label}</button></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </>;
 }

@@ -10,6 +10,19 @@ export interface OrderSummary {
   id: number; number: string; sequence: number; customerName: string; createdAt: string;
   total: string; fulfillmentMethod: FulfillmentMethod; status: OrderStatus;
 }
+export function orderStatusLabel(status: OrderStatus, fulfillmentMethod: FulfillmentMethod) {
+  return status === "READY_OR_SHIPPED"
+    ? fulfillmentMethod === "DELIVERY" ? "Enviado" : "Pronto para retirada"
+    : orderStatusLabels[status];
+}
+export function orderAction(order: Pick<OrderSummary, "status" | "fulfillmentMethod" | "number">) {
+  if (order.status === "PENDING_CONFIRMATION") return { label: "Confirmar pedido", title: `Confirmar o pedido #${order.number}?` };
+  if (order.status === "PREPARING") return order.fulfillmentMethod === "DELIVERY"
+    ? { label: "Marcar como enviado", title: `Marcar o pedido #${order.number} como enviado?` }
+    : { label: "Marcar como pronto para retirada", title: `Marcar o pedido #${order.number} como pronto para retirada?` };
+  if (order.status === "READY_OR_SHIPPED") return { label: "Finalizar pedido", title: `Finalizar o pedido #${order.number}?` };
+  return null;
+}
 export interface OrderDetails extends OrderSummary {
   updatedAt: string; deliveryAddress: Address | null; pickupAddress: Address | null;
   items: { id: number; productName: string; colorName: string; size: string; quantity: number; unitPrice: string; subtotal: string }[];
