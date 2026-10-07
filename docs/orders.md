@@ -94,10 +94,25 @@ SOMENTE a confirmação ADMIN reduz estoque nesta funcionalidade. O carrinho nã
 limpo. Abrir WhatsApp não confirma venda nem envia automaticamente uma mensagem.
 
 A etapa seguinte adicionou Manager/Pedidos, listagem, busca, filtros e UI de
-confirmação, descritos em [Manager → Pedidos](manager-orders.md). Ficam adiados
-rastreamento, frete, gateway, pagamentos, reserva,
-cancelamento e reposição.
-CANCELLED é apenas estado preparado; não há lógica de restituição de estoque.
+confirmação, avanço normal e cancelamento, descritos em
+[Manager → Pedidos](manager-orders.md). Ficam adiados rastreamento, frete, gateway,
+pagamentos, reserva e reabertura de pedidos terminais.
+
+`POST /orders/:id/cancel` aceita somente `{ expectedStatus }` com
+PENDING_CONFIRMATION, PREPARING ou READY_OR_SHIPPED. É ADMIN-only. Pedido pendente
+vira CANCELLED sem tocar no estoque. Pedido confirmado/em envio vira CANCELLED
+com incremento das quantidades por variante original, na mesma transação com
+lock do pedido e das variantes. COMPLETED e CANCELLED não podem cancelar.
+Estado esperado divergente retorna 409; corpo/ID inválido 400; inexistente 404.
+
+A relação OrderItem.variant usa SET NULL: excluir produto/cor/variante preserva
+snapshots, mas impede repor aquela variante em um pedido confirmado. Nesse caso
+o cancelamento retorna 409 com mensagem útil e rollback completo, sem reposição
+parcial. Não procura substituta por nome, cor ou tamanho e não recria variantes.
+Pedidos pendentes podem cancelar mesmo após exclusão, pois não precisam repor.
+Estoque atual é incrementado; alterações posteriores de estoque não são
+substituídas por snapshots. Quantidades da mesma variante são somadas e o limite
+Int do estoque é validado. Falha em qualquer item desfaz tudo.
 
 ## Exemplos ilustrativos (IDs e dados não são inseridos no banco local)
 

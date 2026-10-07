@@ -2,6 +2,15 @@ import { OrderStatus, type FulfillmentMethod } from "../../../backend/src/genera
 import { BUSINESS_TIME_ZONE } from "../../../backend/src/config/business.ts";
 import type { Address } from "../lib/address.ts";
 export type { OrderStatus };
+export type CancellableOrderStatus = Extract<OrderStatus, "PENDING_CONFIRMATION" | "PREPARING" | "READY_OR_SHIPPED">;
+export function canCancelOrder(status: OrderStatus): status is CancellableOrderStatus {
+  return status === "PENDING_CONFIRMATION" || status === "PREPARING" || status === "READY_OR_SHIPPED";
+}
+export function orderCancellationDescription(status: CancellableOrderStatus) {
+  return status === "PENDING_CONFIRMATION"
+    ? "Este pedido ainda não foi confirmado e não houve baixa de estoque."
+    : "O estoque deste pedido será devolvido.";
+}
 export const orderStatusLabels: Record<OrderStatus, string> = {
   PENDING_CONFIRMATION: "Aguardando confirmação", PREPARING: "Em preparação",
   READY_OR_SHIPPED: "Enviado / Pronto", COMPLETED: "Finalizado", CANCELLED: "Cancelado"

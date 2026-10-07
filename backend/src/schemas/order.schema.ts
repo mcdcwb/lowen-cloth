@@ -5,6 +5,9 @@ export const confirmOrderSchema = z.object({}).strict();
 export const advanceOrderSchema = z.object({
   expectedStatus: z.enum(["PREPARING", "READY_OR_SHIPPED"])
 }).strict();
+export const cancelOrderSchema = z.object({
+  expectedStatus: z.enum(["PENDING_CONFIRMATION", "PREPARING", "READY_OR_SHIPPED"])
+}).strict();
 export const orderListSchema = z.object({
   search: z.string().trim().max(100).default(""),
   status: z.enum(OrderStatus).optional(),

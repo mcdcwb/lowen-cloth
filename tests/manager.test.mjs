@@ -1,7 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createManagerApi } from "../src/app/manager/api.ts";
-import { orderMoney, orderDate, orderQueryString, orderStatusLabels, orderStatusLabel, orderAction } from "../src/app/manager/orders.ts";
+import { orderMoney, orderDate, orderQueryString, orderStatusLabels, orderStatusLabel, orderAction, canCancelOrder, orderCancellationDescription } from "../src/app/manager/orders.ts";
+
+test("order cancellation uses the authenticated expected-state contract and useful errors", async () => {
+  const calls = [];
+  const api = createManagerApi("admin", "/api", async (url, init) => { calls.push({ url, init }); return Response.json({ id: 7, status: "CANCELLED" }); });
+  for (const expectedStatus of ["PENDING_CONFIRMATION", "PREPARING", "READY_OR_SHIPPED"]) {
+    assert.equal(canCancelOrder(expectedStatus), true);
+    const result = await api.cancelOrder(7, expectedStatus);
+    assert.equal(result.status, "CANCELLED");
+    assert.deepEqual(JSON.parse(calls.at(-1).init.body), { expectedStatus });
+  }
+  assert.ok(calls.every(c => c.url === "/api/orders/7/cancel" && c.init.method === "POST" && c.init.headers.Authorization === "Bearer admin"));
+  for (const status of ["COMPLETED", "CANCELLED"]) assert.equal(canCancelOrder(status), false);
+  assert.match(orderCancellationDescription("PENDING_CONFIRMATION"), /não houve baixa de estoque/);
+  for (const status of ["PREPARING", "READY_OR_SHIPPED"]) assert.equal(orderCancellationDescription(status), "O estoque deste pedido será devolvido.");
+  const failing = createManagerApi("admin", "/api", async () => Response.json({ error: "A variante original não está disponível." }, { status: 409 }));
+  await assert.rejects(failing.cancelOrder(7, "PREPARING"), error => error.status === 409 && error.message.includes("variante original"));
+});
 
 test("order API sends combined validated controls and keeps stock conflicts", async () => {
   const calls = [], query = { search: " João & Silva ", status: "PREPARING", sort: "number", direction: "asc", page: 2 };

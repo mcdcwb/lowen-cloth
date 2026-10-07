@@ -1,5 +1,63 @@
 # Manager → Pedidos
 
+## Cancelamento administrativo
+
+`POST /orders/:id/cancel` requer ADMIN e corpo strict
+`{ "expectedStatus": "PENDING_CONFIRMATION" | "PREPARING" | "READY_OR_SHIPPED" }`.
+O corpo JSON contém exatamente um desses valores. Não aceita destino, userId ou
+campos extras. Retorna `{ id, number, status: "CANCELLED", updatedAt }`.
+GUEST recebe 401, USER 403, ID/corpo inválido 400, inexistente 404 e estado
+incompatível/alterado 409. COMPLETED e CANCELLED são terminais.
+
+A transação ReadCommitted bloqueia Order com FOR UPDATE antes de ler status e
+itens, no mesmo padrão de `/confirm`. O expectedStatus deve corresponder ao estado
+real após esperar o lock. Uma segunda chamada concorrente/repetida encontra
+CANCELLED e recebe 409, sem nova reposição. `/advance` também serializa na mesma
+linha através de seu UPDATE condicional. Corridas entre cancelar, confirmar e
+avançar não combinam operações com estados desatualizados.
+
+PENDING_CONFIRMATION apenas muda de status, sem ler/bloquear/escrever variantes.
+PREPARING e READY_OR_SHIPPED somam OrderItem.quantity por variantId e verificam
+a identidade originalVariantId. Bloqueiam variantes em ordem crescente de ID e
+usam incremento atômico sobre o estoque atual. Itens repetidos repõem a soma.
+Nome/preço/cor/tamanho editados não alteram o destino da reposição. Todos os
+incrementos e a mudança de status pertencem à mesma transação; qualquer falha
+reverte tudo, inclusive incrementos já executados. O limite Int de stock também
+é protegido, retornando conflito em vez de reposição parcial.
+
+Limitação real do schema: excluir produto, cor ou variante aplica SET NULL nos
+OrderItems. Um pedido confirmado que perdeu uma variante não pode cancelar por
+este endpoint: retorna 409, conserva status e estoque, e informa o item afetado.
+Não recria variante nem tenta substituir por dados editáveis. O pedido pendente
+pode cancelar nessa situação porque nunca teve baixa. Não foi necessária migration.
+
+“Cancelar pedido” aparece apenas nos três estados permitidos, com estilo
+destrutivo e identificação textual. O AlertDialog informa o número e a consequência
+de estoque; “Voltar” fecha sem executar. Durante o POST, mostra “Cancelando...”,
+desabilita as ações e bloqueia submits por ref. Preserva foco e navegação por teclado.
+Sucesso fecha a confirmação, atualiza detalhes e lista, exibe toast e mantém busca,
+ordenação, página e filtro. Se houve reposição, também recarrega o catálogo Manager.
+Erros exibem a mensagem da API e relêem o status antes de oferecer nova tentativa;
+resposta perdida com cancelamento já concluído também atualiza o catálogo.
+
+Não altera snapshots, carrinho, favoritos, checkout, WhatsApp ou numeração.
+`confirmOrder` e `advanceOrder` permanecem intactas: somente `/confirm` baixa
+estoque; `/advance` não altera estoque e não aceita CANCELLED.
+
+Testes usam apenas bancos lowen_test_* e fixtures próprias. A integração cobre
+os três estados em DELIVERY/PICKUP, reposição exata, itens repetidos, estoque
+atualizado depois da compra, snapshots, autorização, contrato, estados terminais,
+concorrência, disputa com confirmação/avanço, remoção física e rollback após
+falha na segunda variante. Playwright executa cancelamentos reais e verifica
+dialog, loading, submit único, toast, recuperação após outro ADMIN, filtros,
+estoque e ausência de ações terminais em 320/390/768/1440px.
+
+Validação do cancelamento: 28 testes backend relacionados, 107 testes na suíte
+backend completa, 61 testes frontend e 19 cenários Playwright de Pedidos passaram.
+Typecheck, builds frontend/backend e `git diff --check` passaram. As funções
+confirmOrder e advanceOrder foram comparadas com HEAD e permanecem idênticas.
+Schema, migrations, numeração, timezone e checkout não receberam alterações.
+
 ## Ciclo normal de status
 
 `POST /orders/:id/advance` é ADMIN-only (GUEST 401, USER 403). Corpo obrigatório
@@ -19,7 +77,8 @@ reserva ou revalidação de variantes nesta operação.
 
 PENDING_CONFIRMATION continua usando exclusivamente `/confirm`, cuja transação
 e baixa de estoque permanecem intactas. CANCELLED e COMPLETED não avançam.
-Não há cancelamento, restituição, histórico, alteração de schema ou nova migration.
+O cancelamento usa uma operação separada descrita abaixo. Não há histórico,
+alteração de schema ou nova migration.
 
 Na listagem e nos detalhes, READY_OR_SHIPPED aparece como “Enviado” em DELIVERY
 e “Pronto para retirada” em PICKUP. O filtro mantém “Enviado / Pronto”. PREPARING
@@ -27,8 +86,8 @@ oferece “Marcar como enviado” ou “Marcar como pronto para retirada”; o e
 seguinte oferece “Finalizar pedido”. Todas as ações usam o AlertDialog existente,
 proteção de submit por ref, botões desabilitados e feedback “Atualizando...”.
 Sucesso atualiza o pedido aberto e recarrega a listagem mantendo os critérios;
-o filtro ativo pode remover o pedido da lista. Somente `/confirm` recarrega o
-catálogo de estoque. Erros mantêm a mensagem do servidor e relêem os detalhes
+o filtro ativo pode remover o pedido da lista. `/confirm` e cancelamento com
+reposição recarregam o catálogo de estoque. Erros mantêm a mensagem do servidor e relêem os detalhes
 antes de oferecer outra ação, inclusive após conflito ou resposta perdida.
 
 Testes adicionais cobrem autorização, contrato strict, etapas inválidas,
@@ -125,7 +184,7 @@ Mantêm-se intactos Order, OrderItem, OrderCounter, enums, timezone, formato AAM
 e transação de confirmação. Criar pedido, carrinho, checkout e WhatsApp continuam
 sem baixa ou reserva. Somente confirmar como ADMIN baixa estoque.
 
-Ficam adiados cancelar/reposição, pagamento,
+Ficam adiados pagamento,
 frete, rastreamento, editar itens, excluir pedidos e acompanhamento público.
 
 Testes da API verificam autorização, pesquisa, os cinco status, filtros combinados,

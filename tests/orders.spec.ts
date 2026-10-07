@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 const tag = `order-browser-${randomUUID()}`;
 let fixture: { orders: { id: number; number: string; sequence: number }[]; productId: number; variantId: number };
-const run = (action: string) => execFileSync(process.execPath, ["--import", "tsx", "tests/helpers/orders-browser-fixture.ts", action, tag], { cwd: "backend", env: process.env, windowsHide: true, encoding: "utf8" });
+const run = (action: string, fixtureTag = tag) => execFileSync(process.execPath, ["--import", "tsx", "tests/helpers/orders-browser-fixture.ts", action, fixtureTag], { cwd: "backend", env: process.env, windowsHide: true, encoding: "utf8" });
 test.beforeAll(() => { fixture = JSON.parse(run("create")); });
 test.afterAll(() => { run("delete"); });
 async function admin(page: Page) {
@@ -198,4 +198,90 @@ test("real advance respects active filters and stale ADMIN state recovers", asyn
   await page.getByRole("alertdialog").getByRole("button", { name: "Finalizar pedido", exact: true }).click();
   await expect(dialog).toContainText("Finalizado"); await expect(dialog.getByRole("alert")).toContainText("status do pedido mudou");
   await expect(dialog.getByRole("button", { name: "Finalizar pedido", exact: true })).toHaveCount(0);
+});
+
+for (const width of [320, 390, 768, 1440]) test(`real cancellation, stock and accessible dialog fit ${width}px`, async ({ page }, info) => {
+  test.setTimeout(90000);
+  const fixtureTag = `order-browser-${randomUUID()}`;
+  const data: typeof fixture = JSON.parse(run("create-cancel", fixtureTag));
+  try {
+    await page.setViewportSize({ width, height: 900 }); const token = await admin(page);
+    const headers = { Authorization: `Bearer ${token}` };
+    const stock = async () => {
+      const product = (await (await page.request.get("/api/produtos")).json()).find((p: any) => p.id === data.productId);
+      return product.colors[0].variants.find((v: any) => v.id === data.variantId).stock;
+    };
+    const post = (id: number, action: string, body: unknown) => page.request.post(`/api/orders/${id}/${action}`, { headers, data: body });
+    await page.getByRole("button", { name: /Ordenar por número/ }).click();
+    for (const [index, status] of [[0, "PENDING_CONFIRMATION"], [1, "PENDING_CONFIRMATION"], [5, "PREPARING"], [10, "PREPARING"], [15, "READY_OR_SHIPPED"], [20, "READY_OR_SHIPPED"]] as const) {
+      const order = data.orders[index];
+      if (status !== "PENDING_CONFIRMATION") expect((await post(order.id, "confirm", {})).status()).toBe(200);
+      if (status === "READY_OR_SHIPPED") expect((await post(order.id, "advance", { expectedStatus: "PREPARING" })).status()).toBe(200);
+      expect(await stock()).toBe(status === "PENDING_CONFIRMATION" ? 100 : 98);
+      await page.getByLabel("Status", { exact: true }).selectOption(status);
+      await search(page, order.number, 1);
+      await rows(page).getByRole("button", { name: /Ver detalhes/ }).click();
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toContainText(index % 2 ? "Retirada na loja" : "Entrega");
+      const trigger = dialog.getByRole("button", { name: "Cancelar pedido", exact: true }); await expect(trigger).toBeVisible();
+      await trigger.click(); const alert = page.getByRole("alertdialog");
+      await expect(alert.getByRole("heading")).toHaveText(`Cancelar o pedido #${order.number}?`);
+      await expect(alert).toContainText(status === "PENDING_CONFIRMATION" ? "não houve baixa de estoque" : "O estoque deste pedido será devolvido.");
+      await expect(alert).toHaveCSS("opacity", "1");
+      expect(await alert.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await page.screenshot({ path: info.outputPath(`cancel-${width}-${status}-${index}.png`), fullPage: true });
+      await alert.getByRole("button", { name: "Voltar", exact: true }).click(); await expect(trigger).toBeFocused();
+      expect((await (await page.request.get(`/api/orders/${order.id}`, { headers })).json()).status).toBe(status);
+      let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); let requests = 0;
+      await page.route(`**/api/orders/${order.id}/cancel`, async route => {
+        requests++; expect(route.request().postDataJSON()).toEqual({ expectedStatus: status }); await gate; await route.continue();
+      });
+      const listQueries: URLSearchParams[] = [];
+      const capture = (request: any) => { if (request.url().includes("/api/orders?")) listQueries.push(new URL(request.url()).searchParams); };
+      page.on("request", capture);
+      await trigger.click(); await alert.getByRole("button", { name: "Cancelar pedido", exact: true }).click();
+      const submitting = alert.getByRole("button", { name: "Cancelando...", exact: true }); await expect(submitting).toBeDisabled();
+      await expect(alert.getByRole("button", { name: "Voltar", exact: true })).toBeDisabled();
+      await submitting.evaluate(el => { (el as HTMLButtonElement).click(); (el as HTMLButtonElement).click(); });
+      await page.keyboard.press("Escape"); await expect(alert).toBeVisible(); release();
+      await expect(dialog.getByText("Cancelado", { exact: true })).toBeVisible(); expect(requests).toBe(1);
+      await expect(alert).toHaveCount(0); await expect(dialog.getByRole("button", { name: "Cancelar pedido", exact: true })).toHaveCount(0);
+      await expect(page.locator('[data-sonner-toast][data-type="success"]').last()).toContainText("Pedido cancelado com sucesso!");
+      await expect(rows(page)).toHaveCount(0); expect(await stock()).toBe(100);
+      expect(listQueries.some(q => q.get("search") === order.number && q.get("status") === status && q.get("sort") === "number" && q.get("direction") === "asc" && q.get("page") === "1")).toBe(true);
+      page.off("request", capture); await page.unroute(`**/api/orders/${order.id}/cancel`);
+      expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+      await page.keyboard.press("Escape");
+      await page.getByLabel("Status", { exact: true }).selectOption("CANCELLED");
+      await expect(rows(page)).toHaveCount(1); await expect(rows(page)).toContainText("Cancelado");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    }
+    for (const index of [3, 4]) {
+      await page.getByLabel("Status", { exact: true }).selectOption(""); await search(page, data.orders[index].number, 1);
+      await rows(page).getByRole("button", { name: /Ver detalhes/ }).click(); const dialog = page.getByRole("dialog");
+      await expect(dialog).toContainText(index === 3 ? "Finalizado" : "Cancelado");
+      await expect(dialog.getByRole("button", { name: /Cancelar pedido|Confirmar pedido|Marcar como|Finalizar pedido/ })).toHaveCount(0);
+      await page.keyboard.press("Escape");
+    }
+  } finally { run("delete", fixtureTag); }
+});
+
+test("cancellation conflict rereads another ADMIN's status and keeps useful errors", async ({ page }) => {
+  const fixtureTag = `order-browser-${randomUUID()}`;
+  const data: typeof fixture = JSON.parse(run("create-cancel", fixtureTag));
+  try {
+    const token = await admin(page), order = data.orders[0], headers = { Authorization: `Bearer ${token}` };
+    expect((await page.request.post(`/api/orders/${order.id}/confirm`, { headers, data: {} })).status()).toBe(200);
+    await search(page, order.number, 1); await rows(page).getByRole("button", { name: /Ver detalhes/ }).click();
+    const dialog = page.getByRole("dialog"); await expect(dialog).toContainText("Em preparação");
+    await dialog.getByRole("button", { name: "Cancelar pedido", exact: true }).click();
+    expect((await page.request.post(`/api/orders/${order.id}/advance`, { headers, data: { expectedStatus: "PREPARING" } })).status()).toBe(200);
+    await page.getByRole("alertdialog").getByRole("button", { name: "Cancelar pedido", exact: true }).click();
+    await expect(dialog.getByRole("alert")).toContainText("status do pedido mudou"); await expect(dialog.getByText("Enviado", { exact: true })).toBeVisible();
+    await expect(rows(page)).toContainText("Enviado");
+    await dialog.getByRole("button", { name: "Cancelar pedido", exact: true }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Cancelar pedido", exact: true }).click();
+    await expect(dialog.getByText("Cancelado", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Cancelar pedido", exact: true })).toHaveCount(0);
+  } finally { run("delete", fixtureTag); }
 });

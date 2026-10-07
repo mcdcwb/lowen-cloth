@@ -43,6 +43,47 @@ export interface StockConflict {
 export class OrderError extends Error {
   constructor(public status: number, message: string, public conflicts?: StockConflict[]) { super(message); }
 }
+export async function cancelOrder(id: number, expectedStatus: "PENDING_CONFIRMATION" | "PREPARING" | "READY_OR_SHIPPED") {
+  if (!["PENDING_CONFIRMATION", "PREPARING", "READY_OR_SHIPPED"].includes(expectedStatus))
+    throw new OrderError(409, "Este status não permite cancelamento.");
+  return prisma.$transaction(async tx => {
+    // Same order-first lock discipline as confirmation. Advance also locks this
+    // row through its conditional UPDATE, so all three operations serialize.
+    await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${id} FOR UPDATE`;
+    const order = await tx.order.findUnique({ where: { id }, include: { items: { orderBy: { id: "asc" } } } });
+    if (!order) throw new OrderError(404, "Pedido não encontrado.");
+    if (order.status !== expectedStatus)
+      throw new OrderError(409, "O status do pedido mudou ou não permite cancelamento. Confira os dados atualizados.");
+    if (order.status !== "PENDING_CONFIRMATION") {
+      if (!order.items.length) throw new OrderError(409, "Pedido sem itens para repor estoque.");
+      const quantities = new Map<number, number>();
+      for (const item of order.items) {
+        if (item.variantId === null || item.variantId !== item.originalVariantId)
+          throw new OrderError(409, `Não foi possível repor o estoque de ${item.productName} / ${item.colorName} / ${item.size}: a variante original não está disponível. O pedido não foi cancelado.`);
+        const quantity = (quantities.get(item.variantId) ?? 0) + item.quantity;
+        if (item.quantity <= 0 || !Number.isSafeInteger(quantity) || quantity > 2147483647)
+          throw new OrderError(409, "Quantidade inválida para reposição. O pedido não foi cancelado.");
+        quantities.set(item.variantId, quantity);
+      }
+      const ids = [...quantities.keys()].sort((a, b) => a - b);
+      const variants = await tx.$queryRaw<{ id: number }[]>(Prisma.sql`
+        SELECT id FROM "ProductVariant" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`);
+      if (variants.length !== ids.length)
+        throw new OrderError(409, "Uma variante original foi removida. O pedido não foi cancelado e nenhum estoque foi devolvido.");
+      for (const variantId of ids) {
+        const quantity = quantities.get(variantId)!;
+        // Increment the current value; never restore a stale stock snapshot.
+        const updated = await tx.productVariant.updateMany({
+          where: { id: variantId, stock: { lte: 2147483647 - quantity } },
+          data: { stock: { increment: quantity } }
+        });
+        if (updated.count !== 1)
+          throw new OrderError(409, "A reposição excede o limite de estoque. O pedido não foi cancelado e nenhuma reposição foi aplicada.");
+      }
+    }
+    return tx.order.update({ where: { id }, data: { status: "CANCELLED" }, select: { id: true, number: true, status: true, updatedAt: true } });
+  }, { isolationLevel: "ReadCommitted" });
+}
 export async function advanceOrder(id: number, expectedStatus: "PREPARING" | "READY_OR_SHIPPED") {
   // Validate here as well: callers cannot bypass confirmation or choose a target.
   if (expectedStatus !== "PREPARING" && expectedStatus !== "READY_OR_SHIPPED")

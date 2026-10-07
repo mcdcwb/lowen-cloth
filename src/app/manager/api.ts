@@ -1,7 +1,7 @@
 import { adaptCategories, type Category } from "../lib/categories.ts";
 import { adaptProduct } from "../lib/products.ts";
 import type { ManagedProduct, ProductInput } from "./products.ts";
-import { orderQueryString, type OrderQuery, type OrderPage, type OrderDetails, type StockConflict, type OrderSummary } from "./orders.ts";
+import { orderQueryString, type CancellableOrderStatus, type OrderQuery, type OrderPage, type OrderDetails, type StockConflict, type OrderSummary } from "./orders.ts";
 
 export class ManagerApiError extends Error {
   status: number;
@@ -47,6 +47,7 @@ export function createManagerApi(token: string, baseUrl = "/api", fetcher: typeo
     }
   }
   return {
+    async cancelOrder(id: number, expectedStatus: CancellableOrderStatus, signal?: AbortSignal): Promise<Pick<OrderDetails, "id" | "number" | "status" | "updatedAt">> { return request(`/${id}/cancel`, "POST", { expectedStatus }, signal, "/orders"); },
     async advanceOrder(id: number, expectedStatus: "PREPARING" | "READY_OR_SHIPPED", signal?: AbortSignal): Promise<Pick<OrderDetails, "id" | "number" | "status" | "updatedAt">> { return request(`/${id}/advance`, "POST", { expectedStatus }, signal, "/orders"); },
     async orders(query: OrderQuery, signal?: AbortSignal): Promise<OrderPage> { return request(`?${orderQueryString(query)}`, "GET", undefined, signal, "/orders"); },
     async order(id: number, signal?: AbortSignal): Promise<OrderDetails> { return request(`/${id}`, "GET", undefined, signal, "/orders"); },

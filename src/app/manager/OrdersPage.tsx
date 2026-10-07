@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
 import { toast } from "sonner";
 import { notify } from "../lib/notifications";
 import { createManagerApi, ManagerApiError } from "./api";
-import { orderStatusLabels, orderStatusLabel, orderAction, orderMoney, orderDate, type OrderQuery, type OrderPage, type OrderDetails, type OrderStatus, type StockConflict } from "./orders";
+import { orderStatusLabels, orderStatusLabel, orderAction, canCancelOrder, orderCancellationDescription, orderMoney, orderDate, type OrderQuery, type OrderPage, type OrderDetails, type OrderStatus, type StockConflict } from "./orders";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "../components/ui/alert-dialog";
 const action = "min-h-11 rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 disabled:cursor-not-allowed";
@@ -26,6 +26,7 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
   const [detailError, setDetailError] = useState("");
   const [detailRevision, setDetailRevision] = useState(0);
   const [confirming, setConfirming] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [conflicts, setConflicts] = useState<StockConflict[]>([]);
@@ -69,18 +70,21 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
     setQuery(old => ({ ...old, page: 1, sort: field, direction: old.sort === field && old.direction === "asc" ? "desc" : "asc" }));
   }
   async function updateOrder() {
-    if (pending.current || !detail || !orderAction(detail)) return;
+    if (pending.current || !detail || (cancelling ? !canCancelOrder(detail.status) : !orderAction(detail))) return;
     pending.current = true; setBusy(true); callbacks.current.onBusy(true); setConfirmError(""); setConflicts([]);
     const request = new AbortController(); confirmationRequest.current = request;
     try {
-      const isConfirmation = detail.status === "PENDING_CONFIRMATION";
-      const updated = isConfirmation
+      const isConfirmation = !cancelling && detail.status === "PENDING_CONFIRMATION";
+      const updated = cancelling && canCancelOrder(detail.status)
+        ? await api.cancelOrder(detail.id, detail.status, request.signal)
+        : isConfirmation
         ? await api.confirmOrder(detail.id, request.signal)
         : await api.advanceOrder(detail.id, detail.status as "PREPARING" | "READY_OR_SHIPPED", request.signal);
       if (!mounted.current) return;
       setDetail(old => old?.id === updated.id ? { ...old, ...updated } : old);
-      setConfirming(false); setRevision(old => old + 1); if (isConfirmation) callbacks.current.onConfirmed();
-      notify.positive(isConfirmation ? "Pedido confirmado com sucesso!" : "Status do pedido atualizado com sucesso!");
+      setConfirming(false); setRevision(old => old + 1);
+      if (isConfirmation || (cancelling && detail.status !== "PENDING_CONFIRMATION")) callbacks.current.onConfirmed();
+      notify.positive(cancelling ? "Pedido cancelado com sucesso!" : isConfirmation ? "Pedido confirmado com sucesso!" : "Status do pedido atualizado com sucesso!");
     } catch (reason) {
       if (!mounted.current) return;
       const message = failure(reason); setConfirmError(message); setConfirming(false); toast.error(message);
@@ -88,7 +92,10 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
       else {
         // A response can be lost after commit or another admin can have changed it.
         // Re-read server state before offering another action.
-        try { const current = await api.order(detail.id, request.signal); if (mounted.current) { setDetail(current); setRevision(old => old + 1); } }
+        try { const current = await api.order(detail.id, request.signal); if (mounted.current) {
+          setDetail(current); setRevision(old => old + 1);
+          if (cancelling && detail.status !== "PENDING_CONFIRMATION" && current.status === "CANCELLED") callbacks.current.onConfirmed();
+        } }
         catch (refreshError) { if (mounted.current) { setDetail(null); setDetailError(failure(refreshError)); } }
       }
     } finally {
@@ -128,10 +135,24 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
           <section aria-label="Itens do pedido"><h3 className="font-semibold mb-3">Itens</h3><div className="space-y-3">{detail.items.map(item => <article key={item.id} className="rounded-lg border border-border p-3 text-sm"><h4 className="font-medium">{item.quantity}x {item.productName}</h4><p className="mt-1">Cor: {item.colorName}</p><p>Tamanho: {item.size}</p><p className="mt-2">Unitário: {orderMoney(item.unitPrice)}</p><p className="font-semibold">Subtotal: {orderMoney(item.subtotal)}</p></article>)}</div></section>
           <p className="font-semibold text-lg">Total dos produtos: {orderMoney(detail.total)}</p>
           {confirmError && <div role="alert" className="rounded-lg bg-destructive/10 text-destructive p-4 text-sm"><p>{confirmError}</p>{conflicts.length > 0 && <><p className="font-semibold mt-3">Estoque insuficiente:</p>{conflicts.map((conflict, index) => <div key={`${conflict.variantId}-${index}`} className="mt-3"><p className="font-medium">{conflict.productName}</p><p>Cor: {conflict.colorName}</p><p>Tamanho: {conflict.size}</p><p>Solicitado: {conflict.requested}</p><p>Disponível: {conflict.available}</p></div>)}</>}</div>}
-          {orderAction(detail) && <button type="button" ref={confirmButton} disabled={busy} onClick={() => setConfirming(true)} className={`${action} max-w-full whitespace-normal bg-primary text-primary-foreground`}>{busy ? detail?.status === "PENDING_CONFIRMATION" ? "Confirmando..." : "Atualizando..." : detail && orderAction(detail)?.label}</button>}
+          <div className="flex flex-wrap gap-3">
+            {orderAction(detail) && <button type="button" disabled={busy} onClick={event => { confirmButton.current = event.currentTarget; setCancelling(false); setConfirming(true); }} className={`${action} max-w-full whitespace-normal bg-primary text-primary-foreground`}>{busy && !cancelling ? detail.status === "PENDING_CONFIRMATION" ? "Confirmando..." : "Atualizando..." : orderAction(detail)?.label}</button>}
+            {canCancelOrder(detail.status) && <button type="button" disabled={busy} onClick={event => { confirmButton.current = event.currentTarget; setCancelling(true); setConfirming(true); }} className={`${action} max-w-full whitespace-normal border border-destructive/30 text-destructive`}>{busy && cancelling ? "Cancelando..." : "Cancelar pedido"}</button>}
+          </div>
         </>}
       </DialogContent>
     </Dialog>
-    <AlertDialog open={confirming} onOpenChange={open => { if (!pending.current) setConfirming(open); }}><AlertDialogContent onCloseAutoFocus={event => { event.preventDefault(); (confirmButton.current?.isConnected ? confirmButton.current : detailDialog.current)?.focus(); }}><AlertDialogHeader><AlertDialogTitle>{detail && orderAction(detail)?.title}</AlertDialogTitle><AlertDialogDescription>{detail?.status === "PENDING_CONFIRMATION" ? "Ao confirmar, o estoque das variantes deste pedido será reduzido." : "Confirme a atualização do status deste pedido."}</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancelar</AlertDialogCancel><button type="button" disabled={busy} onClick={updateOrder} className={`${action} max-w-full whitespace-normal bg-primary text-primary-foreground`}>{busy ? detail?.status === "PENDING_CONFIRMATION" ? "Confirmando..." : "Atualizando..." : detail && orderAction(detail)?.label}</button></AlertDialogFooter></AlertDialogContent></AlertDialog>
+    <AlertDialog open={confirming} onOpenChange={open => { if (!pending.current) setConfirming(open); }}>
+      <AlertDialogContent onCloseAutoFocus={event => { event.preventDefault(); (confirmButton.current?.isConnected ? confirmButton.current : detailDialog.current)?.focus(); }}>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{cancelling ? `Cancelar o pedido #${detail?.number}?` : detail && orderAction(detail)?.title}</AlertDialogTitle>
+          <AlertDialogDescription>{cancelling && detail && canCancelOrder(detail.status) ? orderCancellationDescription(detail.status) : detail?.status === "PENDING_CONFIRMATION" ? "Ao confirmar, o estoque das variantes deste pedido será reduzido." : "Confirme a atualização do status deste pedido."}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={busy}>{cancelling ? "Voltar" : "Cancelar"}</AlertDialogCancel>
+          <button type="button" disabled={busy} onClick={updateOrder} className={`${action} max-w-full whitespace-normal ${cancelling ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}>{busy ? cancelling ? "Cancelando..." : detail?.status === "PENDING_CONFIRMATION" ? "Confirmando..." : "Atualizando..." : cancelling ? "Cancelar pedido" : detail && orderAction(detail)?.label}</button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </>;
 }
