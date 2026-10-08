@@ -1,5 +1,22 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { stockBadge } from "../backend/src/lib/stock-badges.ts";
+
+test("public stock badge uses all adapted colors, preserves manual badge and ignores selected color", () => {
+  const product = adaptNested({ id: 1, name: "Multicolor", price: 20, public: "unissex", category: "camisetas", badge: "NOVO",
+    colors: [0, 1].map((stock, i) => ({ id: i + 1, colorName: `Cor ${i}`, colorValue: "#111111", images: [], variants: [{ id: i + 1, value: "M", stock }] })) });
+  const settings = { lowStockThreshold: 5, showLowStockBadge: true, showLastUnitBadge: true };
+  assert.equal(stockBadge(product, settings), "last-unit");
+  assert.equal(stockBadge(selectProductColor(product, 2), settings), "last-unit");
+  assert.equal(product.badge, "NOVO");
+  product.colors[0].variants[0].stock = 10;
+  assert.equal(stockBadge(product, settings), "last-unit");
+  product.colors[1].variants[0].stock = 3;
+  assert.equal(stockBadge(product, settings), "low-stock");
+  product.colors[1].variants[0].stock = 8;
+  assert.equal(stockBadge(product, settings), null);
+  assert.equal(product.badge, "NOVO");
+});
 import { sortCatalog, toggleCatalogSort } from "../src/app/lib/catalog-sort.ts";
 
 test("catalog sorting is opt-in, numeric, pt-BR, stable and immutable", () => {
@@ -131,4 +148,24 @@ test("category availability spans every color and reacts to replacement stock/ca
   assert.deepEqual(catalogCategories([soldOut], options), []);
   assert.deepEqual(catalogCategories([], options), []);
   assert.deepEqual(catalogCategories([product], options), options);
+});
+
+import { selectedStockBadge } from "../src/app/lib/selected-stock-badge.ts";
+test("selected badges require explicit dimensions and preserve stock toggles", () => {
+  const settings = { lowStockThreshold: 5, showLastUnitBadge: true, showLowStockBadge: true };
+  const product = { colors: [
+    { id: 1, colorName: "Black", variants: [{ value: "P", stock: 1 }, { value: "M", stock: 5 }, { value: "G", stock: 8 }, { value: "X", stock: 0 }] },
+    { id: 2, colorName: "White", variants: [{ value: "P", stock: 3 }] }
+  ] };
+  for (const selection of [{}, { colorId: 1 }, { size: "P" }, { sizes: ["P"] }, { colorId: 99, size: "P" }, { colorId: 1, size: "missing" }, { colorId: 1, size: "X" }, { colorId: 1, size: "G" }]) {
+    assert.equal(selectedStockBadge(product, settings, selection), null);
+  }
+  assert.equal(selectedStockBadge(product, settings, { colorId: 1, size: "P" }), "last-unit");
+  assert.equal(selectedStockBadge(product, settings, { colorId: 1, size: "M" }), "low-stock");
+  assert.equal(selectedStockBadge(product, settings, { colorId: 2, size: "P" }), "low-stock");
+  assert.equal(selectedStockBadge(product, { ...settings, showLastUnitBadge: false }, { colorId: 1, size: "P" }), "low-stock");
+  assert.equal(selectedStockBadge(product, { ...settings, showLowStockBadge: false }, { colorId: 1, size: "M" }), null);
+  assert.equal(selectedStockBadge({ colors: [{ variants: [{ value: "P", stock: 1 }] }] }, settings, { size: "P" }), "last-unit");
+  assert.equal(selectedStockBadge({ colors: [{ id: 1, colorName: "Black", variants: [{ stock: 1 }] }] }, settings, { colorId: 1 }), "last-unit");
+  assert.equal(selectedStockBadge({ colors: [{ variants: [{ stock: 1 }] }] }, settings), null);
 });

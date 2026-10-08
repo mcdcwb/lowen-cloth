@@ -3,7 +3,8 @@ import { requireAuth } from "../middlewares/require-auth.js";
 import { shopping } from "../controllers/shopping.controller.js";
 
 const router = Router();
-router.use(["/favoritos", "/carrinho"], requireAuth, (_req, res, next) => {
+router.use(["/favoritos", "/carrinho"], requireAuth);
+router.use("/carrinho", (_req, res, next) => {
     if (res.locals.account.role !== "USER") return res.status(403).json({ error: "Acesso exclusivo para clientes." });
     next();
 });

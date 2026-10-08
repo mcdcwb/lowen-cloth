@@ -3,7 +3,7 @@ import type { Product } from "../lib/products";
 
 export type AddState = "idle" | "pending" | "added";
 export type GetAddState = (product: Product, size: string | null) => AddState;
-const duration = 1000;
+export const feedbackDuration = 1000;
 function selectionKey(product: Product, size: string | null) {
   const variant = product.colors.find(color => color.id === product.colorId)?.variants.find(v => v.value === size);
   return variant ? `${product.id}:${product.colorId}:${variant.id}` : null;
@@ -34,13 +34,13 @@ export function useAddFeedback(identity: string) {
       if (entries.current.get(key) === entry) {
         if (success) {
           entry.state = "added";
-          entry.until = performance.now() + duration;
+          entry.until = performance.now() + feedbackDuration;
           entry.timer = setTimeout(() => {
             if (entries.current.get(key) === entry) {
               entries.current.delete(key);
               render(value => value + 1);
             }
-          }, duration);
+          }, feedbackDuration);
         } else entries.current.delete(key);
         render(value => value + 1);
       }

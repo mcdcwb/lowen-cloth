@@ -33,6 +33,11 @@ test("global settings default, validation, ADMIN authorization and persistence i
     await db.query(await readFile("prisma/migrations/20261006010000_store_business_hours/migration.sql", "utf8"));
     const { businessHours: migratedHours, ...afterMigration } = (await db.query('SELECT * FROM "StoreSettings"')).rows[0];
     assert.deepEqual(afterMigration, beforeMigration); assert.deepEqual(migratedHours, initialBusinessHours);
+    const beforeBadges = (await db.query('SELECT * FROM "StoreSettings"')).rows[0];
+    await db.query(await readFile("prisma/migrations/20261007000000_stock_badges/migration.sql", "utf8"));
+    const { showLowStockBadge, showLastUnitBadge, ...afterBadges } = (await db.query('SELECT * FROM "StoreSettings"')).rows[0];
+    assert.deepEqual(afterBadges, beforeBadges);
+    assert.equal(showLowStockBadge, true); assert.equal(showLastUnitBadge, true);
     await db.query('UPDATE "StoreSettings" SET "lowStockThreshold"=5, "storeStreet"=NULL, whatsapp=NULL');
     await createAdmin({ email, password });
     await createUser({ name: "Settings Test", email: userEmail, password });
@@ -40,22 +45,41 @@ test("global settings default, validation, ADMIN authorization and persistence i
     const user = (await (await server.request("/auth/login", "POST", { email: userEmail, password })).json()).accessToken;
     for (const method of ["GET", "PUT"]) for (const [token, status] of [[undefined, 401], [user, 403]] as const)
       assert.equal((await server.request("/settings", method, method === "PUT" ? { lowStockThreshold: 10 } : undefined, token)).status, status);
-    assert.deepEqual(await (await server.request("/settings", "GET", undefined, admin)).json(), { lowStockThreshold: 5 });
+    assert.deepEqual(await (await server.request("/settings", "GET", undefined, admin)).json(), { lowStockThreshold: 5, showLowStockBadge: true, showLastUnitBadge: true });
     for (const lowStockThreshold of [0, -1, 1.5, 10000, "5", "", null, "NaN"])
       assert.equal((await server.request("/settings", "PUT", { lowStockThreshold }, admin)).status, 400);
     for (const body of [{}, { lowStockThreshold: 10, id: 2 }]) assert.equal((await server.request("/settings", "PUT", body, admin)).status, 400);
     for (const value of [1, 9999, 10]) {
       const response = await server.request("/settings", "PUT", { lowStockThreshold: value }, admin);
       assert.equal(response.status, 200);
-      assert.deepEqual(await response.json(), { lowStockThreshold: value });
-      assert.deepEqual(await (await server.request("/settings", "GET", undefined, admin)).json(), { lowStockThreshold: value });
+      assert.deepEqual(await response.json(), { lowStockThreshold: value, showLowStockBadge: true, showLastUnitBadge: true });
+      assert.deepEqual(await (await server.request("/settings", "GET", undefined, admin)).json(), { lowStockThreshold: value, showLowStockBadge: true, showLastUnitBadge: true });
       assert.equal((await db.query('SELECT "lowStockThreshold" FROM "StoreSettings" WHERE id=1')).rows[0].lowStockThreshold, value);
     }
+    await t.test("independent stock badge switches are strict, ADMIN-only and preserve other settings", async () => {
+      for (const field of ["showLowStockBadge", "showLastUnitBadge"] as const) {
+        for (const invalid of [0, 1, "true", "false", null])
+          assert.equal((await server.request("/settings", "PUT", { [field]: invalid }, admin)).status, 400);
+        for (const [token, status] of [[undefined, 401], [user, 403]] as const)
+          assert.equal((await server.request("/settings", "PUT", { [field]: false }, token)).status, status);
+        for (const value of [false, true]) {
+          const before = await isolated.storeSettings.findUniqueOrThrow({ where: { id: 1 } });
+          const response = await server.request("/settings", "PUT", { [field]: value }, admin);
+          assert.equal(response.status, 200); assert.equal((await response.json())[field], value);
+          assert.deepEqual(await isolated.storeSettings.findUniqueOrThrow({ where: { id: 1 } }), { ...before, [field]: value });
+          assert.equal((await (await server.request("/settings/public")).json())[field], value);
+        }
+      }
+      await server.request("/settings", "PUT", { showLowStockBadge: false, showLastUnitBadge: false }, admin);
+      const response = await server.request("/settings", "PUT", { lowStockThreshold: 3 }, admin);
+      assert.deepEqual(await response.json(), { lowStockThreshold: 3, showLowStockBadge: false, showLastUnitBadge: false });
+      await server.request("/settings", "PUT", { lowStockThreshold: 10, showLowStockBadge: true, showLastUnitBadge: true }, admin);
+    });
     const address = { cep: "80000-000", street: "Rua Teste", number: "123", complement: "Sala 2", neighborhood: "Centro", city: "Curitiba", state: "pr" };
     const details = { address, whatsapp: "(41) 99999-9999" };
     for (const method of ["GET", "PUT"]) for (const [token, status] of [[undefined, 401], [user, 403]] as const)
       assert.equal((await server.request("/settings/store", method, method === "PUT" ? details : undefined, token)).status, status);
-    assert.deepEqual(await (await server.request("/settings/public")).json(), { address: null, whatsapp: null, businessHours: initialBusinessHours });
+    assert.deepEqual(await (await server.request("/settings/public")).json(), { address: null, whatsapp: null, businessHours: initialBusinessHours, lowStockThreshold: 10, showLowStockBadge: true, showLastUnitBadge: true });
     for (const method of ["PUT", "POST", "PATCH", "DELETE"])
       assert.equal((await server.request("/settings/public", method, details, admin)).status, 405);
     for (const body of [ { ...details, whatsapp: "abc" }, { ...details, whatsapp: "123" }, { ...details, address: { ...address, cep: "123" } },
@@ -63,12 +87,12 @@ test("global settings default, validation, ADMIN authorization and persistence i
       assert.equal((await server.request("/settings/store", "PUT", body, admin)).status, 400);
     const expected = { businessHours: initialBusinessHours, address: { ...address, cep: "80000000", state: "PR" }, whatsapp: "5541999999999" };
     assert.deepEqual(await (await server.request("/settings/store", "PUT", details, admin)).json(), expected);
-    assert.deepEqual(await (await server.request("/settings/public")).json(), expected);
+    assert.deepEqual(await (await server.request("/settings/public")).json(), { ...expected, lowStockThreshold: 10, showLowStockBadge: true, showLastUnitBadge: true });
     assert.deepEqual(await (await server.request("/settings/store", "GET", undefined, admin)).json(), expected);
     assert.equal((await isolated.storeSettings.findUniqueOrThrow({ where: { id: 1 } })).whatsapp, expected.whatsapp);
     assert.equal((await isolated.storeSettings.findUniqueOrThrow({ where: { id: 1 } })).lowStockThreshold, 10);
     await server.request("/settings", "PUT", { lowStockThreshold: 10 }, admin);
-    assert.deepEqual(await (await server.request("/settings/public")).json(), expected);
+    assert.deepEqual(await (await server.request("/settings/public")).json(), { ...expected, lowStockThreshold: 10, showLowStockBadge: true, showLastUnitBadge: true });
     await t.test("weekly hours are public, ADMIN configurable and preserve all other settings", async () => {
       const schedule = { ...structuredClone(initialBusinessHours), WEDNESDAY: { isOpen: false }, TUESDAY: { isOpen: true, openingTime: "10:00", closingTime: "19:30" } };
       const before = await isolated.storeSettings.findUniqueOrThrow({ where: { id: 1 } });
@@ -86,8 +110,8 @@ test("global settings default, validation, ADMIN authorization and persistence i
       assert.deepEqual(await (await server.request("/settings/store", "GET", undefined, admin)).json(), saved);
       const publicResponse = await server.request("/settings/public");
       assert.equal(publicResponse.headers.get("cache-control"), "no-store");
-      const visible = await publicResponse.json(); assert.deepEqual(visible, saved);
-      assert.deepEqual(Object.keys(visible).sort(), ["address", "businessHours", "whatsapp"]);
+      const visible = await publicResponse.json(); assert.deepEqual(visible, { ...saved, lowStockThreshold: 10, showLowStockBadge: true, showLastUnitBadge: true });
+      assert.deepEqual(Object.keys(visible).sort(), ["address", "businessHours", "lowStockThreshold", "showLastUnitBadge", "showLowStockBadge", "whatsapp"]);
       await server.request("/settings/store", "PUT", details, admin);
       assert.deepEqual((await (await server.request("/settings/public")).json()).businessHours, saved.businessHours);
       await server.request("/settings/store", "PUT", { businessHours: initialBusinessHours }, admin);
@@ -130,9 +154,9 @@ test("global settings default, validation, ADMIN authorization and persistence i
       assert.deepEqual((await isolated.storeSettings.findUniqueOrThrow({ where: { id: 1 } })).businessHours, initialBusinessHours);
     });
     await server.request("/settings/store", "PUT", { address: null, whatsapp: null }, admin);
-    assert.deepEqual(await (await server.request("/settings/public")).json(), { address: null, whatsapp: null, businessHours: initialBusinessHours });
+    assert.deepEqual(await (await server.request("/settings/public")).json(), { address: null, whatsapp: null, businessHours: initialBusinessHours, lowStockThreshold: 10, showLowStockBadge: true, showLastUnitBadge: true });
     const otherSession = (await (await server.request("/auth/login", "POST", { email, password })).json()).accessToken;
-    assert.deepEqual(await (await server.request("/settings", "GET", undefined, otherSession)).json(), { lowStockThreshold: 10 });
+    assert.deepEqual(await (await server.request("/settings", "GET", undefined, otherSession)).json(), { lowStockThreshold: 10, showLowStockBadge: true, showLastUnitBadge: true });
     await assert.rejects(db.query('INSERT INTO "StoreSettings" (id) VALUES (2)'));
     await assert.rejects(db.query('UPDATE "StoreSettings" SET "lowStockThreshold"=0'));
     assert.deepEqual(await prisma.storeSettings.findUniqueOrThrow({ where: { id: 1 } }), original);

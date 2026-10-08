@@ -18,6 +18,8 @@ export interface Product {
   imageUrl: string;
   images: string[];
   badge?: string;
+  badgeBackgroundColor?: string;
+  badgeTextColor?: string;
   color: { name: string; value: string };
   sizes: Size[];
   variants: { value: string; stock: number }[];
@@ -63,6 +65,8 @@ export function adaptProduct(value: unknown): Product {
   const first = colors[0];
   return { id: p.id as number, name: p.name, price, public: p.public, category: categoryName, categoryId: categoryId as number | undefined, isPublished: p.isPublished !== false, inCarousel: p.inCarousel === true,
     description: typeof p.description === "string" ? p.description : "", badge: typeof p.badge === "string" ? p.badge : undefined,
+    badgeBackgroundColor: typeof p.badgeBackgroundColor === "string" && /^#[0-9a-f]{6}$/i.test(p.badgeBackgroundColor) ? p.badgeBackgroundColor : "#2457A7",
+    badgeTextColor: typeof p.badgeTextColor === "string" && /^#[0-9a-f]{6}$/i.test(p.badgeTextColor) ? p.badgeTextColor : "#FFFFFF",
     colors, colorId: first.id, color: { name: first.colorName, value: first.colorValue }, images: first.images, imageUrl: first.imageUrl,
     variants: first.variants, sizes: first.variants.map(v => v.value) };
 }

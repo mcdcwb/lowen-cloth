@@ -7,6 +7,7 @@ import { createApp } from "../src/app.js";
 import { createUser } from "../src/services/user.service.js";
 import { createAdmin } from "../src/services/admin.service.js";
 import { cancelOrder } from "../src/services/order.service.js";
+import { stockBadge, type StockBadgeSettings } from "../src/lib/stock-badges.js";
 import { startTestServer } from "./helpers/http.js";
 import type { FulfillmentMethod } from "../src/generated/prisma/enums.js";
 process.env.JWT_SECRET = randomBytes(32).toString("hex");
@@ -52,6 +53,33 @@ test("administrative cancellation restores original variants atomically", async 
     await prisma.favorite.create({ data: { userId: user.id, productId: first.id } });
     const cart = await prisma.cartItem.findMany({ where: { userId: user.id } });
     const favorites = await prisma.favorite.findMany({ where: { userId: user.id } });
+
+    await t.test("public stock badges follow confirmation and cancellation without modifying the manual badge", async () => {
+      const product = await makeProduct();
+      await prisma.product.update({ where: { id: product.id }, data: { badge: "NOVO" } });
+      await prisma.productVariant.updateMany({ where: { color: { productId: product.id } }, data: { stock: 0 } });
+      const variantId = product.colors[1].variants[0].id;
+      await prisma.productVariant.update({ where: { id: variantId }, data: { stock: 2 } });
+      sequence++;
+      const order = await prisma.order.create({ data: { number: `2610${sequence}`, sequence, userId: user.id, customerName: "Badge Test", fulfillmentMethod: "PICKUP",
+        total: "10", idempotencyKey: randomUUID(), requestHash: "fixture", whatsappUrl: "https://wa.me/5541999999999", whatsappMessage: "Histórico",
+        items: { create: { variantId, originalVariantId: variantId, productName: product.name, colorName: "Preto", size: "G", quantity: 1, unitPrice: "10", subtotal: "10" } }
+      } });
+      const settings: StockBadgeSettings = await (await server.request("/settings/public")).json();
+      const badge = async () => {
+        const catalog = await (await server.request("/produtos")).json();
+        const current = catalog.find((item: { id: number }) => item.id === product.id);
+        assert.equal(current.badge, "NOVO");
+        return stockBadge(current, settings);
+      };
+      assert.equal(await badge(), "low-stock");
+      assert.equal((await post(order.id, "confirm", {})).status, 200);
+      assert.equal((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stock, 1);
+      assert.equal(await badge(), "last-unit");
+      assert.equal((await cancel(order.id, "PREPARING")).status, 200);
+      assert.equal((await prisma.productVariant.findUniqueOrThrow({ where: { id: variantId } })).stock, 2);
+      assert.equal(await badge(), "low-stock");
+    });
 
     await t.test("ADMIN-only, strict contract, missing order and stale expected state", async () => {
       const order = await makeOrder();

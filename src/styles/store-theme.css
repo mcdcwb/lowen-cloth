@@ -1,0 +1,322 @@
+/* Public routes only. The existing :root palette remains the Manager theme. */
+html[data-store-theme="dark"] {
+  color-scheme: dark;
+  --background: #0D0F10;
+  --foreground: #F3F4EF;
+  --card: #181B1D;
+  --card-foreground: #F3F4EF;
+  --popover: #23272A;
+  --popover-foreground: #F3F4EF;
+  --primary: #F4EC03;
+  --primary-hover: #C6E300;
+  --primary-foreground: #121500;
+  --secondary: #15181A;
+  --secondary-foreground: #F3F4EF;
+  --muted: #23272A;
+  --muted-foreground: #B7BEC3;
+  --accent: #2B3033;
+  --accent-foreground: #F3F4EF;
+  --border: #3E454B;
+  --control-border: #68727A;
+  --input: #68727A;
+  --input-background: #141719;
+  --ring: #F4EC03;
+  --destructive: #FF929A;
+  --destructive-foreground: #30080E;
+  --success: #9FE0B4;
+  --success-background: #12281C;
+  --success-border: #366749;
+  --warning: #F2D68B;
+  --warning-background: #302810;
+  --warning-border: #6E5B2B;
+  --danger-background: #321C20;
+  --danger-border: #78454D;
+  --danger-foreground: #FFB2B7;
+  --auth-input-foreground: var(--foreground);
+  --image-control: #141719;
+  --image-control-foreground: #F3F4EF;
+  --image-control-border: #8B949B;
+  --whatsapp: #F4EC03;
+  /* --whatsapp: #25D366; */
+  --whatsapp-foreground: #082713;
+}
+
+/* Keep the delivery strip graphite instead of a large block of neon. */
+[data-store-theme="dark"] .store-service-strip {
+  background-color: var(--secondary);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+[data-store-theme="dark"] .store-service-strip svg {
+  color: var(--primary);
+}
+
+[data-store-theme="dark"] .store-backdrop {
+  background-color: rgb(0 0 0 / 0.65);
+}
+
+[data-store-theme="dark"] :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+
+[data-store-theme="dark"] :is(input, select, textarea) {
+  border-color: var(--control-border);
+  accent-color: var(--primary);
+}
+
+[data-store-theme="dark"] input::placeholder,
+[data-store-theme="dark"] textarea::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
+[data-store-theme="dark"] button:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+[data-store-theme="dark"] button[aria-pressed="true"]:not([style]):not(.store-catalog-control):not(.store-product-size) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+[data-store-theme="dark"] button.bg-primary:not(:disabled):hover,
+[data-store-theme="dark"] a.bg-primary:hover {
+  background-color: var(--primary-hover);
+}
+
+[data-store-theme="dark"] .store-image-control {
+  color: var(--image-control-foreground);
+  background-color: var(--image-control);
+  border-color: var(--image-control-border);
+}
+
+[data-store-theme="dark"] .store-image-control:hover {
+  background-color: var(--popover);
+}
+
+[data-store-theme="dark"] .store-slider-control {
+  background-color: color-mix(in srgb, var(--image-control) 90%, transparent);
+  color: var(--image-control-foreground);
+  border-color: var(--image-control-border);
+}
+
+[data-store-theme="dark"] .store-slider-control:hover {
+  background-color: var(--popover);
+}
+
+[data-store-theme="dark"] .store-slider-control:focus-visible {
+  opacity: 1;
+}
+
+[data-store-theme="dark"] .store-image-control[aria-pressed="true"] {
+  color: var(--primary);
+}
+
+[data-store-theme="dark"] .store-product-card:hover {
+  border-color: var(--control-border);
+  box-shadow: none;
+}
+
+[data-store-theme="dark"] .store-added {
+  background-color: var(--success-background);
+  color: var(--success);
+}
+
+/* Sonner lives outside App; route scope on html also covers its portal. */
+[data-store-theme="dark"] [data-sonner-toast][data-styled="true"].toast-positive {
+  --normal-bg: var(--success-background);
+  --normal-border: var(--success-border);
+  --normal-text: var(--success);
+}
+
+[data-store-theme="dark"] [data-sonner-toast][data-styled="true"].toast-change {
+  --normal-bg: var(--warning-background);
+  --normal-border: var(--warning-border);
+  --normal-text: var(--warning);
+}
+
+[data-store-theme="dark"] [data-sonner-toast][data-styled="true"].toast-removal,
+[data-store-theme="dark"] [data-sonner-toast][data-styled="true"][data-type="error"] {
+  --normal-bg: var(--danger-background);
+  --normal-border: var(--danger-border);
+  --normal-text: var(--danger-foreground);
+}
+
+
+
+/* The transparent hit area has no decorative shadow or ring. */
+[data-store-theme="dark"] .store-favorite-bookmark {
+  box-shadow: none;
+  transition: opacity 180ms ease-out;
+}
+
+[data-store-theme="dark"] .store-favorite-bookmark svg {
+  /* The visual path starts 4.4px below the SVG box; keep that edge fixed. */
+  transform-origin: 50% 4.4px;
+  transform-box: border-box;
+  transition: transform 180ms ease-out;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-store-theme="dark"] .store-product-card:not(:hover) .store-favorite-bookmark[aria-pressed="false"]:not(:focus-visible) {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  [data-store-theme="dark"] .store-favorite-bookmark:hover svg {
+    transform: scale(1.10);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-store-theme="dark"] .store-favorite-bookmark,
+  [data-store-theme="dark"] .store-favorite-bookmark svg {
+    transition: none;
+  }
+
+  [data-store-theme="dark"] .store-favorite-bookmark:hover svg {
+    transform: none;
+  }
+}
+
+/* Keep the keyboard focus inside the photograph's clipped corner. */
+[data-store-theme="dark"] .store-favorite-bookmark:focus-visible {
+  outline-offset: -2px;
+}
+
+
+
+/* Match the existing 5000 ms autoplay; only the active main image moves. */
+[data-store-theme="dark"] .store-carousel-image {
+  transform: scale(1);
+  transform-origin: center;
+}
+
+[data-store-theme="dark"] article[aria-hidden="false"] .store-carousel-image {
+  animation: store-carousel-zoom 5s linear forwards;
+}
+
+@keyframes store-carousel-zoom {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-store-theme="dark"] article[aria-hidden="false"] .store-carousel-image {
+    animation: none;
+    transform: scale(1);
+  }
+}
+
+/* Crop empty viewBox margins; automatic tags use the half-height ratio below. */
+.product-tag {
+  display: inline-block;
+  position: relative;
+  max-width: min(100%, 140px);
+  aspect-ratio: 1792 / 776.6;
+  overflow: hidden;
+  container-type: inline-size;
+  vertical-align: middle;
+  flex-shrink: 0;
+  border-radius: 0;
+}
+.product-tag > svg {
+  position: absolute;
+  width: 100%;
+  height: 230.7494%;
+  top: -65.3747%;
+  left: 0;
+}
+.product-tag-label {
+  position: absolute;
+  inset: 0 24% 0 4%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  overflow-wrap: anywhere;
+  font-size: clamp(7px, 9cqi, 10px);
+  font-weight: 700;
+  line-height: 1.05;
+  text-transform: uppercase;
+}
+[data-store-theme="dark"] .store-favorite-bookmark:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+}
+[data-store-theme="dark"] .store-product-arrow {
+  transition: opacity 180ms ease-out;
+}
+[data-store-theme="dark"] .store-product-arrow .store-image-control {
+  background: rgba(0, 0, 0, 0.35);
+  color: #F3F4EF;
+  box-shadow: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  [data-store-theme="dark"] .store-product-card:not(:hover) .store-product-arrow:not(:focus-visible) {
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-store-theme="dark"] .store-product-arrow { transition: none; }
+}
+
+.store-product-photo { container-type: inline-size; }
+.store-product-badges {
+  --badge-slot: min(54px, calc((100cqi * 0.625 - 26px) / 2));
+  height: calc(var(--badge-slot) * 2 + 2px);
+}
+.store-product-badges > .product-tag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: min(100%, calc(var(--badge-slot) * 2.307494));
+}
+.store-product-badges > .store-badge-manual { top: calc(var(--badge-slot) + 2px); }
+.store-product-badges > .store-badge-automatic {
+  aspect-ratio: 1792 / 388.3;
+  pointer-events: auto;
+  transition: transform 225ms ease-out, clip-path 225ms ease-out;
+}
+.store-badge-automatic:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .store-product-badges > .store-badge-automatic {
+    /* Hide just the portion outside the left border; keep the visible tab interactive. */
+    transform: translateX(-72%);
+    clip-path: inset(0 0 0 72%);
+  }
+  .store-product-card:hover .store-product-badges > .store-badge-automatic {
+    transform: translateX(0);
+    clip-path: inset(0);
+  }
+  .store-product-badges > .store-badge-automatic:focus-visible {
+    transform: translateX(0);
+    clip-path: none;
+    transition: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .store-product-badges > .store-badge-automatic { transition: none; }
+}
+.store-product-badges .store-stock-low { max-width: min(85%, calc(var(--badge-slot) * 2.307494 * 0.85)); }
+.store-badge-manual .product-tag-label,
+.store-stock-last .product-tag-label { font-size: clamp(8px, 9cqi, 11.2px); }
+.store-stock-low .product-tag-label { font-size: clamp(6px, 9cqi, 8.5px); }
+.store-product-badges .store-stock-last .product-tag-label { font-size: clamp(6px, 8cqi, 8px); }
+.store-product-badges .store-stock-low .product-tag-label { font-size: clamp(5px, 8cqi, 7px); }
+[data-store-theme="dark"] .store-favorite-bookmark { cursor: pointer; }
+[data-store-theme="dark"] .store-favorite-bookmark[aria-busy="true"] { cursor: progress; }
+
+.product-tag-label > span {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}

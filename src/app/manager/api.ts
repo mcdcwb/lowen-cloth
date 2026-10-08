@@ -12,7 +12,7 @@ function normalize(value: unknown): ManagedProduct {
   const product = adaptProduct(value);
   const raw = value as Record<string, unknown>;
   return { id: product.id, name: product.name, description: product.description, price: product.price, public: product.public,
-    category: product.category, categoryId: product.categoryId!, isPublished: product.isPublished, badge: product.badge ?? null, inCarousel: product.inCarousel,
+    category: product.category, categoryId: product.categoryId!, isPublished: product.isPublished, badge: product.badge ?? null, badgeBackgroundColor: product.badgeBackgroundColor, badgeTextColor: product.badgeTextColor, inCarousel: product.inCarousel,
     colors: (raw.colors as Array<Record<string, unknown>>).map((color, i) => ({
       ...product.colors[i], imageUrl: typeof color.imageUrl === "string" ? color.imageUrl : "", images: color.images as string[]
     }))

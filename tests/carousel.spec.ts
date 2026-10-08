@@ -4,6 +4,75 @@ import { expectSuccess, successToasts } from "./toast-helpers";
 const fixture = (id: number, inCarousel = true) => ({ id, name: `Carousel ${id}`, price: 30, public: id % 2 ? "masculino" : "feminino", category: "camisetas", inCarousel,
   colors: [{ id, colorName: "Preto", colorValue: "#111111", images: [`/carousel-${id % 2 ? "portrait" : "landscape"}.svg`], variants: [{ id, value: "M", stock: 4 }] }] });
 
+for (const width of [320, 390, 768, 1440]) test(`active carousel image zooms and restarts at ${width}px`, async ({ page }, testInfo) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.clock.install();
+  await page.route("**/carousel-*.svg", route => route.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="${route.request().url().includes("portrait") ? 400 : 1600}" height="${route.request().url().includes("portrait") ? 500 : 900}"><rect width="100%" height="100%" fill="#555"/><circle cx="50%" cy="50%" r="100" fill="#aaa"/></svg>` }));
+  const products = [fixture(1), fixture(2)];
+  products[0].colors[0].images.push("/carousel-landscape.svg");
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: products }));
+  await page.goto("/");
+  const slider = page.getByRole("region", { name: "Carrossel de produtos" });
+  const activeImage = slider.locator('article[aria-hidden="false"] .store-carousel-image');
+  const inactiveImage = slider.locator('article[aria-hidden="true"] .store-carousel-image');
+  await expect(activeImage).toHaveAttribute("src", "/carousel-portrait.svg");
+  await expect.poll(() => activeImage.evaluate(image => image.getAnimations().length)).toBe(1);
+  expect(await activeImage.evaluate(image => image.getAnimations()[0].effect!.getTiming().duration)).toBe(5000);
+  const initialTime = await activeImage.evaluate(image => Number(image.getAnimations()[0].currentTime));
+  await expect.poll(() => activeImage.evaluate(image => Number(image.getAnimations()[0].currentTime))).toBeGreaterThan(initialTime);
+  const background = slider.locator('article[aria-hidden="false"] img[aria-hidden="true"]');
+  const backgroundTransform = await background.evaluate(image => getComputedStyle(image).transform);
+  const frame = activeImage.locator("..");
+  const originalBounds = await frame.boundingBox();
+  for (const time of [0, 2500, 5000]) {
+    await activeImage.evaluate((image, time) => { const animation = image.getAnimations()[0]; animation.pause(); animation.currentTime = time; }, time);
+    await expect.poll(() => activeImage.evaluate(image => new DOMMatrixReadOnly(getComputedStyle(image).transform).a)).toBeCloseTo(1 + time / 5000 * 0.08, 3);
+    await expect(background).toHaveCSS("transform", backgroundTransform);
+    expect(await frame.boundingBox()).toEqual(originalBounds);
+    if (time !== 2500) await slider.screenshot({ path: testInfo.outputPath(`zoom-${width}-${time}.png`) });
+  }
+  expect(await inactiveImage.evaluate(image => image.getAnimations().length)).toBe(0);
+  await expect(inactiveImage).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+  await slider.hover();
+  await expect(activeImage).toHaveCSS("transform", "matrix(1.08, 0, 0, 1.08, 0, 0)");
+  for (const name of ["Próximo produto", "Produto anterior"]) {
+    await slider.getByRole("button", { name, exact: true }).click();
+    await expect.poll(() => activeImage.evaluate(image => image.getAnimations().length)).toBe(1);
+    expect(await activeImage.evaluate(image => Number(image.getAnimations()[0].currentTime))).toBeLessThan(1500);
+    expect(await inactiveImage.evaluate(image => image.getAnimations().length)).toBe(0);
+  }
+  await page.mouse.move(0, 0);
+  await page.clock.fastForward(5000);
+  await expect(slider.getByRole("heading")).toHaveText("Carousel 2");
+  expect(await activeImage.evaluate(image => Number(image.getAnimations()[0].currentTime))).toBeLessThan(1500);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("single slide keeps its final zoom and reduced motion preserves navigation", async ({ page }) => {
+  let count = 1;
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: Array.from({ length: count }, (_, i) => fixture(i + 1)) }));
+  await page.goto("/");
+  const slider = page.getByRole("region", { name: "Carrossel de produtos" });
+  const activeImage = slider.locator('article[aria-hidden="false"] .store-carousel-image');
+  await expect.poll(() => activeImage.evaluate(image => image.getAnimations().length)).toBe(1);
+  await activeImage.evaluate(image => image.getAnimations()[0].finish());
+  await expect(activeImage).toHaveCSS("transform", "matrix(1.08, 0, 0, 1.08, 0, 0)");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(activeImage).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+  expect(await activeImage.evaluate(image => image.getAnimations().length)).toBe(0);
+  count = 2;
+  await page.clock.install();
+  await page.reload();
+  await slider.hover();
+  await slider.getByRole("button", { name: "Próximo produto", exact: true }).click();
+  await expect(slider.getByRole("heading")).toHaveText("Carousel 2");
+  await expect(activeImage).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+  await page.mouse.move(0, 0);
+  await page.clock.fastForward(5000);
+  await expect(slider.getByRole("heading")).toHaveText("Carousel 1");
+  expect(await activeImage.evaluate(image => image.getAnimations().length)).toBe(0);
+});
+
 for (const width of [1440, 390, 320]) test(`slider renders exactly 0–5 selections and preserves images at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 900 });
   await page.route("**/carousel-*.svg", route => route.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="${route.request().url().includes("portrait") ? 400 : 1600}" height="${route.request().url().includes("portrait") ? 500 : 900}"><rect width="100%" height="100%" fill="#555"/></svg>` }));
@@ -43,7 +112,7 @@ for (const width of [1440, 390, 320]) test(`slider renders exactly 0–5 selecti
 
 test("autoplay pauses on hover and shrinking selection clamps the current index", async ({ page }) => {
   await page.route("**/api/categorias", route => route.fulfill({ json: [{ id: 1, name: "camisetas" }] }));
-  await page.route("**/api/settings", route => route.fulfill({ json: { lowStockThreshold: 5 } }));
+  await page.route("**/api/settings", route => route.fulfill({ json: { lowStockThreshold: 5, showLowStockBadge: true, showLastUnitBadge: true } }));
   const account = { id: 1, name: "Administrador de teste", email: "admin@example.test", role: "ADMIN" };
   await page.route("**/api/auth/me", route => route.fulfill({ json: { account } }));
   await page.route("**/api/auth/login", route => route.fulfill({ json: { account, accessToken: "test-session", tokenType: "Bearer", expiresIn: 3600, expiresAt: Date.now() + 3600000 } }));

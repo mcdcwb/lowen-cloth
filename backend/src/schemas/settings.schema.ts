@@ -1,8 +1,10 @@
 import { z } from "zod";
 
 export const settingsSchema = z.object({
-  lowStockThreshold: z.number().int().min(1).max(9999)
-}).strict();
+  lowStockThreshold: z.number().int().min(1).max(9999).optional(),
+  showLowStockBadge: z.boolean().optional(),
+  showLastUnitBadge: z.boolean().optional()
+}).strict().refine(value => Object.keys(value).length > 0, "Informe as configurações a atualizar.");
 
 import { addressSchema } from "./account.schema.js";
 import { normalizeWhatsapp } from "../lib/store-contact.js";

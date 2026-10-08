@@ -1,7 +1,8 @@
 import type { Address } from "./address";
+import { isStockBadgeSettings, type StockBadgeSettings } from "../../../backend/src/lib/stock-badges.ts";
 import { isBusinessHours, type BusinessHours } from "./business-hours.ts";
 export { normalizeWhatsapp, formatWhatsapp, whatsappUrl } from "../../../backend/src/lib/store-contact";
-export interface StoreDetails { address: Address | null; whatsapp: string | null; businessHours: BusinessHours | null }
+export interface StoreDetails { address: Address | null; whatsapp: string | null; businessHours: BusinessHours | null; stockBadges?: StockBadgeSettings | null }
 type StoreDetailsInput = Partial<Pick<StoreDetails, "address" | "whatsapp">> & { businessHours?: BusinessHours };
 export const emptyStoreDetails: StoreDetails = { address: null, whatsapp: null, businessHours: null };
 export async function storeDetailsRequest(token?: string, body?: StoreDetailsInput, signal?: AbortSignal): Promise<StoreDetails> {
@@ -15,5 +16,5 @@ export async function storeDetailsRequest(token?: string, body?: StoreDetailsInp
   if (!response.ok) throw new Error(data.error || "Não foi possível acessar os dados da loja.");
   if (!(data.address === null || typeof data.address === "object") || !(data.whatsapp === null || typeof data.whatsapp === "string")) throw new Error("Dados da loja inválidos.");
   if (data.businessHours !== undefined && !isBusinessHours(data.businessHours)) throw new Error("Horários da loja inválidos.");
-  return { address: data.address, whatsapp: data.whatsapp, businessHours: data.businessHours ?? null };
+  return { address: data.address, whatsapp: data.whatsapp, businessHours: data.businessHours ?? null, stockBadges: isStockBadgeSettings(data) ? { lowStockThreshold: data.lowStockThreshold, showLowStockBadge: data.showLowStockBadge, showLastUnitBadge: data.showLastUnitBadge } : null };
 }

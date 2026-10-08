@@ -171,3 +171,48 @@ test("rapid mobile taps add only one unit", async ({ browser }) => {
     expect(await page.evaluate(() => JSON.parse(localStorage.getItem("brecho_guest_cart_v2")!)[0].quantity)).toBe(1);
   } finally { await context.close(); }
 });
+
+
+test("favorite cooldown guards each product, concurrent snapshots and failures", async ({ page }) => {
+  await page.route("**/api/carrinho", route => route.fulfill({ json: { items: [], notices: [] } }));
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const calls: string[] = [];
+  let fail = false;
+  await page.route("**/api/favoritos/*", async route => {
+    const id = Number(route.request().url().split('/').pop());
+    const method = route.request().method();
+    calls.push(`${method}:${id}`);
+    if (id === 9001 && calls.length === 1) await gate;
+    if (fail) return route.fulfill({ status: 503, json: { error: 'Favorite failed' } });
+    await route.fulfill({ json: method === 'PUT' ? [{ product: { ...raw, id } }] : [] });
+  });
+  await harness(page, true);
+  await page.evaluate(() => {
+    const w = window as any;
+    w.favoriteResults = Promise.all([w.shopping.toggleFavorite(9001), w.shopping.toggleFavorite(9001), w.shopping.toggleFavorite(9002)]);
+  });
+  await expect.poll(() => calls.length).toBe(2);
+  expect(calls).toEqual(['PUT:9001', 'PUT:9002']);
+  release();
+  expect(await page.evaluate(() => (window as any).favoriteResults)).toEqual([true, false, true]);
+  await page.clock.runFor(0);
+  expect(await page.evaluate(() => (window as any).shopping.favorites.map((p: any) => p.id).sort())).toEqual([9001, 9002]);
+  expect(await page.evaluate(() => (window as any).shopping.toggleFavorite(9001))).toBe(false);
+  await expect(toasts(page)).toHaveCount(2);
+  await page.clock.runFor(999);
+  expect(await page.evaluate(() => (window as any).shopping.toggleFavorite(9001))).toBe(false);
+  await page.clock.runFor(1);
+  expect(await page.evaluate(() => (window as any).shopping.toggleFavorite(9001))).toBe(true);
+  await page.clock.runFor(0);
+  expect(calls.at(-1)).toBe('DELETE:9001');
+  expect(await page.evaluate(() => (window as any).shopping.toggleFavorite(9001))).toBe(false);
+  await expect(toasts(page)).toHaveCount(3);
+  await page.clock.runFor(1000);
+  fail = true;
+  expect(await page.evaluate(() => (window as any).shopping.toggleFavorite(9001))).toBe(false);
+  expect(await page.evaluate(() => (window as any).shopping.favoriteBlocked(9001))).toBe(false);
+  await expect(toasts(page)).toHaveCount(3);
+  fail = false;
+  expect(await page.evaluate(() => (window as any).shopping.toggleFavorite(9001))).toBe(true);
+});

@@ -8,7 +8,7 @@ export interface ColorInput {
 }
 export interface ProductInput {
   name: string; description: string; price: number; public: string; categoryId: number; isPublished: boolean;
-  badge: string | null; colors: ColorInput[];
+  badge: string | null; badgeBackgroundColor?: string; badgeTextColor?: string; colors: ColorInput[];
 }
 export interface ManagedProduct extends ProductInput { id: number; inCarousel: boolean; category: string }
 export interface ColorDraft {
@@ -16,7 +16,7 @@ export interface ColorDraft {
   variants: { id?: number; value: string; stock: string }[];
 }
 export interface ProductDraft {
-  name: string; description: string; price: string; public: string; categoryId: string; isPublished: boolean; badge: string;
+  name: string; description: string; price: string; public: string; categoryId: string; isPublished: boolean; badge: string; badgeBackgroundColor: string; badgeTextColor: string;
   colors: ColorDraft[];
 }
 export const totalStock = (product: Pick<ProductInput, "colors">) => product.colors.reduce((sum, color) => sum + color.variants.reduce((n, v) => n + v.stock, 0), 0);
@@ -58,6 +58,7 @@ export function colorDraft(color?: ColorInput): ColorDraft {
 export function toDraft(product?: ManagedProduct): ProductDraft {
   return { name: product?.name ?? "", description: product?.description ?? "", price: product ? String(product.price) : "",
     public: product?.public ?? "unissex", categoryId: product?.categoryId ? String(product.categoryId) : "", isPublished: product?.isPublished ?? true, badge: product?.badge ?? "",
+    badgeBackgroundColor: product?.badgeBackgroundColor ?? "#2457A7", badgeTextColor: product?.badgeTextColor ?? "#FFFFFF",
     colors: product?.colors.map(colorDraft) ?? [colorDraft()] };
 }
 export function validateDraft(draft: ProductDraft): string[] {
@@ -65,6 +66,7 @@ export function validateDraft(draft: ProductDraft): string[] {
   if (draft.name.trim().length < 3) errors.push("O nome deve ter pelo menos 3 caracteres.");
   if (!draft.price.trim() || !Number.isFinite(Number(draft.price)) || Number(draft.price) <= 0) errors.push("Informe um preço maior que zero.");
   if (!draft.public.trim() || !Number.isSafeInteger(Number(draft.categoryId)) || Number(draft.categoryId) <= 0) errors.push("Informe o público e a categoria.");
+  if (!normalizeHex(draft.badgeBackgroundColor) || !normalizeHex(draft.badgeTextColor)) errors.push("Informe as cores do badge no formato HEX #RRGGBB.");
   if (!draft.colors.length) errors.push("Adicione pelo menos uma cor válida.");
   draft.colors.forEach((color, index) => {
     const prefix = `Cor ${index + 1} (${color.colorName || "sem nome"}): `;
@@ -84,7 +86,7 @@ export function validateDraft(draft: ProductDraft): string[] {
 }
 export function toInput(draft: ProductDraft): ProductInput {
   return { name: draft.name.trim(), description: draft.description, price: Number(draft.price), public: draft.public, categoryId: Number(draft.categoryId), isPublished: draft.isPublished,
-    badge: draft.badge.trim() || null, colors: draft.colors.map(color => ({ id: color.id,
+    badge: draft.badge.trim() || null, badgeBackgroundColor: normalizeHex(draft.badgeBackgroundColor)!, badgeTextColor: normalizeHex(draft.badgeTextColor)!, colors: draft.colors.map(color => ({ id: color.id,
       colorName: color.colorName.trim(), colorValue: normalizeHex(color.colorValue)!, imageUrl: color.imageUrl.trim(),
       images: color.images.split(/\r?\n/).map(i => i.trim()).filter(Boolean),
       variants: color.variants.map(v => ({ id: v.id, value: v.value.trim(), stock: Number(v.stock) })) })) };

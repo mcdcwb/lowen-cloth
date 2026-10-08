@@ -224,3 +224,22 @@ test("low stock counts individual variants even when product totals exceed thres
   assert.equal(orderAction({ ...order, status: "READY_OR_SHIPPED" }).label, "Finalizar pedido");
   for (const status of ["COMPLETED", "CANCELLED"]) assert.equal(orderAction({ ...order, status }), null);
 });
+
+
+test("manual badge colors roundtrip, legacy defaults and empty preview never invent a badge", () => {
+  const d = draft();
+  assert.equal(d.badgeBackgroundColor, '#2457A7');
+  assert.equal(d.badgeTextColor, '#FFFFFF');
+  assert.equal(toInput(d).badge, null);
+  d.badge = 'POUCAS UNIDADES';
+  d.badgeBackgroundColor = '#abcdef'; d.badgeTextColor = '#123456';
+  assert.deepEqual(validateDraft(d), []);
+  const input = toInput(d);
+  assert.equal(input.badgeBackgroundColor, '#ABCDEF');
+  assert.equal(input.badgeTextColor, '#123456');
+  assert.equal(toDraft(input).badgeBackgroundColor, '#ABCDEF');
+  for (const invalid of ['red', '#fff', '#12345678', '']) {
+    assert.match(validateDraft({ ...d, badgeBackgroundColor: invalid }).join(), /HEX/);
+    assert.match(validateDraft({ ...d, badgeTextColor: invalid }).join(), /HEX/);
+  }
+});

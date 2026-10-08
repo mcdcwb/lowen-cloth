@@ -1,4 +1,231 @@
 import { test, expect } from "@playwright/test";
+import { badgeShape } from "../src/app/components/ProductBadge";
+const originalBookmark = "M21.3,28.3L16,23l-5.3,5.3C10.1,28.9,9,28.5,9,27.6V5c0-0.6,0.4-1,1-1h12c0.6,0,1,0.4,1,1v22.6 C23,28.5,21.9,28.9,21.3,28.3z";
+
+for (const width of [320, 390, 768, 1440]) test(`automatic stock badges coexist with manual badges at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 1000 });
+  let settings = { lowStockThreshold: 5, showLowStockBadge: true, showLastUnitBadge: true };
+  const stocks = [[0, 0, 1], [1, 5], [0, 10, 3], [0, 10, 8], [0, 0, 0], [4, 10]];
+  const catalog = stocks.map((values, index) => ({
+    id: index + 1, name: `Badge case ${index}`, price: 30, public: "unissex", category: "camisetas", badge: "EDIÇÃO ESPECIAL",
+    colors: values.map((stock, color) => ({ id: index * 10 + color + 1, colorName: `Cor ${color}`, colorValue: "#111111", images: ["/badge-front.svg", "/badge-back.svg"], variants: [{ id: index * 10 + color + 1, value: "M", stock }] }))
+  }));
+  await page.route("**/badge-*.svg", route => route.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="100%" height="100%" fill="${route.request().url().includes("front") ? "#F7F7F7" : "#111111"}"/></svg>` }));
+  await page.route("**/api/produtos", route => route.fulfill({ json: catalog }));
+  await page.route("**/api/settings/public", route => route.fulfill({ json: { address: null, whatsapp: null, ...settings } }));
+  await page.goto("/");
+  const card = (index: number) => page.locator(".store-product-card").filter({ has: page.getByText(`Badge case ${index}`, { exact: true }) });
+  const favorite = card(0).getByRole("button", { name: "Favoritar", exact: true });
+  await expect(favorite).toHaveAttribute("aria-pressed", "false");
+  await expect(favorite.locator("[data-bookmark-shape]")).toHaveAttribute("fill", "rgba(0, 0, 0, 0.35)");
+  await expect(favorite.locator("svg")).toHaveAttribute("viewBox", "0 0 32 32");
+  await expect(favorite.locator("svg path")).toHaveCount(1);
+  await expect(favorite.locator("[data-bookmark-shape]")).toHaveAttribute("d", originalBookmark);
+  await expect(favorite.locator("[data-bookmark-shape]")).toHaveAttribute("stroke", "#B7BEC3");
+  await expect(favorite.locator("[data-bookmark-shape]")).toHaveAttribute("stroke-width", "0.96");
+  await expect(favorite.locator("[data-bookmark-shape]")).toHaveAttribute("stroke-linecap", "round");
+  await expect(favorite.locator("[data-bookmark-shape]")).toHaveAttribute("stroke-linejoin", "round");
+  await expect(favorite.locator("[data-bookmark-shape]")).toHaveCSS("fill", "rgba(0, 0, 0, 0.35)");
+  await expect(favorite.locator("[data-bookmark-shape]")).toHaveCSS("stroke", "rgb(183, 190, 195)");
+  await expect(favorite.locator("rect, [data-bookmark-contrast]")).toHaveCount(0);
+  await expect(favorite).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(favorite).toHaveCSS("border-width", "0px");
+  await expect(favorite).toHaveCSS("outline-style", "none");
+  await expect(favorite).toHaveCSS("box-shadow", "none");
+  await expect(favorite.locator("svg")).toHaveCSS("filter", "none");
+  await card(0).getByText("Badge case 0", { exact: true }).hover();
+  await expect.poll(() => card(0).getByRole("img", { name: "Badge case 0", exact: true }).evaluate(image =>
+    getComputedStyle(image).scale.split(" ").every(value => Math.abs(parseFloat(value) / (value.endsWith("%") ? 100 : 1) - 1.05) < 0.0001)
+  )).toBe(true);
+  await expect(favorite).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(favorite).toHaveCSS("outline-style", "none");
+  const bookmarkGeometry = await favorite.evaluate(button => {
+    const photo = button.parentElement!.getBoundingClientRect();
+    const hit = button.getBoundingClientRect();
+    const icon = button.querySelector("svg")!.getBoundingClientRect();
+    return {
+      hitWidth: hit.width, hitHeight: hit.height, iconWidth: icon.width, iconHeight: icon.height,
+      top: hit.top - photo.top, right: photo.right - hit.right,
+      iconTop: icon.top - photo.top, iconRight: photo.right - icon.right,
+      static: getComputedStyle(button).transform === "none" && button.getAnimations().length === 0
+    };
+  });
+  expect(bookmarkGeometry.hitWidth).toBeCloseTo(44, 3);
+  expect(bookmarkGeometry.hitHeight).toBeCloseTo(44, 3);
+  expect(bookmarkGeometry.iconWidth).toBeCloseTo(40, 3);
+  expect(bookmarkGeometry.iconHeight).toBeCloseTo(40, 3);
+  expect(bookmarkGeometry.top).toBeCloseTo(-1, 3);
+  expect(bookmarkGeometry.right).toBeCloseTo(-1, 3);
+  expect(bookmarkGeometry.static).toBe(true);
+  const paintedGap = await favorite.evaluate(button => {
+    const path = button.querySelector<SVGPathElement>("[data-bookmark-shape]")!;
+    const bounds = path.getBBox(), matrix = path.getScreenCTM()!;
+    const edge = new DOMPoint(bounds.x + bounds.width + 0.48, bounds.y - 0.48).matrixTransform(matrix);
+    const photo = button.parentElement!;
+    const card = button.closest(".store-product-card")!;
+    const outer = card.getBoundingClientRect();
+    return {
+      right: outer.right - edge.x, top: edge.y - outer.top,
+      cardOverflow: getComputedStyle(card).overflow,
+      controlsOverflow: getComputedStyle(photo).overflow,
+      photoOverflow: getComputedStyle(photo.querySelector("a")!).overflow,
+      aboveBorder: Number(getComputedStyle(button).zIndex) > 0,
+      static: button.querySelector("svg")!.getAnimations().length === 0
+    };
+  });
+  expect(paintedGap.right).toBeCloseTo(8, 1);
+  expect(paintedGap.top).toBeCloseTo(0, 1);
+  expect(paintedGap).toMatchObject({ cardOverflow: "visible", controlsOverflow: "visible", photoOverflow: "hidden", aboveBorder: true, static: true });
+  await card(0).evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 100));
+  await card(0).screenshot({ path: info.outputPath(`bookmark-outline-light-${width}.png`) });
+  await favorite.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
+  await expect(favorite).toBeFocused();
+  await expect(favorite).toHaveCSS("outline-style", "solid");
+  await expect(favorite).toHaveCSS("outline-offset", "-2px");
+  await expect(page.locator(".store-badge-automatic")).toHaveCount(0);
+  for (const [index, color] of [[0, 2], [1, 0], [2, 2], [3, 1], [5, 0]]) {
+    await card(index).getByRole("button", { name: `Cor ${color}`, exact: true }).click();
+    await card(index).getByRole("button", { name: "M", exact: true }).click();
+  }
+  await expect(card(0).getByText("ÚLTIMA PEÇA", { exact: true })).toBeVisible();
+  await expect(card(0).getByText("POUCAS UNIDADES", { exact: true })).toHaveCount(0);
+  for (const index of [2, 5]) await expect(card(index).getByText("POUCAS UNIDADES", { exact: true })).toBeVisible();
+  for (const index of [3, 4]) await expect(card(index).locator(".store-stock-last, .store-stock-low")).toHaveCount(0);
+  for (let index = 0; index < catalog.length; index++) {
+    await expect(card(index).getByText("EDIÇÃO ESPECIAL", { exact: true })).toBeVisible();
+    await expect(card(index).locator('.store-badge-manual').locator('svg')).toHaveAttribute('viewBox', '0 0 1792 1792');
+    await expect(card(index).locator('.store-badge-manual').locator('path')).toHaveAttribute('d', badgeShape);
+    await expect(card(index).locator('.store-badge-manual').locator('path')).toHaveAttribute('fill', '#2457A7');
+    const automatic = card(index).locator(".store-badge-automatic");
+    if (await automatic.count()) await automatic.focus();
+    const geometry = await card(index).evaluate(element => {
+      const badges = element.querySelector('[aria-label="Badges do produto"]')!;
+      const image = element.querySelector("a")!.getBoundingClientRect();
+      const bounds = badges.getBoundingClientRect();
+      const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+      const controls = [...badges.parentElement!.querySelectorAll("button")];
+      return {
+        fits: badges.scrollWidth <= badges.clientWidth,
+        insideImage: bounds.top >= image.top && bounds.bottom <= image.bottom && bounds.left >= element.getBoundingClientRect().left - 0.1 && bounds.right <= image.right,
+        clearOfControls: [...badges.children].every(child => controls.every(control => !overlaps(child.getBoundingClientRect(), control.getBoundingClientRect()))),
+        labelsFit: [...badges.children].every(child => child.scrollWidth <= child.clientWidth),
+        labelsOutsideTip: [...badges.children].every(child => {
+          const path = child.querySelector<SVGPathElement>('path')!;
+          const tipStart = new DOMPoint(1394.5, 896).matrixTransform(path.getScreenCTM()!);
+          const label = child.querySelector('.product-tag-label')!.getBoundingClientRect();
+          const body = child.getBoundingClientRect();
+          return label.right < tipStart.x && label.top >= body.top && label.bottom <= body.bottom;
+        }),
+        static: getComputedStyle(badges).transform === "none" && badges.getAnimations().length === 0
+      };
+    });
+    expect(geometry).toEqual({ fits: true, insideImage: true, clearOfControls: true, labelsFit: true, labelsOutsideTip: true, static: true });
+  }
+  for (const badge of [card(0).locator(".store-stock-last"), card(2).locator(".store-stock-low")]) {
+    const contrast = await badge.evaluate(element => {
+      const style = getComputedStyle(element);
+      const luminance = (color: string) => color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(v => v / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+      const fg = luminance(style.color), bg = luminance(getComputedStyle(element.querySelector("path")!).fill); return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+    });
+    expect(contrast).toBeGreaterThanOrEqual(4.5);
+  }
+  await expect(card(0).locator(".store-stock-last path")).toHaveCSS("fill", "rgb(180, 35, 50)");
+  await card(0).getByRole("button", { name: "Cor 2", exact: true }).click();
+  await expect(card(0).getByText("ÚLTIMA PEÇA", { exact: true })).toBeVisible();
+  await card(0).getByRole("button", { name: "Próxima imagem", exact: true }).click();
+  await expect(card(0).getByRole("img", { name: "Badge case 0", exact: true })).toHaveAttribute("src", "/badge-back.svg");
+  await expect(favorite.locator("[data-bookmark-shape]")).toHaveAttribute("fill", "rgba(0, 0, 0, 0.35)");
+  await card(0).evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 100));
+  await card(0).screenshot({ path: info.outputPath(`bookmark-outline-dark-${width}.png`) });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath(`stock-badges-${width}.png`), fullPage: true });
+  settings = { ...settings, showLastUnitBadge: false };
+  await page.evaluate(() => window.dispatchEvent(new Event("store-details-updated")));
+  await expect(card(0).getByText("POUCAS UNIDADES", { exact: true })).toBeVisible();
+  await expect(card(0).getByText("ÚLTIMA PEÇA", { exact: true })).toHaveCount(0);
+  settings = { ...settings, lowStockThreshold: 3 };
+  await page.evaluate(() => window.dispatchEvent(new Event("store-details-updated")));
+  await expect(card(5).locator(".store-stock-low")).toHaveCount(0);
+  settings = { ...settings, showLowStockBadge: false, showLastUnitBadge: true };
+  await page.evaluate(() => window.dispatchEvent(new Event("store-details-updated")));
+  await expect(card(0).getByText("ÚLTIMA PEÇA", { exact: true })).toBeVisible();
+  await expect(page.locator(".store-stock-low")).toHaveCount(0);
+  // One badge and no badge must not change the height or add an information row.
+  const originalHeight = (await card(0).boundingBox())!.height;
+  catalog[0].badge = "";
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(card(0).locator('[aria-label="Badges do produto"] > span')).toHaveCount(1);
+  expect((await card(0).boundingBox())!.height).toBeCloseTo(originalHeight, 1);
+  settings = { ...settings, showLastUnitBadge: false };
+  await page.evaluate(() => window.dispatchEvent(new Event("store-details-updated")));
+  await expect(card(0).locator('[aria-label="Badges do produto"]')).toHaveCount(0);
+  expect((await card(0).boundingBox())!.height).toBeCloseTo(originalHeight, 1);
+});
+
+for (const width of [320, 390, 768, 1440]) test(`public dark palette, overlays, contrast and Manager isolation at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.route("**/theme-product.svg", route => route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="#d5d2c9"/><path d="M90 110L155 80H245L310 110L280 180L255 160V400H145V160L120 180Z" fill="#202326"/></svg>' }));
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({
+    json: products.map((p, index) => ({
+      ...p, inCarousel: index === 0,
+      colors: [{ ...p.colors[0], images: ["/theme-product.svg"] }, { ...p.colors[0], id: p.id * 10 + 1, colorName: "Branco", colorValue: "#FFFFFF", images: ["/theme-product.svg"], variants: [{ id: p.id * 100 + 99, value: "P", stock: 2 }] }]
+    }))
+  }));
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("data-store-theme", "dark");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(13, 15, 16)");
+  const card = page.locator(".store-product-card").first(); await expect(card).toBeVisible();
+  await expect(card).toHaveCSS("background-color", "rgb(24, 27, 29)");
+  const slider = page.getByRole("region", { name: "Carrossel de produtos" });
+  await expect(slider.getByRole("img", { name: "Camiseta API", exact: true })).toHaveCSS("object-fit", "contain");
+  await expect(slider.getByRole("img", { name: "Camiseta API", exact: true })).toHaveCSS("height", width >= 640 ? "420px" : "288px");
+  await expect(page.locator("footer")).toHaveCSS("background-color", "rgb(21, 24, 26)");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath(`store-${width}.png`), fullPage: true, animations: "disabled" });
+  const sizes = card.getByRole("button", { name: "P", exact: true });
+  await sizes.click(); await expect(sizes).toHaveAttribute("aria-pressed", "true");
+  await expect(sizes).toHaveCSS("width", "48px"); await expect(sizes).toHaveCSS("height", "48px");
+  await expect(sizes).toHaveCSS("background-color", "rgb(198, 227, 0)");
+  await page.mouse.move(0, 0);
+  const primaryColor = await sizes.evaluate(el => { const probe = document.createElement("span"); probe.style.color = "var(--primary)"; el.append(probe); const color = getComputedStyle(probe).color; probe.remove(); return color; });
+  await expect(sizes).toHaveCSS("background-color", primaryColor);
+  await expect(sizes).toHaveCSS("color", "rgb(18, 21, 0)");
+  await expect(sizes).toHaveCSS("text-decoration-line", "none");
+  const white = card.getByRole("button", { name: "Branco", exact: true }); await white.click();
+  await expect(white).toHaveAttribute("aria-pressed", "true"); await expect(white).toHaveCSS("background-color", "rgb(255, 255, 255)");
+  await card.getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
+  const toast = page.locator('[data-sonner-toast].toast-positive').last(); await expect(toast).toBeVisible();
+  await expect(toast).toHaveCSS("background-color", "rgb(18, 40, 28)");
+  await page.getByRole("button", { name: "Abrir carrinho", exact: true }).click();
+  const drawer = page.locator("div.shadow-2xl").filter({ has: page.getByRole("heading", { name: "Seu Carrinho" }) });
+  await expect(drawer).toHaveCSS("background-color", "rgb(24, 27, 29)");
+  expect(await drawer.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath(`cart-${width}.png`), animations: "disabled" });
+  await page.getByRole("button", { name: "Fechar carrinho", exact: true }).click();
+  if (width < 768) await page.getByRole("button", { name: "Abrir menu de navegação", exact: true }).click();
+  await page.getByRole("button", { name: "Entrar", exact: true }).first().click();
+  const modal = page.locator("div.shadow-2xl").filter({ has: page.getByRole("heading", { name: "Entrar", exact: true }) });
+  await expect(modal).toHaveCSS("background-color", "rgb(24, 27, 29)");
+  const email = page.getByLabel("E-mail", { exact: true }); await email.focus();
+  await expect(email).toHaveCSS("color", "rgb(243, 244, 239)"); await expect(email).toHaveCSS("outline-style", "solid");
+  const contrast = await email.evaluate(el => {
+    const style = getComputedStyle(el);
+    const luminance = (color: string) => color.match(/[\d.]+/g)!.slice(0, 3).map(Number).map(v => v / 255).map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const fg = luminance(style.color), bg = luminance(style.backgroundColor); return (Math.max(fg, bg) + 0.05) / (Math.min(fg, bg) + 0.05);
+  }); expect(contrast).toBeGreaterThanOrEqual(4.5);
+  await page.getByRole("button", { name: "Cadastre-se", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Criar conta", exact: true })).toBeVisible();
+  const registration = page.locator("div.shadow-2xl").filter({ has: page.getByRole("heading", { name: "Criar conta", exact: true }) });
+  expect(await registration.evaluate(el => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath(`register-${width}.png`), animations: "disabled" });
+  await page.getByRole("button", { name: "Fechar login ou cadastro", exact: true }).click();
+  await page.goto("/manager");
+  await expect(page.locator("html")).not.toHaveAttribute("data-store-theme", "dark");
+  await expect(page.locator("body")).toHaveCSS("background-color", "rgb(241, 245, 248)");
+  await expect(page.locator("main section")).toHaveCSS("background-color", "rgb(253, 254, 254)");
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
+  await expect(page.getByLabel("E-mail", { exact: true })).toHaveCSS("color", "rgb(0, 0, 0)");
+});
 
 const product = (id: number, name: string, audience: string, category: string, variants: { value: string; stock: number }[]) => ({
   id, name, public: audience, categoryId: ["camisetas", "jaquetas", "calcas", "bermudas", "calcados", "vestidos"].indexOf(category) + 1, category: { id: ["camisetas", "jaquetas", "calcas", "bermudas", "calcados", "vestidos"].indexOf(category) + 1, name: ({ camisetas: "Camisetas / Camisas", jaquetas: "Jaquetas / Agasalhos", calcas: "Calças", bermudas: "Bermudas / Shorts", calcados: "Calçados", vestidos: "Vestidos" } as Record<string, string>)[category] ?? category }, price: "129.9", description: "Descrição real do catálogo",
@@ -12,6 +239,100 @@ const products = [
 ];
 test.beforeEach(async ({ page }) => {
   await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: products }));
+});
+
+for (const width of [320, 390, 768, 1440]) test(`product card sizes never underline and retain selection and keyboard focus at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.goto("/");
+  const card = page.locator(".store-product-card").filter({ has: page.getByText("Camiseta API", { exact: true }) });
+  const size = card.getByRole("button", { name: "P", exact: true });
+  const disabled = card.getByRole("button", { name: "M", exact: true });
+  await expect(size).toHaveAttribute("aria-pressed", "false");
+  await expect(size).toHaveCSS("text-decoration-line", "none");
+  await expect(size).toHaveCSS("width", "48px");
+  await expect(size).toHaveCSS("height", "48px");
+  await size.hover();
+  await expect(size).toHaveCSS("text-decoration-line", "none");
+  await page.mouse.down();
+  await expect(size).toHaveCSS("text-decoration-line", "none");
+  await page.mouse.up();
+  await expect(size).toHaveAttribute("aria-pressed", "true");
+  await expect(size).toHaveCSS("text-decoration-line", "none");
+  await page.mouse.move(0, 0);
+  const primary = await size.evaluate(element => {
+    const probe = document.createElement("span"); probe.style.color = "var(--primary)"; element.append(probe);
+    const primary = getComputedStyle(probe).color; probe.remove();
+    return primary;
+  });
+  await expect(size).toHaveCSS("background-color", primary);
+  await expect(size).toHaveCSS("border-color", primary);
+  await size.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
+  await expect(size).toBeFocused();
+  await expect(size).toHaveCSS("outline-style", "solid");
+  await expect(size).toHaveCSS("outline-width", "2px");
+  await expect(size).toHaveCSS("text-decoration-line", "none");
+  await page.keyboard.press("Space");
+  await expect(size).toHaveAttribute("aria-pressed", "false");
+  await expect(size).toHaveCSS("text-decoration-line", "none");
+  await expect(disabled).toBeDisabled();
+  await disabled.hover();
+  await expect(disabled).toHaveCSS("text-decoration-line", "none");
+  await expect(disabled).toHaveCSS("width", "48px");
+  await expect(disabled).toHaveCSS("height", "48px");
+});
+
+for (const width of [320, 390, 768, 1440]) test(`filters and sorting omit underlines in every interaction state at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 1000 });
+  await page.goto("/");
+  const sizes = width === 1440 ? page.locator("aside section").first() : page.getByRole("group", { name: "Filtrar por tamanho" });
+  const size = sizes.getByRole("button", { name: "P", exact: true });
+  const sorting = page.getByRole("group", { name: "Ordenar produtos" });
+  const name = sorting.getByRole("button", { name: /Ordenar por nome/ });
+  const price = sorting.getByRole("button", { name: /Ordenar por preço/ });
+  for (const control of [size, name, price]) {
+    await expect(control).toHaveCSS("text-decoration-line", "none");
+    await control.hover();
+    await expect(control).toHaveCSS("text-decoration-line", "none");
+    await page.mouse.down();
+    await expect(control).toHaveCSS("text-decoration-line", "none");
+    await page.mouse.up();
+    await expect(control).toHaveAttribute("aria-pressed", "true");
+    await expect(control).toHaveCSS("text-decoration-line", "none");
+    await control.focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(control).toBeFocused();
+    await expect(control).toHaveCSS("text-decoration-line", "none");
+    await expect(control).toHaveCSS("outline-style", "solid");
+    await expect(control).toHaveCSS("outline-width", "2px");
+  }
+  await expect(size).toHaveCSS("border-width", "1px");
+  await expect(price.locator("svg.lucide-arrow-up")).toBeVisible();
+  const clear = page.getByRole("button", { name: "Limpar filtros", exact: true }).first();
+  await clear.hover();
+  await expect(clear).toHaveCSS("text-decoration-line", "none");
+  await clear.focus();
+  await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
+  await expect(clear).toBeFocused();
+  await expect(clear).toHaveCSS("outline-style", "solid");
+  await expect(clear).toHaveCSS("text-decoration-line", "none");
+  await page.keyboard.press("Enter");
+  await expect(size).toHaveAttribute("aria-pressed", "false");
+  await expect(price).toHaveAttribute("aria-pressed", "true");
+  // Selected dropdown/Aside options retain their background and font indicator.
+  if (width < 768) await page.getByRole("button", { name: "Abrir menu de navegação", exact: true }).click();
+  else if (width !== 1440) await page.locator("header").getByRole("button", { name: "Público", exact: true }).click();
+  const options = width === 1440 ? page.locator("aside section").nth(1) : page.locator("header");
+  const all = options.getByRole("button", { name: "Todos", exact: true }).first();
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+  await expect(all).toHaveCSS("font-weight", "500");
+  await all.hover();
+  await expect(all).toHaveCSS("text-decoration-line", "none");
+  await all.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
+  await expect(all).toBeFocused();
+  await expect(all).toHaveCSS("text-decoration-line", "none");
+  await expect(all).toHaveCSS("outline-style", "solid");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
 test("catalog combines audience, category and in-stock sizes across header and aside", async ({ page }) => {
@@ -360,7 +681,7 @@ for (const width of [1440, 390]) {
     await expect(page.getByText("Nenhuma peça encontrada", { exact: true })).toBeVisible();
     await checkOptions();
     if (mobile) await menu.click();
-    await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
+    await page.getByRole("button", { name: "Limpar filtros", exact: true }).first().click();
     await expect(page.getByText("4 peças encontradas", { exact: true })).toBeVisible();
     await checkOptions();
     await expect(options.getByRole("button", { name: "Todos", exact: true })).toHaveAttribute("aria-pressed", "true");
@@ -374,7 +695,7 @@ for (const width of [1440, 390]) {
     await checkOptions();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     if (mobile) await menu.click();
-    await page.getByRole("button", { name: "Limpar filtros", exact: true }).click();
+    await page.getByRole("button", { name: "Limpar filtros", exact: true }).first().click();
     await expect(page.getByText("4 peças encontradas", { exact: true })).toBeVisible();
   });
 }

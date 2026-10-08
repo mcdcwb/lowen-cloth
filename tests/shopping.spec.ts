@@ -161,7 +161,13 @@ test.beforeEach(async ({ request }) => {
   await request.delete(`/api/favoritos/${product.id}`, { headers });
 });
 
-test("guest cart merges; favorites and variants persist after logout and in another browser", async ({ page, browser }) => {
+test("guest cart merges; favorites and variants persist after logout and in another browser", async ({ page, browser }, info) => {
+  await page.route("**/api/produtos", async route => {
+    const response = await route.fetch();
+    const catalog = await response.json();
+    await route.fulfill({ response, json: catalog.map((item: { id: number; colors: object[] }) => item.id === product.id ? { ...item, colors: item.colors.map(color => ({ ...color, images: ["/bookmark-light.svg", "/bookmark-dark.svg"] })) } : item) });
+  });
+  await page.route("**/bookmark-*.svg", route => route.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="100%" height="100%" fill="${route.request().url().includes("light") ? "#F7F7F7" : "#111111"}"/></svg>` }));
   await page.goto("/");
   await card(page).getByRole("button", { name: "P", exact: true }).click();
   await card(page).getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
@@ -170,8 +176,45 @@ test("guest cart merges; favorites and variants persist after logout and in anot
   await login(page);
   await expect(page.getByRole("status")).toContainText("Carrinho de visitante sincronizado");
   await page.getByRole("button", { name: "Fechar aviso" }).click();
+  const originalShape = await card(page).locator("[data-bookmark-shape]").getAttribute("d");
+  await expect(card(page).locator("[data-bookmark-shape]")).toHaveAttribute("fill", "rgba(0, 0, 0, 0.35)");
+  await card(page).evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 120)); await card(page).getByRole("img").hover();
   await card(page).getByRole("button", { name: "Favoritar", exact: true }).click();
   await expect(card(page).getByRole("button", { name: "Remover dos favoritos" })).toHaveAttribute("aria-pressed", "true");
+  await expect(card(page).locator("[data-bookmark-shape]")).toHaveAttribute("fill", "#c61010");
+  await expect(card(page).locator("[data-bookmark-shape]")).toHaveAttribute("stroke", "#c61010");
+  await expect(card(page).getByRole("button", { name: "Remover dos favoritos" }).locator("svg path")).toHaveCount(1);
+  await expect(card(page).locator("[data-bookmark-shape]")).toHaveAttribute("d", originalShape!);
+  await expect(card(page).getByRole("button", { name: "Remover dos favoritos" })).toHaveCSS("outline-style", "none");
+  await expect(card(page).getByRole("button", { name: "Remover dos favoritos" })).toHaveCSS("border-width", "0px");
+  await expect(card(page).getByRole("button", { name: "Remover dos favoritos" })).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(card(page).locator("svg rect")).toHaveCount(0);
+  await page.mouse.move(0, 0);
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 1000 });
+    const favorite = card(page).getByRole("button", { name: "Remover dos favoritos" });
+    await expect(favorite.locator("svg")).toHaveCSS("width", "40px");
+    await expect(favorite.locator("svg")).toHaveCSS("height", "40px");
+    await expect(favorite.locator("[data-bookmark-shape]")).toHaveAttribute("fill", "#c61010");
+    await expect(favorite.locator("svg")).toHaveCSS("transform", "none");
+    expect(await favorite.evaluate(button => {
+      const outer = button.closest(".store-product-card")!.getBoundingClientRect();
+      const shape = button.querySelector<SVGPathElement>("[data-bookmark-shape]")!;
+      const bounds = shape.getBBox(), matrix = shape.getScreenCTM()!;
+      const edge = new DOMPoint(bounds.x + bounds.width + 0.48, bounds.y - 0.48).matrixTransform(matrix);
+      return Math.abs(edge.y - outer.top) < 0.05 && Math.abs(outer.right - edge.x - 8) < 0.05;
+    })).toBe(true);
+    for (const background of ["light", "dark"]) {
+      await expect(card(page).getByRole("img")).toHaveAttribute("src", `/bookmark-${background}.svg`);
+      await expect(favorite.locator("[data-bookmark-shape]")).toHaveAttribute("d", originalShape!);
+      await expect(favorite.locator("[data-bookmark-shape]")).toHaveCSS("fill", "rgb(198, 16, 16)");
+      await expect(favorite.locator("[data-bookmark-shape]")).toHaveCSS("stroke", "rgb(198, 16, 16)");
+      await card(page).evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 100));
+      await card(page).screenshot({ path: info.outputPath(`bookmark-filled-${background}-${width}.png`) });
+      await card(page).getByRole("img").hover();
+      await card(page).getByRole("button", { name: "Próxima imagem", exact: true }).click();
+    }
+  }
   await card(page).getByRole("button", { name: "M", exact: true }).click();
   await card(page).getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
   await page.getByRole("button", { name: "Abrir carrinho" }).click();
@@ -207,7 +250,62 @@ test("guest cart merges; favorites and variants persist after logout and in anot
     await expect(card(second).getByRole("button", { name: "Favoritar", exact: true })).toBeVisible();
     await second.reload();
     await expect(card(second).getByRole("button", { name: "Favoritar", exact: true })).toBeVisible();
+    await expect(card(second).locator("[data-bookmark-shape]")).toHaveAttribute("fill", "rgba(0, 0, 0, 0.35)");
   } finally { await other.close(); }
+});
+
+test("favorite actions report one confirmed toast on both pages and passive synchronization stays silent", async ({ page, context }) => {
+  await page.goto("/"); await login(page);
+  const other = await context.newPage(); await other.goto("/");
+  await expect(other.getByText("Sincronizando favoritos e carrinho...")).toHaveCount(0);
+  let release!: () => void;
+  const confirmation = new Promise<void>(resolve => { release = resolve; });
+  await page.route(`**/api/favoritos/${product.id}`, async route => { await confirmation; await route.continue(); });
+  await card(page).evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 120)); await card(page).getByRole("img").hover();
+  await card(page).getByRole("button", { name: "Favoritar", exact: true }).click();
+  await expect(successToasts(page)).toHaveCount(0);
+  release();
+  await expectSuccess(page, "Produto adicionado aos favoritos!");
+  await page.unroute(`**/api/favoritos/${product.id}`);
+  await page.mouse.move(0, 0);
+  const saved = card(page).getByRole("button", { name: "Remover dos favoritos" });
+  await expect(saved).toHaveCSS("opacity", "1");
+  await expect(card(other).getByRole("button", { name: "Remover dos favoritos" })).toHaveCSS("opacity", "1");
+  await expect(successToasts(other)).toHaveCount(0);
+  const touchContext = await context.browser()!.newContext({ storageState: await context.storageState(), hasTouch: true, isMobile: true });
+  try {
+    const touchPage = await touchContext.newPage(); await touchPage.goto("/");
+    for (const width of [320, 390, 768, 1440]) {
+      await touchPage.setViewportSize({ width, height: 1000 });
+      await expect(card(touchPage).getByRole("button", { name: "Remover dos favoritos" })).toHaveCSS("opacity", "1");
+      await expect(touchPage.locator('.store-favorite-bookmark[aria-pressed="false"]').first()).toHaveCSS("opacity", "1");
+    }
+    await expect(successToasts(touchPage)).toHaveCount(0);
+  } finally { await touchContext.close(); }
+  await saved.hover();
+  await expect(saved.locator("svg")).toHaveCSS("transform", "matrix(1.1, 0, 0, 1.1, 0, 0)");
+  await saved.click(); await expectSuccess(page, "Produto removido dos favoritos!", "removal");
+  await page.mouse.move(0, 0);
+  await expect(card(page).getByRole("button", { name: "Favoritar", exact: true })).toHaveCSS("opacity", "0");
+  await expect(card(other).getByRole("button", { name: "Favoritar", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(successToasts(other)).toHaveCount(0);
+  await card(page).evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 120)); await card(page).getByRole("img").hover(); await card(page).getByRole("button", { name: "Favoritar", exact: true }).click();
+  await expectSuccess(page, "Produto adicionado aos favoritos!");
+  await page.reload(); await expect(successToasts(page)).toHaveCount(0);
+  await page.goto("/favoritos");
+  await page.route(`**/api/favoritos/${product.id}`, route => route.fulfill({ status: 503, json: { error: "Remocao indisponivel" } }));
+  await card(page).getByRole("button", { name: "Remover dos favoritos" }).click();
+  await expect(page.getByRole("alert")).toContainText("Remocao indisponivel");
+  await expect(successToasts(page)).toHaveCount(0);
+  await expect(card(page).getByRole("button", { name: "Remover dos favoritos" })).toHaveAttribute("aria-pressed", "true");
+  await page.unroute(`**/api/favoritos/${product.id}`);
+  await card(page).getByRole("button", { name: "Remover dos favoritos" }).click();
+  await expectSuccess(page, "Produto removido dos favoritos!", "removal");
+  await expect(card(page)).toHaveCount(0);
+  await page.goto("/"); await card(page).evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 120)); await card(page).getByRole("img").hover();
+  await card(page).getByRole("button", { name: "Favoritar", exact: true }).click();
+  await expectSuccess(page, "Produto adicionado aos favoritos!");
+  await other.close();
 });
 
 test("API failures preserve confirmed state and failed guest merge can be retried", async ({ page }) => {
@@ -223,12 +321,37 @@ test("API failures preserve confirmed state and failed guest merge can be retrie
   await expect(page.getByRole("status")).toContainText("Carrinho de visitante sincronizado");
   await page.getByRole("button", { name: "Fechar aviso" }).click();
   await page.route(`**/api/favoritos/${product.id}`, route => route.fulfill({ status: 503, json: { error: "Favorito indisponivel" } }));
+  await card(page).evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 120)); await card(page).getByRole("img").hover();
   await card(page).getByRole("button", { name: "Favoritar", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("Favorito indisponivel");
   await expect(card(page).getByRole("button", { name: "Favoritar", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(successToasts(page)).toHaveCount(0);
   await page.route("**/api/carrinho", route => route.request().method() === "PATCH" ? route.fulfill({ status: 409, json: { error: "Estoque insuficiente" } }) : route.continue());
   await page.getByRole("button", { name: "Abrir carrinho" }).click();
   await page.getByRole("button", { name: "Aumentar quantidade" }).click();
   await expect(page.getByRole("alert")).toContainText("Estoque insuficiente");
   await expect(page.locator("span.w-6")).toHaveText("1");
+});
+
+
+test("favorite cooldown remains shared across catalog and Favorites navigation", async ({ page }) => {
+  await page.goto('/'); await login(page);
+  await page.clock.pauseAt(new Date());
+  await card(page).evaluate(el => window.scrollTo(0, window.scrollY + el.getBoundingClientRect().top - 120));
+  await card(page).getByRole('img').hover();
+  await card(page).getByRole('button', { name: 'Favoritar', exact: true }).click();
+  await page.clock.runFor(0);
+  await expect(card(page).getByRole('button', { name: 'Remover dos favoritos' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Cliente', exact: true }).click();
+  await page.getByRole('link', { name: 'Favoritos', exact: true }).click();
+  await expect(card(page).getByRole('button', { name: 'Remover dos favoritos' })).toBeDisabled();
+  await expect(card(page).getByRole('button', { name: 'Remover dos favoritos' })).toHaveCSS('opacity', '1');
+  await page.clock.runFor(1000);
+  await card(page).getByRole('button', { name: 'Remover dos favoritos' }).click();
+  await page.clock.runFor(0);
+  await expect(card(page)).toHaveCount(0);
+  await page.evaluate(() => { history.pushState({}, '', '/'); window.dispatchEvent(new PopStateEvent('popstate')); });
+  await expect(card(page).getByRole('button', { name: 'Favoritar', exact: true })).toBeDisabled();
+  await page.clock.runFor(1000);
+  await expect(card(page).getByRole('button', { name: 'Favoritar', exact: true })).toBeEnabled();
 });

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { notify } from "../lib/notifications";
+import { isStockBadgeSettings, type StockBadgeSettings } from "../../../backend/src/lib/stock-badges";
 
 export function useManagerSettings(token: string, path: string, onUnauthorized: (message: string) => void) {
-  const [threshold, setThreshold] = useState<number | null>(null);
+  const [settings, setSettings] = useState<StockBadgeSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -14,11 +15,11 @@ export function useManagerSettings(token: string, path: string, onUnauthorized: 
   unauthorized.current = onUnauthorized;
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
-  async function request(method: "GET" | "PUT", signal: AbortSignal, value?: number) {
+  async function request(method: "GET" | "PUT", signal: AbortSignal, value?: StockBadgeSettings) {
     const response = await fetch((import.meta.env.VITE_API_URL || "/api") + "/settings", {
       method, signal, cache: "no-store",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: method === "PUT" ? JSON.stringify({ lowStockThreshold: value }) : undefined
+      body: method === "PUT" ? JSON.stringify(value) : undefined
     });
     if (response.status === 401 || response.status === 403) {
       const message = "Sua sessão administrativa não está autorizada. Entre novamente.";
@@ -27,9 +28,8 @@ export function useManagerSettings(token: string, path: string, onUnauthorized: 
     }
     const body = await response.json().catch(() => null);
     if (!response.ok) throw new Error(body?.error || "Não foi possível acessar as configurações.");
-    const next = body?.lowStockThreshold;
-    if (!Number.isInteger(next) || next < 1 || next > 9999) throw new Error("Configuração de estoque inválida recebida do servidor.");
-    return next as number;
+    if (!isStockBadgeSettings(body)) throw new Error("Configuração de estoque inválida recebida do servidor.");
+    return body;
   }
 
   useEffect(() => {
@@ -38,13 +38,13 @@ export function useManagerSettings(token: string, path: string, onUnauthorized: 
     let active = true;
     setLoading(true);
     setError(null);
-    request("GET", controller.signal).then(value => { if (active) setThreshold(value); })
+    request("GET", controller.signal).then(value => { if (active) setSettings(value); })
       .catch(reason => { if (active) setError(reason instanceof Error && reason.name !== "AbortError" ? reason.message : "Não foi possível carregar as configurações. Tente novamente."); })
       .finally(() => { clearTimeout(timeout); if (active) setLoading(false); });
     return () => { active = false; clearTimeout(timeout); controller.abort(); };
   }, [token, path, revision]);
 
-  async function save(value: number) {
+  async function save(value: StockBadgeSettings) {
     if (pending.current) return false;
     pending.current = true;
     setSaving(true);
@@ -53,7 +53,8 @@ export function useManagerSettings(token: string, path: string, onUnauthorized: 
     try {
       const next = await request("PUT", controller.signal, value);
       if (!mounted.current) return false;
-      setThreshold(next);
+      setSettings(next);
+      window.dispatchEvent(new Event("store-details-updated"));
       notify.positive("Configurações salvas com sucesso!");
       return true;
     } catch (reason) {
@@ -65,5 +66,5 @@ export function useManagerSettings(token: string, path: string, onUnauthorized: 
       if (mounted.current) setSaving(false);
     }
   }
-  return { threshold, loading, saving, error, save, reload: () => setRevision(n => n + 1) };
+  return { settings, threshold: settings?.lowStockThreshold ?? null, loading, saving, error, save, reload: () => setRevision(n => n + 1) };
 }

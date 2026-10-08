@@ -17,7 +17,7 @@ async function token(page: Page) {
 
 async function mockAdmin(page: Page) {
   await page.route("**/api/categorias", route => route.fulfill({ json: [{ id: 1, name: "camisetas" }, { id: 2, name: "calcados" }] }));
-  await page.route("**/api/settings", route => route.fulfill({ json: { lowStockThreshold: 5 } }));
+  await page.route("**/api/settings", route => route.fulfill({ json: { lowStockThreshold: 5, showLowStockBadge: true, showLastUnitBadge: true } }));
   const account = { id: 1, name: "Administrador de teste", email: "admin@example.test", role: "ADMIN" };
   await page.route("**/api/auth/me", route => route.fulfill({ json: { account } }));
   await page.route("**/api/auth/login", route => route.fulfill({ json: { account, accessToken: "test-session", tokenType: "Bearer", expiresIn: 3600, expiresAt: Date.now() + 3600000 } }));

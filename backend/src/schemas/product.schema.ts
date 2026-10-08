@@ -1,4 +1,5 @@
 import { z } from "zod";
+const badgeColor = z.string().trim().regex(/^#[0-9a-f]{6}$/i, "Informe HEX #RRGGBB para o badge.").transform(v => v.toUpperCase());
 const id = z.number().int().positive().max(2147483647);
 export const carouselSchema = z.strictObject({ inCarousel: z.boolean() });
 export const productVariantSchema = z.strictObject({
@@ -28,7 +29,7 @@ export const createProductSchema = z.strictObject({
     name: z.string().trim().min(3, "O nome deve possuir pelo menos 3 caracteres"),
     description: z.string().optional(), price: z.number().positive("O preço deve ser maior que zero"),
     public: z.string().trim().min(1), categoryId: id, isPublished: z.boolean().optional(),
-    badge: z.string().nullable().optional(), colors: colorsSchema
+    badge: z.string().nullable().optional(), badgeBackgroundColor: badgeColor.optional(), badgeTextColor: badgeColor.optional(), colors: colorsSchema
 });
 export const updateProductSchema = createProductSchema.partial().refine(data => Object.keys(data).length > 0, {
     message: "Informe pelo menos um campo para atualizar."

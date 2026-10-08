@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Pipette, Plus, Trash2 } from "lucide-react";
 import { ProductImage } from "../components/ProductImage";
+import { ProductBadge, badgeDefaults } from "../components/ProductBadge";
 import { audiences, labels, normalizeHex, toDraft, toInput, validateDraft, type ManagedProduct, colorDraft, type ColorDraft, type ProductDraft, type ProductInput } from "./products";
 import type { Category } from "../lib/categories";
 import { CategoryEditor } from "./CategoryEditor";
@@ -136,6 +137,23 @@ export function ProductForm({ product, categories, onSaveCategory, busy, onSave,
             </div>
             <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={draft.isPublished} onChange={event => setDraft(previous => ({ ...previous, isPublished: event.target.checked }))} />Publicado na loja</label>
             </div>
+        </section>
+        <section className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-5">
+          <h2 className="font-semibold text-lg">Cores do badge manual</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {([['badgeBackgroundColor', 'Cor de fundo do badge'], ['badgeTextColor', 'Cor do texto do badge']] as const).map(([key, label]) => <div key={key} className="min-w-0 space-y-2 text-sm font-medium">
+              <label htmlFor={`${colorId}-${key}`}>{label}</label>
+              <div className="flex items-center gap-2">
+                <input type="color" aria-label={`Seletor: ${label}`} value={normalizeHex(draft[key]) ?? (key === 'badgeBackgroundColor' ? badgeDefaults.background : badgeDefaults.text)}
+                  onChange={event => change(key, event.target.value.toUpperCase())} className="h-11 w-11 shrink-0 cursor-pointer rounded-lg border border-border bg-card p-1" />
+                <input id={`${colorId}-${key}`} className={`${inputClass} min-w-0 font-mono`} value={draft[key]} aria-invalid={!normalizeHex(draft[key])}
+                  onChange={event => change(key, normalizeHex(event.target.value) ?? event.target.value)} placeholder="#RRGGBB" />
+              </div>
+            </div>)}
+          </div>
+          <div aria-label="Prévia do badge" className="max-w-full">
+            <ProductBadge label={draft.badge.trim() || 'NOVO'} background={normalizeHex(draft.badgeBackgroundColor) ?? badgeDefaults.background} color={normalizeHex(draft.badgeTextColor) ?? badgeDefaults.text} />
+          </div>
         </section>
         <section className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-5">
           <h2 className="font-semibold text-lg">Cores do produto</h2>

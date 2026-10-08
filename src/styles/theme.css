@@ -84,6 +84,10 @@
 }
 
 @theme inline {
+  --color-auth-input: var(--auth-input-foreground, #000000);
+  --color-success: var(--success, var(--primary));
+  --color-whatsapp: var(--whatsapp, #25D366);
+  --color-whatsapp-foreground: var(--whatsapp-foreground, #FFFFFF);
   --font-family-sans: var(--font-sans);
   --font-family-serif: var(--font-serif);
   --color-background: var(--background);

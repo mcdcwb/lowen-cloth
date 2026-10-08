@@ -9,10 +9,10 @@ export function shopping(action: "favorites" | "favorite" | "unfavorite" | "read
         try {
             const userId = res.locals.account.id as number;
             if (action === "review") return res.json(await service.cartForReview(userId));
-            if (action === "favorites") return res.json(await service.favorites(userId));
+            if (action === "favorites") return res.json(await service.favorites(res.locals.account));
             if (action === "favorite" || action === "unfavorite") {
                 const productId = id.parse(Number(req.params.productId));
-                return res.json(await service.favorite(userId, productId, action === "unfavorite"));
+                return res.json(await service.favorite(res.locals.account, productId, action === "unfavorite"));
             }
             const items = action === "merge" ? z.object({ items: z.array(selection).max(200) }).strict().parse(req.body).items
                 : action === "add" || action === "set" ? [selection.parse(req.body)]

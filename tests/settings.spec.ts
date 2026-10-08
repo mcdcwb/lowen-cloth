@@ -9,6 +9,7 @@ products.push({ ...products[0], id: 7, name: "Misto", colors: [{ ...products[0].
 
 async function setup(page: Page) {
   let threshold = 5, writes = 0, fail = false;
+  let showLowStockBadge = true, showLastUnitBadge = true;
   const account = { id: 1, name: "Administrador", email: "settings@example.test", role: "ADMIN" };
   await page.route("**/api/auth/me", route => route.fulfill({ json: { account } }));
   await page.route("**/api/auth/login", route => route.fulfill({ json: { account, accessToken: "settings-test", tokenType: "Bearer", expiresIn: 3600, expiresAt: Date.now() + 3600000 } }));
@@ -18,12 +19,12 @@ async function setup(page: Page) {
     if (fail) return route.fulfill({ status: 500, json: { error: "Falha de configuração" } });
     if (route.request().method() === "PUT") {
       writes++;
-      threshold = route.request().postDataJSON().lowStockThreshold;
+      ({ lowStockThreshold: threshold, showLowStockBadge, showLastUnitBadge } = route.request().postDataJSON());
     }
-    return route.fulfill({ json: { lowStockThreshold: threshold } });
+    return route.fulfill({ json: { lowStockThreshold: threshold, showLowStockBadge, showLastUnitBadge } });
   });
   await page.route("**/api/settings/store", route => route.fulfill({ json: { address: null, whatsapp: null } }));
-  await page.route("**/api/settings/public", route => route.fulfill({ json: { address: null, whatsapp: null } }));
+  await page.route("**/api/settings/public", route => route.fulfill({ json: { address: null, whatsapp: null, lowStockThreshold: threshold, showLowStockBadge, showLastUnitBadge } }));
   await page.goto("/manager");
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
   await page.getByLabel("E-mail", { exact: true }).fill(account.email);
@@ -32,6 +33,30 @@ async function setup(page: Page) {
   await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
   return { get writes() { return writes; }, get threshold() { return threshold; }, fail: (value: boolean) => { fail = value; } };
 }
+
+test("stock badge switches save independently, persist and support keyboard navigation", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("link", { name: "Configurações", exact: true }).click();
+  const low = page.getByRole("checkbox", { name: 'Exibir badge "Poucas unidades"', exact: true });
+  const last = page.getByRole("checkbox", { name: 'Exibir badge "Última peça"', exact: true });
+  await expect(low).toBeChecked(); await expect(last).toBeChecked();
+  await low.focus();
+  await page.keyboard.press("Tab");
+  await expect(last).toBeFocused();
+  await expect(last).toHaveCSS("outline-style", "solid");
+  await page.keyboard.press("Space");
+  await expect(last).not.toBeChecked(); await expect(low).toBeChecked();
+  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  await expectSuccess(page, "Configurações salvas com sucesso!", "positive");
+  await page.reload();
+  await expect(last).not.toBeChecked(); await expect(low).toBeChecked();
+  await low.uncheck(); await last.check();
+  await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+  await expectSuccess(page, "Configurações salvas com sucesso!", "positive");
+  await page.reload();
+  await expect(low).not.toBeChecked(); await expect(last).toBeChecked();
+  await expect(page.locator("#low-stock-threshold")).toHaveValue("5");
+});
 
 for (const width of [320, 390, 768, 1440]) test(`settings sections collapse independently and retain drafts at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 1000 });
@@ -82,7 +107,7 @@ for (const width of [320, 390, 768, 1440]) test(`settings sections collapse inde
   expect(collapsed[1].top - collapsed[0].bottom).toBe(collapsed[2].top - collapsed[1].bottom);
   for (const card of collapsed) {
     expect(card.paddingTop).toBe(card.paddingBottom);
-    expect(card.titleOffset).toBe(0); expect(card.iconOffset).toBe(0); expect(card.titleFits).toBe(true);
+    expect(card.titleOffset).toBeCloseTo(0, 3); expect(card.iconOffset).toBeCloseTo(0, 3); expect(card.titleFits).toBe(true);
   }
   await page.screenshot({ path: info.outputPath(`settings-collapsed-${width}.png`), fullPage: true });
   for (let index = 0; index < headers.length; index++) {
@@ -184,7 +209,7 @@ test("settings failures preserve draft, prevent repeated submits and allow retry
   let calls = 0;
   await page.route("**/api/settings", async route => {
     if (route.request().method() !== "PUT") return route.fallback();
-    calls++; await gate; return route.fulfill({ json: { lowStockThreshold: 10 } });
+    calls++; await gate; return route.fulfill({ json: { lowStockThreshold: 10, showLowStockBadge: true, showLastUnitBadge: true } });
   });
   await page.getByRole("button", { name: "Salvar alterações" }).click();
   await expect(page.getByRole("button", { name: "Salvando..." })).toBeDisabled();

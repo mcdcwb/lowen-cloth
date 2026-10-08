@@ -89,10 +89,30 @@ test("account shopping persists, isolates users and enforces stock in PostgreSQL
             assert.deepEqual(await read(), []);
             assert.equal((await (await req("/carrinho", "GET", undefined, b)).json()).items.length, 1);
         });
-        await t.test("anonymous, admin and inactive users cannot use account shopping", async () => {
+        await t.test("ADMIN favorites persist and remain isolated from USER and other administrators", async () => {
+            const otherEmail = `other-${prefix}@example.test`;
+            await createAdmin({ email: otherEmail, password });
+            try {
+                const otherToken = await login(otherEmail);
+                const path = `/favoritos/${productId}`;
+                await req(path, "PUT", undefined, a);
+                assert.deepEqual(await (await req('/favoritos', 'GET', undefined, admin)).json(), []);
+                assert.equal((await req(path, 'PUT', { userId: 1, adminId: 1 }, admin)).status, 200);
+                await req(path, 'PUT', undefined, admin);
+                const reread = await (await req('/favoritos', 'GET', undefined, await login(emails[2]))).json();
+                assert.equal(reread.length, 1); assert.equal(reread[0].product.id, productId);
+                assert.deepEqual(await (await req('/favoritos?adminId=1', 'GET', undefined, otherToken)).json(), []);
+                await req(path, 'DELETE', undefined, otherToken);
+                assert.equal((await (await req('/favoritos', 'GET', undefined, admin)).json()).length, 1);
+                await req(path, 'DELETE', undefined, admin);
+                assert.equal((await (await req('/favoritos', 'GET', undefined, a)).json()).length, 1);
+                await req(path, 'DELETE', undefined, a);
+            } finally { await prisma.admin.deleteMany({ where: { email: otherEmail } }); }
+        });
+        await t.test("anonymous/inactive accounts are rejected; ADMIN favorites remain separate from restricted carts", async () => {
             for (const [path, method, body] of [["/favoritos", "GET"], [`/favoritos/${productId}`, "PUT"], [`/favoritos/${productId}`, "DELETE"], ["/carrinho", "GET"], ["/carrinho", "POST", selection], ["/carrinho", "PATCH", selection], ["/carrinho", "DELETE"], ["/carrinho/item", "DELETE", { productId, size: "P" }], ["/carrinho/sincronizar", "POST", { items: [] }]] as const) {
                 assert.equal((await server.request(path, method, body)).status, 401);
-                assert.equal((await req(path, method, body, admin)).status, 403);
+                assert.equal((await req(path, method, body, admin)).status, path.startsWith("/favoritos") ? 200 : 403);
             }
             await prisma.user.update({ where: { email: emails[0] }, data: { active: false } });
             assert.equal((await req("/favoritos")).status, 403);

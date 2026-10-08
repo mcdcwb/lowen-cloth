@@ -1,3 +1,6 @@
+import { ProductBadges } from "./components/ProductBadges";
+import { FavoriteBookmark } from "./components/icons/FavoriteBookmark";
+import type { StockBadgeSettings } from "../../backend/src/lib/stock-badges";
 import { useStoreDetails } from "./hooks/useStoreDetails";
 import { businessHoursLines } from "./lib/business-hours";
 import { formatWhatsapp, whatsappUrl } from "./lib/store-settings";
@@ -20,7 +23,7 @@ import { AccountPage } from "./components/AccountPage";
 import { validateLogin, validateRegistration } from "./lib/auth";
 import {
   ShoppingCart, X, ChevronDown, ChevronLeft, ChevronRight, Plus, Minus, Trash2,
-  User, Menu, Heart, Tag, Leaf, Truck, Star,
+  User, Menu, Tag, Leaf, Truck, Star,
   LeafyGreen, ArrowUp, ArrowDown, ArrowUpDown,
   GemIcon, Sprout, MessageCircle
 } from "lucide-react";
@@ -127,7 +130,7 @@ export default function App() {
   );
   function toggleFavorite(productId: number) {
     if (!user) { setAuthMode("login"); setAuthOpen(true); return; }
-    if (user.role === "USER") void shopping.toggleFavorite(productId);
+    void shopping.toggleFavorite(productId);
   }
 
   // Close dropdown on outside click
@@ -475,11 +478,11 @@ export default function App() {
 
       {isCheckoutPage ? <CheckoutPage user={user} token={accessToken} validating={validating} shopping={shopping} store={store} cartOpen={cartOpen}
         onOpenCart={() => { setCartOpen(true); shopping.retry(); }} onLogin={startCheckout} onUnauthorized={message => invalidate(accessToken, message)} /> : isAccountPage ? <AccountPage accessToken={accessToken} onUpdated={updateAccount} user={user} favorites={accountPath === "/favoritos"} onLogin={() => setAuthOpen(true)}>
-        {shopping.ready && !shopping.favorites.length && <p className="mt-4">Nenhum favorito salvo.</p>}
-        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-          {shopping.favorites.map(product => <ProductCard key={product.id} product={product} liked onFavorite={() => toggleFavorite(product.id)} favoriteBusy={shopping.busy} availableStock={availableStock} onAddToCart={addToCart} addState={shopping.addState} />)}
-        </div>
-      </AccountPage> : <>
+          {shopping.ready && !shopping.favorites.length && <p className="mt-4">Nenhum favorito salvo.</p>}
+          <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+            {shopping.favorites.map(product => <ProductCard stockSettings={store.stockBadges ?? null} key={product.id} product={product} badgeProduct={products.find(current => current.id === product.id)} liked onFavorite={() => toggleFavorite(product.id)} favoritePending={shopping.favoriteState(product.id) === "pending"} favoriteBusy={!shopping.favoriteReady || shopping.favoriteBlocked(product.id)} availableStock={availableStock} onAddToCart={addToCart} addState={shopping.addState} />)}
+          </div>
+        </AccountPage> : <>
         {featuredProducts.length > 0 && <section aria-label="Carrossel de produtos" className="w-full pt-0">
           <div className="p-0 sm:p-0">
             <div
@@ -503,7 +506,7 @@ export default function App() {
                       <ProductImage
                         src={product.imageUrl}
                         alt={product.name}
-                        className="relative h-full w-full object-contain"
+                        className="store-carousel-image relative h-full w-full object-contain"
                       />
 
                       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
@@ -513,7 +516,7 @@ export default function App() {
                         type="button"
                         onClick={() => goToFeaturedSlide("prev")}
                         aria-label="Produto anterior"
-                        className="absolute left-3 top-1/2 z-30 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/30 text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:opacity-100"
+                        className="absolute left-3 top-1/2 z-30 flex h-9 w-9 -translate-y-1/2 items-center justify-center store-slider-control rounded-full border border-white/30 bg-black/30 text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:opacity-100"
                       >
                         <ChevronDown className="h-4 w-4 rotate-90" />
                       </button>
@@ -522,7 +525,7 @@ export default function App() {
                         type="button"
                         onClick={() => goToFeaturedSlide("next")}
                         aria-label="Próximo produto"
-                        className="absolute right-3 top-1/2 z-30 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-white/30 bg-black/30 text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:opacity-100"
+                        className="absolute right-3 top-1/2 z-30 flex h-9 w-9 -translate-y-1/2 items-center justify-center store-slider-control rounded-full border border-white/30 bg-black/30 text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:opacity-100"
                       >
                         <ChevronDown className="h-4 w-4 -rotate-90" />
                       </button>
@@ -531,7 +534,7 @@ export default function App() {
                         <button
                           type="button"
                           onClick={() => openProductDetail(product)}
-                          className="pointer-events-auto translate-y-3 rounded-full border border-white/30 bg-black/30 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:translate-y-0 group-hover:opacity-100"
+                          className="pointer-events-auto translate-y-3 store-slider-control rounded-full border border-white/30 bg-black/30 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:translate-y-0 group-hover:opacity-100"
                         >
                           VER MAIS
                         </button>
@@ -557,7 +560,7 @@ export default function App() {
                     aria-label={`Ir para o produto ${index + 1}`}
                     aria-current={activeFeaturedIndex === index ? "true" : undefined}
                     onClick={() => setFeaturedIndex(index)}
-                    className={`h-1.5 rounded-full transition-all ${activeFeaturedIndex === index ? "w-6 bg-white" : "w-1.5 bg-white/45 hover:bg-white/75"}`}
+                    className={`h-1.5 rounded-full transition-all ${activeFeaturedIndex === index ? "w-6 bg-primary" : "w-1.5 bg-white/45 hover:bg-white/75"}`}
                   />
                 ))}
               </div>
@@ -566,7 +569,7 @@ export default function App() {
         </section>}
 
         {/* Desktop */}
-        <div className="hidden sm:grid bg-primary text-primary-foreground px-3 py-2.5 text-xs font-medium tracking-wide grid-cols-[1fr_auto_1fr_auto_1fr] items-center">
+        <div className="store-service-strip hidden sm:grid bg-primary text-primary-foreground px-3 py-2.5 text-xs font-medium tracking-wide grid-cols-[1fr_auto_1fr_auto_1fr] items-center">
           <span className="flex items-center gap-1.5 justify-self-start">
             <SignpostBig className="w-4 h-4" />
             Fé
@@ -592,7 +595,7 @@ export default function App() {
         </div>
 
         {/* Mobile */}
-        <div className="flex sm:hidden bg-primary text-primary-foreground px-3 py-2.5 text-xs font-medium tracking-wide items-center justify-center gap-12">
+        <div className="store-service-strip flex sm:hidden bg-primary text-primary-foreground px-3 py-2.5 text-xs font-medium tracking-wide items-center justify-center gap-12">
           <span className="opacity-80 px-2">
             ·
           </span>
@@ -620,7 +623,7 @@ export default function App() {
                       {index > 0 && isNumericSize(size) && !isNumericSize(allSizes[index - 1]) && <hr className="col-span-3 border-border my-2" />}
                       <button aria-pressed={selectedSizes.includes(size)}
                         onClick={() => toggleSize(size)}
-                        className={`${sizeButtonClass} text-sm font-medium border transition-colors ${selectedSizes.includes(size) ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border hover:bg-muted"}`}>
+                        className={`store-catalog-control ${sizeButtonClass} text-sm font-medium border transition-colors ${selectedSizes.includes(size) ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border hover:bg-muted"}`}>
                         {size}
                       </button></Fragment>)}
                   </div>
@@ -649,22 +652,22 @@ export default function App() {
                   </div>
                   <div className="flex max-w-full flex-wrap items-center justify-end gap-2 self-end sm:flex-nowrap sm:self-auto">
                     {hasActiveFilters && <button type="button" onClick={clearFilters}
-                      className="min-h-11 shrink-0 px-2 text-sm text-primary underline underline-offset-2 transition-colors duration-200 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+                      className="min-h-11 shrink-0 px-2 text-sm text-primary transition-colors duration-200 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
                       Limpar filtros
                     </button>}
-                  <div role="group" aria-label="Ordenar produtos" className="flex shrink-0 gap-1">
-                    {(["name", "price"] as const).map(field => {
-                      const active = catalogSort?.field === field;
-                      const label = field === "name" ? "Nome" : "Preço";
-                      const Arrow = !active ? ArrowUpDown : catalogSort.direction === "desc" ? ArrowDown : ArrowUp;
-                      return <button key={field} type="button" aria-pressed={active}
-                        aria-label={`Ordenar por ${label.toLocaleLowerCase("pt-BR")}${active ? `, ${catalogSort.direction === "asc" ? "crescente" : "decrescente"}` : ""}`}
-                        onClick={() => setCatalogSort(current => toggleCatalogSort(current, field))}
-                        className={`inline-flex min-h-11 w-[88px] items-center justify-center gap-1 rounded-md border px-3 text-sm transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${active ? "border-primary/20 bg-primary/10 font-semibold text-primary" : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
-                        {label}<Arrow aria-hidden="true" className="size-3.5 shrink-0" />
-                      </button>;
-                  })}
-                  </div>
+                    <div role="group" aria-label="Ordenar produtos" className="flex shrink-0 gap-1">
+                      {(["name", "price"] as const).map(field => {
+                        const active = catalogSort?.field === field;
+                        const label = field === "name" ? "Nome" : "Preço";
+                        const Arrow = !active ? ArrowUpDown : catalogSort.direction === "desc" ? ArrowDown : ArrowUp;
+                        return <button key={field} type="button" aria-pressed={active}
+                          aria-label={`Ordenar por ${label.toLocaleLowerCase("pt-BR")}${active ? `, ${catalogSort.direction === "asc" ? "crescente" : "decrescente"}` : ""}`}
+                          onClick={() => setCatalogSort(current => toggleCatalogSort(current, field))}
+                          className={`store-catalog-control inline-flex min-h-11 w-[88px] items-center justify-center gap-1 rounded-md border px-3 text-sm transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${active ? "border-primary/20 bg-primary/10 font-semibold text-primary" : "border-transparent text-muted-foreground hover:bg-muted hover:text-foreground"}`}>
+                          {label}<Arrow aria-hidden="true" className="size-3.5 shrink-0" />
+                        </button>;
+                      })}
+                    </div>
                   </div>
                 </div>
 
@@ -675,7 +678,7 @@ export default function App() {
                       key={size}
                       onClick={() => toggleSize(size)}
                       aria-pressed={selectedSizes.includes(size)}
-                      className={`${sizeButtonClass} text-xs font-medium border transition-all ${selectedSizes.includes(size)
+                      className={`store-catalog-control ${sizeButtonClass} text-xs font-medium border transition-all ${selectedSizes.includes(size)
                         ? "bg-primary text-primary-foreground border-primary"
                         : "border-border hover:border-primary/50"
                         }`}
@@ -711,15 +714,15 @@ export default function App() {
                   <p className="text-sm">Tente ajustar os filtros de tamanho, público ou categoria</p>
                   {hasActiveFilters && <button
                     onClick={clearFilters}
-                    className="mt-1 text-sm text-primary underline underline-offset-2 hover:opacity-80"
+                    className="mt-1 text-sm text-primary hover:opacity-80"
                   >
-                    Limpar todos os filtros
+                    Limpar filtros
                   </button>}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                   {sortedProducts.map((product) => (
-                    <ProductCard key={product.id} liked={shopping.favorites.some(p => p.id === product.id)} onFavorite={() => toggleFavorite(product.id)} favoriteBusy={shopping.busy || validating || user?.role === "ADMIN"} product={product} availableStock={availableStock} onAddToCart={addToCart} addState={shopping.addState} />
+                    <ProductCard stockSettings={store.stockBadges ?? null} key={product.id} liked={shopping.favorites.some(p => p.id === product.id)} onFavorite={() => toggleFavorite(product.id)} favoritePending={shopping.favoriteState(product.id) === "pending"} favoriteBusy={validating || (!!user && !shopping.favoriteReady) || shopping.favoriteBlocked(product.id)} product={product} availableStock={availableStock} onAddToCart={addToCart} addState={shopping.addState} />
                   ))}
                 </div>
               )}
@@ -786,7 +789,7 @@ export default function App() {
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Falar conosco pelo WhatsApp"
-          className="fixed bottom-5 right-5 z-50 flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-[#25D366] text-white shadow-lg hover:scale-105 hover:shadow-x1 active:scale-95 transition-all"
+          className="fixed bottom-5 right-5 z-50 flex items-center justify-center w-11 h-11 sm:w-12 sm:h-12 rounded-full bg-whatsapp text-whatsapp-foreground shadow-lg hover:scale-105 hover:shadow-x1 active:scale-95 transition-all"
         >
           <MessageCircle className="w-7 h-7 sm:w-8 sm:h-8" />
         </a>
@@ -813,8 +816,8 @@ function ColorSelector({ product, onSelect, card = false }: { product: Product; 
       {product.colors.map(color => <button key={color.id} type="button" title={color.colorName} aria-label={color.colorName}
         aria-pressed={product.colorId === color.id} onClick={() => onSelect(color.id)}
         className={card
-          ? `h-7 w-7 shrink-0 rounded-full border border-black/15 transition-[border-color,box-shadow] duration-150 hover:border-neutral-400 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-neutral-600 ${product.colorId === color.id ? "ring-1 ring-neutral-500 ring-offset-2 ring-offset-card" : ""}`
-          : `h-7 w-7 border rounded-none shadow-sm ${product.colorId === color.id ? "ring-2 ring-primary ring-offset-2 border-primary" : "border-border"}`}
+          ? `h-7 w-7 shrink-0 rounded-full border border-border transition-[border-color,box-shadow] duration-150 hover:border-primary/60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring ${product.colorId === color.id ? "ring-1 ring-primary ring-offset-2 ring-offset-card" : ""}`
+          : `h-7 w-7 border rounded-none shadow-sm ${product.colorId === color.id ? "ring-1 ring-primary ring-offset-2 ring-offset-card border-primary" : "border-border"}`}
         style={{ backgroundColor: color.colorValue }} />)}
     </div>
   </div>;
@@ -991,7 +994,7 @@ function ProductDetailPage({
                 await onAddToCart(product, selectedSize);
               }}
               className={`disabled:opacity-50 disabled:cursor-not-allowed w-full py-3 text-sm font-semibold uppercase tracking-[0.18em] transition ${added
-                ? "bg-accent text-accent-foreground"
+                ? "store-added bg-accent text-accent-foreground"
                 : selectedSize
                   ? "bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98]"
                   : "bg-muted text-muted-foreground cursor-not-allowed"
@@ -1019,18 +1022,21 @@ function ProductDetailPage({
 // ─── Product Card ─────────────────────────────────────────────────────────────
 
 function ProductCard({
-  liked, onFavorite, favoriteBusy,
-  product: baseProduct,
+  liked, onFavorite, favoriteBusy, favoritePending, stockSettings,
+  product: baseProduct, badgeProduct,
   onAddToCart,
   addState,
   availableStock,
 }: {
-  liked: boolean; onFavorite: () => void; favoriteBusy: boolean;
+  liked: boolean; onFavorite: () => void; favoriteBusy: boolean; favoritePending: boolean;
   product: Product;
+  badgeProduct?: Product;
+  stockSettings: StockBadgeSettings | null;
   onAddToCart: (p: Product, s: Size) => Promise<boolean>;
   addState: GetAddState;
   availableStock: (p: Product, s: Size) => number;
 }) {
+  const [badgeColorId, setBadgeColorId] = useState<number | null>(null);
   const [selectedColorId, setSelectedColorId] = useState(baseProduct.colorId);
   const product = selectProductColor(baseProduct, baseProduct.colors.some(c => c.id === selectedColorId) ? selectedColorId : baseProduct.colors[0].id);
 
@@ -1056,14 +1062,14 @@ function ProductCard({
   }
 
   return (
-    <div className="bg-card border border-border hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group flex flex-col overflow-hidden rounded-b-2xl">
+    <div className="store-product-card bg-card border border-border hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 group flex flex-col rounded-b-2xl">
       {/* Image */}
-      <div className="relative aspect-[4/5] bg-muted overflow-hidden rounded-none">
+      <div className="store-product-photo relative aspect-[4/5] shrink-0 bg-muted rounded-none">
         <a
           href={`?productId=${product.id}&colorId=${product.colorId}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="block h-full w-full"
+          className="absolute inset-0 block h-full w-full overflow-hidden"
         >
           <ProductImage
             src={productImages[currentImageIndex]}
@@ -1082,9 +1088,9 @@ function ProductCard({
                 showPrevImage();
               }}
               aria-label="Imagem anterior"
-              className="group/image-arrow absolute left-0 top-1/2 z-10 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full text-neutral-800 focus-visible:outline-none"
+              className="store-product-arrow group/image-arrow absolute left-0 top-1/2 z-10 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full text-foreground focus-visible:outline-none"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/65 backdrop-blur-sm transition-colors duration-200 group-hover/image-arrow:bg-white/90 group-focus-visible/image-arrow:bg-white/90 group-focus-visible/image-arrow:ring-2 group-focus-visible/image-arrow:ring-neutral-700 group-focus-visible/image-arrow:ring-offset-2 group-focus-visible/image-arrow:ring-offset-white/80">
+              <span className="flex h-7 w-7 items-center justify-center store-image-control rounded-full bg-white/65 backdrop-blur-sm transition-colors duration-200 group-hover/image-arrow:bg-white/90 group-focus-visible/image-arrow:bg-white/90 group-focus-visible/image-arrow:ring-2 group-focus-visible/image-arrow:ring-ring group-focus-visible/image-arrow:ring-offset-2 group-focus-visible/image-arrow:ring-offset-card">
                 <ChevronLeft className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
               </span>
             </button>
@@ -1095,9 +1101,9 @@ function ProductCard({
                 showNextImage();
               }}
               aria-label="Próxima imagem"
-              className="group/image-arrow absolute right-0 top-1/2 z-10 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full text-neutral-800 focus-visible:outline-none"
+              className="store-product-arrow group/image-arrow absolute right-0 top-1/2 z-10 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full text-foreground focus-visible:outline-none"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/65 backdrop-blur-sm transition-colors duration-200 group-hover/image-arrow:bg-white/90 group-focus-visible/image-arrow:bg-white/90 group-focus-visible/image-arrow:ring-2 group-focus-visible/image-arrow:ring-neutral-700 group-focus-visible/image-arrow:ring-offset-2 group-focus-visible/image-arrow:ring-offset-white/80">
+              <span className="flex h-7 w-7 items-center justify-center store-image-control rounded-full bg-white/65 backdrop-blur-sm transition-colors duration-200 group-hover/image-arrow:bg-white/90 group-focus-visible/image-arrow:bg-white/90 group-focus-visible/image-arrow:ring-2 group-focus-visible/image-arrow:ring-ring group-focus-visible/image-arrow:ring-offset-2 group-focus-visible/image-arrow:ring-offset-card">
                 <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
               </span>
             </button>
@@ -1111,35 +1117,30 @@ function ProductCard({
                     e.stopPropagation();
                     setCurrentImageIndex(index);
                   }}
-                  className={`h-1.5 rounded-full transition-all ${currentImageIndex === index ? "w-5 bg-white" : "w-1.5 bg-white/60 hover:bg-white/90"
+                  className={`h-1.5 rounded-full transition-all ${currentImageIndex === index ? "w-5 bg-primary" : "w-1.5 bg-white/60 hover:bg-white/90"
                     }`}
                 />
               ))}
             </div>
           </>
         )}
-        {/* Badge */}
-        {product.badge && (
-          <span className="absolute top-2.5 left-2.5 text-[10px] font-bold uppercase tracking-wide bg-primary text-primary-foreground px-2 py-0.5 rounded-full">
-            {product.badge}
-          </span>
-        )}
+        <ProductBadges product={badgeProduct ?? baseProduct} settings={stockSettings} selection={{ colorId: badgeColorId ?? undefined, size: selectedSize ?? undefined }} />
         {/* Wishlist */}
         <button
           onClick={onFavorite}
           disabled={favoriteBusy}
+          aria-busy={favoritePending}
           aria-pressed={liked}
-          className="absolute top-2.5 right-2.5 flex h-6 w-6 items-center justify-center rounded-full bg-transparent text-black transition hover:bg-white/10"
+          type="button"
+          className="store-favorite-bookmark absolute -top-px -right-px z-20 flex h-11 w-11 items-start justify-end rounded-none border-0 bg-transparent p-0 outline-none focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed"
           aria-label={liked ? "Remover dos favoritos" : "Favoritar"}
         >
-          <Heart
-            className={`w-3.5 h-3.5 transition-colors ${liked ? "fill-primary/80 text-primary/80" : "fill-transparent text-black"}`}
-          />
+          <FavoriteBookmark filled={liked} />
         </button>
       </div>
 
       {/* Info */}
-      <div className="p-3 flex flex-col gap-2 flex-1 rounded-t-2xl bg-card">
+      <div className="p-3 flex flex-col gap-2 flex-1 rounded-t-2xl rounded-b-[15px] bg-card">
         <div>
           <p className="text-sm font-medium leading-snug text-foreground line-clamp-2 min-h-[2.5rem]">
             {product.name}
@@ -1149,7 +1150,7 @@ function ProductCard({
 
         <ColorSelector card product={product} onSelect={id => {
           const next = selectProductColor(baseProduct, id);
-          setSelectedColorId(id); setCurrentImageIndex(0);
+          setSelectedColorId(id); setBadgeColorId(id); setCurrentImageIndex(0);
           if (selectedSize && availableStock(next, selectedSize) <= 0) setSelectedSize(null);
         }} />
 
@@ -1162,7 +1163,7 @@ function ProductCard({
               disabled={availableStock(product, size) <= 0}
               title={stockFor(product, size) === 0 ? "Esgotado" : undefined}
               onClick={() => setSelectedSize((s) => (s === size ? null : size))}
-              className={`${sizeButtonClass} disabled:opacity-40 disabled:cursor-not-allowed text-xs border font-medium transition-all rounded-none ${selectedSize === size
+              className={`store-product-size ${sizeButtonClass} disabled:opacity-40 disabled:cursor-not-allowed text-xs border font-medium transition-all rounded-none ${selectedSize === size
                 ? "bg-primary text-primary-foreground border-primary"
                 : "border-border hover:border-primary/40 hover:bg-muted"
                 }`}
@@ -1178,7 +1179,7 @@ function ProductCard({
           disabled={additionState !== "idle" || !selectedSize || availableStock(product, selectedSize) <= 0}
           aria-busy={additionState === "pending"}
           className={`disabled:opacity-50 disabled:cursor-not-allowed mt-auto w-full py-2 text-sm font-semibold transition-all duration-200 rounded-none ${added
-            ? "bg-accent text-accent-foreground"
+            ? "store-added bg-accent text-accent-foreground"
             : selectedSize
               ? "bg-primary text-primary-foreground hover:opacity-90 active:scale-95"
               : "bg-muted text-muted-foreground cursor-not-allowed"
@@ -1234,7 +1235,7 @@ function CartDrawer({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-50 bg-foreground/30 backdrop-blur-sm"
+        className="fixed inset-0 z-50 store-backdrop bg-foreground/30 backdrop-blur-sm"
         onClick={(event) => {
           const bounds = drawerRef.current?.getBoundingClientRect();
           if (!bounds) return;
@@ -1445,7 +1446,7 @@ function AuthModal({
   return (
     <>
       <div
-        className="fixed inset-0 z-50 bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4"
+        className="fixed inset-0 z-50 store-backdrop bg-foreground/40 backdrop-blur-sm flex items-center justify-center p-4"
         onClick={(event) => {
           if (event.target !== event.currentTarget) return;
           const bounds = modalRef.current?.getBoundingClientRect();
@@ -1495,7 +1496,7 @@ function AuthModal({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Maria Silva"
-                  className="w-full px-3.5 py-2.5 rounded-xl text-black bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
+                  className="w-full px-3.5 py-2.5 rounded-xl text-auth-input bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
                   required
                 />
               </div>
@@ -1512,7 +1513,7 @@ function AuthModal({
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu@email.com"
-                className="w-full px-3.5 py-2.5 rounded-xl text-black bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
+                className="w-full px-3.5 py-2.5 rounded-xl text-auth-input bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
                 required
               />
             </div>
@@ -1530,7 +1531,7 @@ function AuthModal({
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 rounded-xl text-black bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
+                className="w-full px-3.5 py-2.5 rounded-xl text-auth-input bg-input-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-ring/40 transition-all"
                 required
               />
             </div>
@@ -1539,7 +1540,7 @@ function AuthModal({
               <p role="alert" className="text-xs text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error || sessionError}</p>
             )}
             {success && (
-              <p role="status" className="text-xs text-primary bg-primary/10 px-3 py-2 rounded-lg">{success}</p>
+              <p role="status" className="text-xs text-success bg-primary/10 px-3 py-2 rounded-lg">{success}</p>
             )}
 
             <button

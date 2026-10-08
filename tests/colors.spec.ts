@@ -24,7 +24,15 @@ test("manager adds second/third colors, isolates picker/images/stock, edits and 
     await expect(page.getByRole("alert")).toContainText("nome da cor");
     const name = "Multicor " + randomUUID();
     await page.getByLabel("Nome", { exact: true }).fill(name); await page.getByLabel("Preço (R$)", { exact: true }).fill("99.90");
+    await expect(page.getByLabel("Prévia do badge", { exact: true })).toContainText("NOVO");
+    await expect(page.getByLabel("Badge (opcional)")).toHaveValue("");
     await page.getByLabel("Badge (opcional)").fill("Novo");
+    const preview = page.getByLabel("Prévia do badge", { exact: true });
+    await expect(preview).toContainText("Novo");
+    await page.getByLabel("Cor de fundo do badge", { exact: true }).fill("#123456");
+    await page.getByLabel("Seletor: Cor do texto do badge", { exact: true }).fill("#fedcba");
+    await expect(preview.locator("path")).toHaveAttribute("fill", "#123456");
+    await expect(preview.locator(".product-tag")).toHaveCSS("color", "rgb(254, 220, 186)");
     for (const [index, color] of ["Preto", "Branco", "Verde"].entries()) {
       if (index) await page.getByRole("button", { name: "+ Adicionar cor", exact: true }).click();
       await page.getByLabel("Nome da cor", { exact: true }).fill(color);
@@ -48,9 +56,29 @@ test("manager adds second/third colors, isolates picker/images/stock, edits and 
     const created = page.waitForResponse(r => r.url().endsWith("/api/produtos") && r.request().method() === "POST");
     await page.getByRole("button", { name: "Salvar produto" }).click();
     const response = await created; expect(response.status()).toBe(201); const product = await response.json(); id = product.id;
+    expect(product.badgeBackgroundColor).toBe("#123456"); expect(product.badgeTextColor).toBe("#FEDCBA");
     expect(product.colors).toHaveLength(3); expect(Number(product.price)).toBe(99.9); expect(product.badge).toBe("Novo");
     expect(product.colors.map((c: any) => c.colorValue)).toEqual(["#123456", "#A1B2C3", "#FFFFFF"]);
+    const storefront = await page.context().newPage();
+    try {
+      await images(storefront); await storefront.goto('/');
+      const publicCard = storefront.locator('.store-product-card').filter({ has: storefront.getByText(name, { exact: true }) });
+      for (const width of [320, 390, 768, 1440]) {
+        await storefront.setViewportSize({ width, height: 1000 });
+        const manual = publicCard.locator('.store-badge-manual');
+        await expect(manual).toContainText('Novo');
+        await expect(manual.locator('path')).toHaveAttribute('fill', '#123456');
+        await expect(manual).toHaveCSS('color', 'rgb(254, 220, 186)');
+        await publicCard.evaluate(el => window.scrollTo(0, window.scrollY + el.getBoundingClientRect().top - 120));
+        await publicCard.getByRole('img').hover();
+        await publicCard.screenshot({ path: testInfo.outputPath(`custom-badge-${width}.png`) });
+      }
+    } finally { await storefront.close(); }
+
     await page.getByRole("article", { name, exact: true }).getByRole("link", { name: "Editar" }).click();
+    await page.reload();
+    await expect(page.getByLabel("Cor de fundo do badge", { exact: true })).toHaveValue("#123456");
+    await expect(page.getByLabel("Cor do texto do badge", { exact: true })).toHaveValue("#FEDCBA");
     await expect(page.getByRole("button", { name: "+ Adicionar cor", exact: true })).toBeVisible();
     await tabs.getByRole("button", { name: "Branco", exact: true }).click();
     await expect(page.getByLabel("Seletor de cor", { exact: true })).toHaveValue("#a1b2c3");
@@ -82,6 +110,8 @@ test("catalog/details switch images and sizes; multi-color guest cart merges and
   try {
     await page.goto("/");
     await card.getByRole("button", { name: "P", exact: true }).click();
+    await card.evaluate(el => window.scrollTo(0, window.scrollY + el.getBoundingClientRect().top - 120));
+    await card.getByRole("img").hover();
     await card.getByRole("button", { name: "Próxima imagem" }).click();
     await expect(card.getByRole("img", { name, exact: true })).toHaveAttribute("src", "/colors-black-back.svg");
     await card.getByRole("button", { name: "Branco", exact: true }).click();
@@ -100,7 +130,7 @@ test("catalog/details switch images and sizes; multi-color guest cart merges and
     expect(new Set(local.map((i: any) => i.colorId)).size).toBe(2);
     await page.keyboard.press("Escape"); await login(page);
     await expect(page.getByRole("status")).toContainText("Carrinho de visitante sincronizado");
-    await card.getByRole("button", { name: "Favoritar", exact: true }).click();
+    await card.evaluate(element => window.scrollTo(0, window.scrollY + element.getBoundingClientRect().top - 120)); await card.getByRole("img").hover(); await card.getByRole("button", { name: "Favoritar", exact: true }).click();
     await expect(card.getByRole("button", { name: "Remover dos favoritos" })).toBeVisible();
     await card.getByRole("button", { name: "Branco", exact: true }).click();
     await expect(card.getByRole("button", { name: "Remover dos favoritos" })).toBeVisible();

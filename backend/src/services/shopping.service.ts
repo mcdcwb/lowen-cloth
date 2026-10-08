@@ -5,17 +5,22 @@ import { Prisma } from "../generated/prisma/client.js";
 export class ShoppingError extends Error {
     constructor(public status: number, message: string) { super(message); }
 }
-export const favorites = (userId: number) => prisma.favorite.findMany({
-    where: { userId }, include: { product: { include: productInclude } }, orderBy: { productId: "asc" }
-});
-export async function favorite(userId: number, productId: number, remove = false) {
-    if (remove) await prisma.favorite.deleteMany({ where: { userId, productId } });
-    else {
-        if (!await prisma.product.findUnique({ where: { id: productId } })) throw new ShoppingError(404, "Produto não encontrado.");
-        await prisma.favorite.upsert({ where: { userId_productId: { userId, productId } }, create: { userId, productId }, update: {} });
+type FavoriteOwner = { id: number; role: "USER" | "ADMIN" };
+export const favorites = (owner: FavoriteOwner) => owner.role === "ADMIN"
+    ? prisma.adminFavorite.findMany({ where: { adminId: owner.id }, include: { product: { include: productInclude } }, orderBy: { productId: "asc" } })
+    : prisma.favorite.findMany({ where: { userId: owner.id }, include: { product: { include: productInclude } }, orderBy: { productId: "asc" } });
+export async function favorite(owner: FavoriteOwner, productId: number, remove = false) {
+    if (!remove && !await prisma.product.findUnique({ where: { id: productId } })) throw new ShoppingError(404, "Produto não encontrado.");
+    if (owner.role === "ADMIN") {
+        if (remove) await prisma.adminFavorite.deleteMany({ where: { adminId: owner.id, productId } });
+        else await prisma.adminFavorite.upsert({ where: { adminId_productId: { adminId: owner.id, productId } }, create: { adminId: owner.id, productId }, update: {} });
+    } else {
+        if (remove) await prisma.favorite.deleteMany({ where: { userId: owner.id, productId } });
+        else await prisma.favorite.upsert({ where: { userId_productId: { userId: owner.id, productId } }, create: { userId: owner.id, productId }, update: {} });
     }
-    return favorites(userId);
+    return favorites(owner);
 }
+
 type Selection = { productId: number; colorId?: number; size: string; quantity: number };
 // Checkout reads must preserve requested quantities, including unavailable selections.
 export async function cartForReview(userId: number, database: Prisma.TransactionClient = prisma) {

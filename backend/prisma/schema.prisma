@@ -10,6 +10,8 @@ datasource db {
 model StoreSettings {
   id                Int @id @default(1)
   lowStockThreshold Int @default(5)
+  showLowStockBadge Boolean @default(true)
+  showLastUnitBadge Boolean @default(true)
   storeCep          String?
   storeStreet       String?
   storeNumber       String?
@@ -32,6 +34,8 @@ model Product {
   category    Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   isPublished Boolean @default(true)
 
+  badgeBackgroundColor String @default("#2457A7")
+  badgeTextColor String @default("#FFFFFF")
   badge       String?
   inCarousel  Boolean @default(false)
 
@@ -40,6 +44,7 @@ model Product {
 
   colors ProductColor[]
   favorites Favorite[]
+  adminFavorites AdminFavorite[]
   @@index([categoryId])
 }
 
@@ -77,6 +82,7 @@ model ProductVariant {
 }
 
 model Admin {
+  favorites AdminFavorite[]
   id Int @id @default(autoincrement())
   email String @unique
   passwordHash String
@@ -117,6 +123,15 @@ model Favorite {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
   @@id([userId, productId])
+  @@index([productId])
+}
+
+model AdminFavorite {
+  adminId Int
+  productId Int
+  admin Admin @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  @@id([adminId, productId])
   @@index([productId])
 }
 

@@ -28,7 +28,7 @@ test("checkout persists orders without changing cart/stock and confirms atomical
   const pickupAddress = { ...address, street: "Rua da Loja", number: "456", complement: "" };
   try {
     await db.query(`CREATE SCHEMA "${schema}"`); await db.query(`SET search_path TO "${schema}"`);
-    for (const migration of ["20261001000000_store_settings", "20261005000000_store_business_details", "20261006010000_store_business_hours"])
+    for (const migration of ["20261001000000_store_settings", "20261005000000_store_business_details", "20261006010000_store_business_hours", "20261007000000_stock_badges"])
       await db.query(await readFile(`prisma/migrations/${migration}/migration.sql`, "utf8"));
     const user = await createUser({ name: "João da Silva", email, password });
     await createAdmin({ email: adminEmail, password });

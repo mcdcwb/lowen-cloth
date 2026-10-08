@@ -44,6 +44,25 @@ test("nested product CRUD preserves identity, cart relations and per-color stock
       assert.equal((await req("/produtos", "POST", { ...input, colors: [editable(product.colors[0])] })).status, 400);
       for (const method of ["PUT", "DELETE"]) assert.equal((await req("/produtos/invalid", method, {})).status, 400);
     });
+    await t.test("manual badge colors default safely, validate and persist without changing stock", async () => {
+      assert.equal(product.badgeBackgroundColor, "#2457A7");
+      assert.equal(product.badgeTextColor, "#FFFFFF");
+      const before = product.colors;
+      for (const invalid of ["red", "#fff", "#12345678", "url(test)", null]) {
+        assert.equal((await req(`/produtos/${product.id}`, "PUT", { badgeBackgroundColor: invalid })).status, 400);
+        assert.equal((await req("/produtos", "POST", { ...input, badgeTextColor: invalid })).status, 400);
+      }
+      const result = await req(`/produtos/${product.id}`, "PUT", { badge: "Novo", badgeBackgroundColor: "#abcdef", badgeTextColor: "#123456" });
+      assert.equal(result.status, 200);
+      product = await result.json();
+      assert.equal(product.badgeBackgroundColor, "#ABCDEF");
+      assert.equal(product.badgeTextColor, "#123456");
+      assert.deepEqual(product.colors, before);
+      const read = (await (await req("/produtos")).json()).find((p: any) => p.id === product.id);
+      assert.equal(read.badgeBackgroundColor, "#ABCDEF");
+      await req(`/produtos/${product.id}`, "PUT", { description: "Temporary" });
+      assert.equal((await prisma.product.findUniqueOrThrow({ where: { id: product.id } })).badgeTextColor, "#123456");
+    });
     await t.test("two colors coexist in cart, enforce separate limits, merge and reject mismatched product/color", async () => {
       for (const c of product.colors.slice(0, 2)) {
         const r = await server.request("/carrinho", "POST", { productId: product.id, colorId: c.id, size: "P", quantity: 1 }, token);

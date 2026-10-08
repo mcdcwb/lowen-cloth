@@ -1,6 +1,8 @@
 import type { StoreSettings } from "../generated/prisma/client.js";
 import { isBusinessHours } from "../lib/business-hours.js";
 
+export const stockSettingsSelect = { lowStockThreshold: true, showLowStockBadge: true, showLastUnitBadge: true } as const;
+
 export const storeDetailsSelect = {
   storeCep: true, storeStreet: true, storeNumber: true, storeComplement: true,
   storeNeighborhood: true, storeCity: true, storeState: true, whatsapp: true, businessHours: true

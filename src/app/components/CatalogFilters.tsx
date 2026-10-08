@@ -22,7 +22,7 @@ export function FilterOptions<T extends string>({ options, value, onChange, allV
     {[{ value: allValue, label: "Todos" }, ...options].map(option => (
       <button key={option.value ?? "all"} type="button" aria-pressed={value === option.value}
         onClick={() => onChange(option.value)}
-        className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${value === option.value ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-foreground"}`}>
+        className={`store-catalog-control w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${value === option.value ? "bg-primary/10 text-primary font-medium" : "hover:bg-muted text-foreground"}`}>
         {option.label}
       </button>
     ))}

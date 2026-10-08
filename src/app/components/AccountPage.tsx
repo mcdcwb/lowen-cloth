@@ -14,7 +14,7 @@ export function AccountPage({ user, favorites, onLogin, children, accessToken, o
       <Link to="/" className="text-sm text-muted-foreground hover:text-primary">← Voltar para a loja</Link>
       {checkoutReturn && user?.role === "USER" && <Link to="/checkout" className="ml-4 inline-flex min-h-11 items-center text-sm text-primary underline focus-visible:outline-2 focus-visible:outline-primary">Voltar ao checkout</Link>}
       <section className="mt-8 p-6 sm:p-8 bg-card border border-border rounded-xl">
-        {user?.role === "USER" ? (
+        {user && (favorites || user.role === "USER") ? (
           <>
             <h1 className="font-serif text-3xl font-bold">{favorites ? "Favoritos" : "Minha Conta"}</h1>
             <p className="mt-4 text-muted-foreground">{favorites

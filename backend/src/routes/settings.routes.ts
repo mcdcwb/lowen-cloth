@@ -3,7 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { requireAdmin } from "../middlewares/require-admin.js";
 import { settingsSchema, storeDetailsSchema } from "../schemas/settings.schema.js";
 
-import { storeDetailsSelect, publicStoreDetails, storeDetailsData } from "../services/settings.service.js";
+import { stockSettingsSelect, storeDetailsSelect, publicStoreDetails, storeDetailsData } from "../services/settings.service.js";
 import { dayLabels, type WeekDay } from "../lib/business-hours.js";
 
 export function createSettingsRoutes(database: Pick<typeof prisma, "storeSettings"> = prisma) {
@@ -11,8 +11,8 @@ export function createSettingsRoutes(database: Pick<typeof prisma, "storeSetting
   router.get("/public", async (_req, res) => {
     try {
       res.set("Cache-Control", "no-store");
-      const row = await database.storeSettings.findUniqueOrThrow({ where: { id: 1 }, select: storeDetailsSelect });
-      res.json(publicStoreDetails(row));
+      const row = await database.storeSettings.findUniqueOrThrow({ where: { id: 1 }, select: { ...storeDetailsSelect, ...stockSettingsSelect } });
+      res.json({ ...publicStoreDetails(row), lowStockThreshold: row.lowStockThreshold, showLowStockBadge: row.showLowStockBadge, showLastUnitBadge: row.showLastUnitBadge });
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Não foi possível carregar os dados da loja." });
@@ -45,7 +45,7 @@ export function createSettingsRoutes(database: Pick<typeof prisma, "storeSetting
   router.get("/", async (_req, res) => {
     try {
       res.set("Cache-Control", "no-store");
-      res.json(await database.storeSettings.findUniqueOrThrow({ where: { id: 1 }, select: { lowStockThreshold: true } }));
+      res.json(await database.storeSettings.findUniqueOrThrow({ where: { id: 1 }, select: stockSettingsSelect }));
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Não foi possível carregar as configurações." });
@@ -53,9 +53,9 @@ export function createSettingsRoutes(database: Pick<typeof prisma, "storeSetting
   });
   router.put("/", async (req, res) => {
     const parsed = settingsSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "Informe um limite inteiro entre 1 e 9999.", errors: parsed.error.issues });
+    if (!parsed.success) return res.status(400).json({ error: "Verifique o limite de estoque e as opções de badges.", errors: parsed.error.issues });
     try {
-      return res.json(await database.storeSettings.update({ where: { id: 1 }, data: parsed.data, select: { lowStockThreshold: true } }));
+      return res.json(await database.storeSettings.update({ where: { id: 1 }, data: parsed.data, select: stockSettingsSelect }));
     } catch (error) {
       console.error(error);
       return res.status(500).json({ error: "Não foi possível salvar as configurações." });

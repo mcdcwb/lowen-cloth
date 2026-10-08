@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useAddFeedback } from "./useAddFeedback";
+import { useFavoriteFeedback } from "./useFavoriteFeedback";
 import { notify } from "../lib/notifications";
 import { adaptProduct, selectProductColor, stockFor, type Product } from "../lib/products";
 import type { Account } from "../lib/auth";
@@ -20,9 +21,11 @@ function saveGuest(items: CartItem[]) {
   try { localStorage.setItem(key, JSON.stringify(items)); } catch { /* Guest cart still works in memory. */ }
 }
 export function useShopping(products: Product[], accessToken: string | undefined, validating: boolean, user: Account | null, reviewing = false) {
+  const favoriteToken = user ? accessToken : undefined;
   const token = user?.role === "USER" ? accessToken : undefined;
   const owner = user ? `${user.role}:${user.id}` : "guest";
   const additions = useAddFeedback(`${owner}:${accessToken ?? ""}`);
+  const favoriteFeedback = useFavoriteFeedback(`${owner}:${accessToken ?? ""}`);
   const addQueue = useRef(Promise.resolve());
   useEffect(() => { addQueue.current = Promise.resolve(); }, [owner, accessToken]);
   // Trigger renders on local/storage changes, but read the shared snapshot below
@@ -62,7 +65,7 @@ export function useShopping(products: Product[], accessToken: string | undefined
     if (!isCurrent()) throw new Error("A sessão mudou. Aguarde a atualização da conta.");
     if (reviewing && method !== "GET" && path.startsWith("/carrinho") && path !== "/carrinho/sincronizar") path += "?conferencia=1";
     const response = await fetch((import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "") + path, {
-      method, cache: "no-store", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      method, cache: "no-store", headers: { "Content-Type": "application/json", Authorization: `Bearer ${path.startsWith("/favoritos") ? favoriteToken : token}` },
       body: body === undefined ? undefined : JSON.stringify(body)
     });
     const data = await response.json().catch(() => { throw new Error("Resposta inválida do servidor. Tente novamente."); });
@@ -73,13 +76,13 @@ export function useShopping(products: Product[], accessToken: string | undefined
   useEffect(() => {
     const current = ++generation.current;
     locked.current = false;
-    setAccount(previous => reviewing && previous?.token === token ? previous : null);
+    setAccount(previous => reviewing && previous?.token === favoriteToken ? previous : null);
     setError("");
     setNotice("");
     setBusy(false);
-    if (!token || validating) return;
-    locked.current = true;
-    setBusy(true);
+    if (!favoriteToken || validating) return;
+    locked.current = Boolean(token);
+    setBusy(Boolean(token));
     void (async () => {
       try {
         // A shared lock and persistent owner claim prevent two identities from
@@ -111,11 +114,11 @@ export function useShopping(products: Product[], accessToken: string | undefined
           return merged ?? request(reviewing ? "/carrinho/conferencia" : "/carrinho");
         };
         const [cart, favorites] = await Promise.all([
-          loadAccountCart(),
+          token ? loadAccountCart() : Promise.resolve({ items: [], notices: [] }),
           request("/favoritos")
         ]);
         if (!cart || current !== generation.current || !isCurrent()) return;
-        setAccount({ token, items: adaptCart(cart), favorites: favorites.map((f: { product: unknown }) => adaptProduct(f.product)) });
+        setAccount({ token: favoriteToken, items: adaptCart(cart), favorites: favorites.map((f: { product: unknown }) => adaptProduct(f.product)) });
         setNotice(cart.notices.join(" "));
       } catch (e) {
         if (current === generation.current) setError(e instanceof Error ? e.message : "Falha ao carregar seus dados.");
@@ -140,10 +143,11 @@ export function useShopping(products: Product[], accessToken: string | undefined
     return items;
   }, []);
   const ready = !validating && isCurrent() && (!token || account?.token === token);
+  const favoriteReady = !validating && isCurrent() && (!favoriteToken || account?.token === favoriteToken);
   const items = !ready ? [] : token ? account?.token === token ? account.items : [] : guestItems;
   const cartSnapshot = useRef(items);
   cartSnapshot.current = items;
-  const favorites = ready && token && account?.token === token ? account.favorites : [];
+  const favorites = favoriteReady && favoriteToken && account?.token === favoriteToken ? account.favorites : [];
   useEffect(() => {
     if (!user && !validating && products.length && isCurrent()) {
       setGuest(guestItems);
@@ -247,8 +251,32 @@ export function useShopping(products: Product[], accessToken: string | undefined
     } else updateGuest([]);
     notify.removal("Carrinho esvaziado com sucesso.");
   }
-  return { items, favorites, busy, ready, error, notice, addState: additions.getState, add, remove, changeQty, clear,
+  async function toggleFavorite(productId: number) {
+    if (!favoriteToken || !favoriteReady || !isCurrent()) return false;
+    return favoriteFeedback.run(productId, async () => {
+      const current = generation.current;
+      const removing = favorites.some(product => product.id === productId);
+      setError("");
+      try {
+        const result = await request(`/favoritos/${productId}`, removing ? "DELETE" : "PUT");
+        if (current !== generation.current || !isCurrent()) return false;
+        const confirmed = result.map((f: { product: unknown }) => adaptProduct(f.product)).find((p: Product) => p.id === productId);
+        // Merge only this product: independent requests can return snapshots out of order.
+        setAccount(previous => previous?.token === favoriteToken ? { ...previous, favorites: [
+          ...previous.favorites.filter(product => product.id !== productId), ...(confirmed ? [confirmed] : [])
+        ] } : previous);
+        announce();
+        if (removing) notify.removal("Produto removido dos favoritos!");
+        else notify.positive("Produto adicionado aos favoritos!");
+        return true;
+      } catch (e) {
+        if (current === generation.current && isCurrent()) setError(e instanceof Error ? e.message : "Falha ao salvar.");
+        return false;
+      }
+    });
+  }
+  return { items, favorites, busy, ready, favoriteReady, error, notice, favoriteBlocked: favoriteFeedback.blocked, favoriteState: favoriteFeedback.state, addState: additions.getState, add, remove, changeQty, clear,
     dismissNotice: () => setNotice(""),
     retry: () => setRevision(v => v + 1),
-    toggleFavorite: (productId: number) => mutate(`/favoritos/${productId}`, favorites.some(p => p.id === productId) ? "DELETE" : "PUT") };
+    toggleFavorite };
 }
