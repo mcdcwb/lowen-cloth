@@ -6,7 +6,7 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "test": "node --test tests/auth.test.mjs tests/products.test.mjs tests/manager.test.mjs tests/business-hours.test.mjs",
+    "test": "node --test tests/auth.test.mjs tests/products.test.mjs tests/manager.test.mjs tests/business-hours.test.mjs tests/carousel-products.test.mjs",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test"
   },

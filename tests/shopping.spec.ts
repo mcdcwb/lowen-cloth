@@ -12,10 +12,144 @@ async function login(page: Page) {
   await expect(page.getByText("Sincronizando favoritos e carrinho...")).toHaveCount(0);
 }
 async function logout(page: Page) {
-  await page.getByRole("button", { name: "Cliente", exact: true }).hover();
+  await page.getByRole("button", { name: "Cliente", exact: true }).click();
   await page.getByRole("button", { name: "Sair", exact: true }).click();
 }
 const card = (page: Page) => page.locator("main div.group").filter({ has: page.getByText("Persistencia Browser", { exact: true }) });
+
+test("toast outer border pauses the real deadline for ten seconds and resumes remaining time", async ({ page }) => {
+  await page.goto("/"); await page.clock.pauseAt(new Date()); await page.mouse.move(0, 0);
+  await page.evaluate(async () => { const { notify } = await import("/src/app/lib/notifications.ts"); notify.info("Pausa na borda"); });
+  await page.clock.runFor(0);
+  const shell = page.locator(".store-toast-shell"), notification = shell.locator("[data-store-toast]");
+  await expect(notification).toHaveCount(1); await page.clock.runFor(1000);
+  const bounds = (await shell.boundingBox())!;
+  await page.mouse.move(bounds.x + 1, bounds.y + bounds.height / 2);
+  await expect(notification).toHaveAttribute("data-paused", "true");
+  const remaining = await notification.getByRole("progressbar").getAttribute("aria-valuenow");
+  await page.clock.runFor(10000);
+  await expect(notification).toHaveCount(1);
+  await expect(notification.getByRole("progressbar")).toHaveAttribute("aria-valuenow", remaining!);
+  await page.mouse.move(0, 0); await page.clock.runFor(1400);
+  await expect(notification).toHaveCount(1);
+  await page.clock.runFor(500); await expect(notification).toHaveCount(0);
+});
+
+test("hover on the cart action pauses for ten seconds while another toast expires independently", async ({ page }) => {
+  await page.goto("/"); await page.clock.pauseAt(new Date()); await page.mouse.move(0, 0);
+  await page.evaluate(async () => { const { notify } = await import("/src/app/lib/notifications.ts"); notify.error("Outro temporizador"); });
+  await page.clock.runFor(0); await expect(page.locator("[data-store-toast]")).toHaveCount(1);
+  await page.clock.runFor(1000);
+  await page.evaluate(async () => { const { notify } = await import("/src/app/lib/notifications.ts"); notify.positive("Ação pausada", { label: "Ver no Carrinho", onClick: () => {} }); });
+  await page.clock.runFor(0); await expect(page.locator("[data-store-toast]")).toHaveCount(2);
+  const paused = page.locator('[data-store-toast="success"]');
+  await paused.getByRole("button", { name: "Ver no Carrinho" }).hover();
+  await expect(paused).toHaveAttribute("data-paused", "true");
+  const progress = await paused.getByRole("progressbar").getAttribute("aria-valuenow");
+  await page.clock.runFor(10000);
+  await expect(page.locator('[data-store-toast="error"]')).toHaveCount(0);
+  await expect(paused).toHaveCount(1);
+  await expect(paused.getByRole("progressbar")).toHaveAttribute("aria-valuenow", progress!);
+  await paused.getByRole("button", { name: "Fechar notificação" }).click();
+  await page.clock.runFor(400); await expect(paused).toHaveCount(0);
+});
+
+for (const width of [320, 390, 768, 1440]) test(`ButterPop-style store toast timer, semantics and controls at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 900 });
+  await page.goto("/");
+  await page.clock.pauseAt(new Date());
+  await page.mouse.move(0, 0);
+  for (const type of ["positive", "error", "warning", "info"] as const) {
+    await page.evaluate(async type => {
+      const { notify } = await import("/src/app/lib/notifications.ts");
+      notify[type](`Notificação ${type}`);
+    }, type);
+    await page.clock.runFor(0);
+    const notification = page.locator("[data-store-toast]");
+    await expect(notification).toHaveCount(1);
+    await expect(notification).toContainText(`Notificação ${type}`);
+    await expect(notification).toHaveAttribute("data-store-toast", type === "positive" ? "success" : type);
+    await expect(notification.locator(".store-toast-icon")).toHaveCSS("color", { positive: "rgb(132, 211, 157)", error: "rgb(255, 150, 158)", warning: "rgb(244, 211, 94)", info: "rgb(146, 200, 255)" }[type]);
+    await expect(notification.getByRole("progressbar")).toBeVisible();
+    await expect(page.locator("[data-sonner-toaster]")).toHaveAttribute("data-x-position", "right");
+    await expect(page.locator("[data-sonner-toaster]")).toHaveAttribute("data-y-position", "top");
+    await page.clock.runFor(500);
+    await notification.hover();
+    await expect(notification).toHaveAttribute("data-paused", "true");
+    const progress = await notification.getByRole("progressbar").getAttribute("aria-valuenow");
+    await page.clock.runFor(3000);
+    await expect(notification.getByRole("progressbar")).toHaveAttribute("aria-valuenow", progress!);
+    const bounds = (await notification.boundingBox())!;
+    expect(bounds.x).toBeGreaterThanOrEqual(0); expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+    if (type === "positive") await page.screenshot({ path: info.outputPath(`butterpop-${width}.png`) });
+    await notification.getByRole("button", { name: "Fechar notificação" }).focus();
+    await page.mouse.move(0, 0);
+    await page.clock.runFor(3000);
+    await expect(notification).toHaveCount(1); // Keyboard focus also pauses dismissal.
+    await page.keyboard.press("Enter");
+    await page.clock.runFor(400);
+    await expect(notification).toHaveCount(0);
+  }
+  await page.evaluate(async () => { const { notify } = await import("/src/app/lib/notifications.ts"); notify.info("Encerramento automático"); });
+  await page.clock.runFor(0);
+  await page.clock.runFor(2400);
+  await expect(page.locator("[data-store-toast]")).toHaveCount(1);
+  await page.clock.runFor(500);
+  await expect(page.locator("[data-store-toast]")).toHaveCount(0);
+  await page.evaluate(async () => { const { notify } = await import("/src/app/lib/notifications.ts"); notify.warning("Clique para fechar"); });
+  await page.clock.runFor(100);
+  await page.locator("[data-toast-message]").click();
+  await page.clock.runFor(400);
+  await expect(page.locator("[data-store-toast]")).toHaveCount(0);
+});
+
+for (const authenticated of [false, true]) test(`Ver no Carrinho opens the real drawer once without reload (${authenticated ? "USER" : "guest"})`, async ({ page }) => {
+  await page.goto("/");
+  if (authenticated) await login(page);
+  const url = page.url();
+  await page.evaluate(() => { (window as any).toastPageMarker = "same document"; });
+  let additions = 0;
+  page.on("request", request => { if (request.method() === "POST" && new URL(request.url()).pathname === "/api/carrinho") additions++; });
+  await card(page).getByRole("button", { name: "P", exact: true }).click();
+  await card(page).getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
+  await expect(successToasts(page)).toHaveCount(1);
+  const action = successToasts(page).getByRole("button", { name: "Ver no Carrinho", exact: true });
+  await expect(action).toBeVisible();
+  const actionGeometry = await action.evaluate(el => {
+    const button = el.getBoundingClientRect(), content = el.parentElement!.getBoundingClientRect();
+    return { center: button.x + button.width / 2 - content.x - content.width / 2, height: button.height, visualHeight: getComputedStyle(el, "::before").height };
+  });
+  expect(Math.abs(actionGeometry.center)).toBeLessThan(0.1);
+  expect(actionGeometry.height).toBe(44);
+  expect(actionGeometry.visualHeight).toBe("32px");
+  await action.hover();
+  await expect(action).toHaveCSS("color", "rgb(18, 28, 22)");
+  await expect.poll(() => action.evaluate(el => getComputedStyle(el, "::before").backgroundColor)).toBe("rgb(132, 211, 157)");
+  if (authenticated) await page.getByRole("button", { name: "Abrir carrinho", exact: true }).click();
+  await action.focus(); await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Seu Carrinho", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remover item" })).toHaveCount(1);
+  await expect(page.locator("span.w-6")).toHaveText("1");
+  expect(page.url()).toBe(url);
+  expect(await page.evaluate(() => (window as any).toastPageMarker)).toBe("same document");
+  expect(additions).toBe(authenticated ? 1 : 0);
+  await expect(successToasts(page)).toHaveCount(0);
+});
+
+test("simultaneous store toasts share one host, stay separate and respect reduced motion", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const { notify } = await import("/src/app/lib/notifications.ts");
+    notify.positive("Sucesso simultâneo"); notify.warning("Aviso simultâneo"); notify.info("Informação simultânea");
+  });
+  await expect(page.locator("[data-store-toast]")).toHaveCount(3);
+  await expect(page.locator("[data-sonner-toaster]")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Ver no Carrinho" })).toHaveCount(0);
+  const bounds = await page.locator("[data-store-toast]").evaluateAll(elements => elements.map(el => el.getBoundingClientRect()).sort((a, b) => a.top - b.top).map(el => ({ top: el.top, bottom: el.bottom })));
+  for (let index = 1; index < bounds.length; index++) expect(bounds[index].top).toBeGreaterThanOrEqual(bounds[index - 1].bottom);
+  await expect(page.locator(".store-toast-shell").first()).toHaveCSS("transition-duration", "0s");
+});
 
 for (const authenticated of [false, true]) test(`cart success toasts are singular and passive updates stay silent (${authenticated ? "USER" : "guest"})`, async ({ page, context }) => {
   await page.goto("/");
@@ -312,6 +446,7 @@ test("API failures preserve confirmed state and failed guest merge can be retrie
   await page.goto("/");
   await card(page).getByRole("button", { name: "P", exact: true }).click();
   await card(page).getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
+  await expectSuccess(page, "Persistencia Browser — tamanho P foi adicionado ao carrinho.");
   await page.route("**/api/carrinho/sincronizar", route => route.fulfill({ status: 503, json: { error: "Sincronizacao indisponivel" } }));
   await login(page);
   await expect(page.getByRole("alert")).toContainText("Sincronizacao indisponivel");

@@ -1,5 +1,7 @@
 import { ProductBadges } from "./components/ProductBadges";
-import { FavoriteBookmark } from "./components/icons/FavoriteBookmark";
+import { manualBadgeDimensions } from "./components/ProductBadge";
+import { relatedProducts } from "./lib/related-products";
+import { ProductFavoriteButton } from "./components/ProductFavoriteButton";
 import type { StockBadgeSettings } from "../../backend/src/lib/stock-badges";
 import { useStoreDetails } from "./hooks/useStoreDetails";
 import { businessHoursLines } from "./lib/business-hours";
@@ -13,7 +15,7 @@ import { Fragment, useState, useEffect, useRef, useMemo } from "react";
 import { useProducts } from "./hooks/useProducts";
 import { ProductImage } from "./components/ProductImage";
 import { Manager } from "./manager/Manager";
-import { categoryValue, catalogCategories, catalogSizes, isNumericSize, selectProductColor, stockFor, type Product, type Size } from "./lib/products";
+import { fetchCarouselProducts, categoryValue, catalogCategories, catalogSizes, isNumericSize, selectProductColor, stockFor, type Product, type Size } from "./lib/products";
 import { useShopping, type CartItem } from "./hooks/useShopping";
 import { useAuth } from "./hooks/useAuth";
 import { useLocation, useNavigate } from "react-router";
@@ -62,6 +64,7 @@ export default function App() {
   const store = useStoreDetails();
   const contactUrl = whatsappUrl(store.whatsapp);
   const { products, loading: productsLoading, error: productsError, retry: retryProducts } = useProducts();
+  const { products: carouselProducts, retry: retryCarousel } = useProducts(fetchCarouselProducts);
   const allSizes = catalogSizes(products);
   const availableCategories = useMemo(() => catalogCategories(products), [products]);
   const location = useLocation();
@@ -97,7 +100,7 @@ export default function App() {
   }, [accessToken]);
 
   const shopping = useShopping(products, accessToken, validating, user,
-    isCheckoutPage || (accountPath === "/minha-conta" && new URLSearchParams(location.search).get("returnTo") === "/checkout"));
+    isCheckoutPage || (accountPath === "/minha-conta" && new URLSearchParams(location.search).get("returnTo") === "/checkout"), () => setCartOpen(true));
   const { items: cartItems, add: addToCart, remove: removeFromCart, clear: clearCart, changeQty } = shopping;
   useEffect(() => {
     if (validating) return;
@@ -217,7 +220,7 @@ export default function App() {
       ? "Todas as Peças"
       : PUBLICS.find((c) => c.value === activePublic)?.label ?? "";
 
-  const featuredProducts = products.filter(product => product.inCarousel).sort((a, b) => a.id - b.id);
+  const featuredProducts = carouselProducts;
   const activeFeaturedIndex = Math.min(featuredIndex, Math.max(0, featuredProducts.length - 1));
   useEffect(() => {
     setFeaturedIndex(index => Math.min(index, Math.max(0, featuredProducts.length - 1)));
@@ -247,7 +250,7 @@ export default function App() {
   }, [featuredProducts.length, isFeaturedHovering]);
 
   const goToFeaturedSlide = (direction: "prev" | "next") => {
-    if (!featuredProducts.length) return;
+    if (featuredProducts.length < 2) return;
     setFeaturedIndex((prev) => {
       if (direction === "next") {
         return (prev + 1) % featuredProducts.length;
@@ -257,15 +260,20 @@ export default function App() {
   };
 
   const openProductDetail = (product: Product) => {
+    if (!product.isPublished) return;
     setDetailProduct(product);
     navigate(`/?productId=${product.id}`);
   };
+
+  useEffect(() => {
+    if (detailProduct) window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [detailProduct?.id]);
 
   if (accountPath === "/manager" || accountPath.startsWith("/manager/")) {
     return <>
       <Manager user={user} token={accessToken} validating={validating} sessionError={authOpen ? null : sessionError}
         onLogin={() => { setAuthMode("login"); setAuthOpen(true); }} onLogout={handleLogout}
-        onUnauthorized={message => invalidate(accessToken, message)} onChanged={retryProducts} />
+        onUnauthorized={message => invalidate(accessToken, message)} onChanged={() => { retryProducts(); retryCarousel(); }} />
       {authOpen && <AuthModal mode={authMode} onClose={() => setAuthOpen(false)} onLogin={handleLogin}
         onRegister={handleRegister} onSwitchMode={() => setAuthMode(mode => mode === "login" ? "register" : "login")}
         sessionError={sessionError} />}
@@ -279,6 +287,13 @@ export default function App() {
         <ProductDetailPage
           key={detailProduct.id}
           product={detailProduct}
+          stockSettings={store.stockBadges ?? null}
+              recommendations={relatedProducts(detailProduct, products)}
+              onOpenProduct={openProductDetail}
+              favorites={shopping.favorites}
+              onFavorite={toggleFavorite}
+          favoritePending={id => shopping.favoriteState(id) === "pending"}
+          favoriteBusy={id => validating || (!!user && !shopping.favoriteReady) || shopping.favoriteBlocked(id)}
           availableStock={availableStock}
           user={user}
           totalItems={totalItems}
@@ -293,6 +308,8 @@ export default function App() {
           onOpenCart={() => setCartOpen(true)}
           onAddToCart={addToCart} addState={shopping.addState}
         />
+
+        <StoreFooter store={store} />
 
         {cartOpen && (
           <CartDrawer
@@ -512,7 +529,7 @@ export default function App() {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
                       <div className="absolute inset-0 bg-black/0 transition-colors duration-200 group-hover:bg-black/20" />
 
-                      <button
+                      {featuredProducts.length > 1 && <><button
                         type="button"
                         onClick={() => goToFeaturedSlide("prev")}
                         aria-label="Produto anterior"
@@ -528,9 +545,9 @@ export default function App() {
                         className="absolute right-3 top-1/2 z-30 flex h-9 w-9 -translate-y-1/2 items-center justify-center store-slider-control rounded-full border border-white/30 bg-black/30 text-white opacity-0 backdrop-blur-sm transition-all duration-200 hover:scale-105 hover:bg-black/50 group-hover:opacity-100"
                       >
                         <ChevronDown className="h-4 w-4 -rotate-90" />
-                      </button>
+                      </button></>}
 
-                      <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-6">
+                      {product.isPublished && <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-6">
                         <button
                           type="button"
                           onClick={() => openProductDetail(product)}
@@ -538,7 +555,7 @@ export default function App() {
                         >
                           VER MAIS
                         </button>
-                      </div>
+                      </div>}
 
                       <div className="absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-4 sm:p-6">
                         <div>
@@ -732,40 +749,7 @@ export default function App() {
       </>}
 
       {/* ── Contact section ────────────────────────────────────────────────── */}
-      <footer id="contato" className="mt-20 bg-secondary border-t border-border">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-14">
-          <div className="grid md:grid-cols-3 gap-10">
-            <div>
-              <div className="flex items-baseline gap-1.5 mb-3">
-                <span className="text-xl font-bold text-primary leading-none" style={{ fontFamily: '"Bodoni Moda", serif', fontWeight: 500, letterSpacing: '0.25em' }}>LÖWEN</span>
-              </div>
-              <p className="text-sm text-muted-foreground leading-relaxed">
-                Vestindo fé. Carregando propósito.
-              </p>
-            </div>
-            <div className="md:text-center">
-              <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Contato</h4>
-              <ul className="space-y-2 text-sm text-foreground/80">
-                {store.address ? <li><address className="not-italic break-words">
-                  {store.address.street}, {store.address.number}{store.address.complement ? ` · ${store.address.complement}` : ""}<br />
-                  {store.address.neighborhood}<br />{store.address.city} - {store.address.state}<br />CEP {formatCep(store.address.cep)}
-                </address></li> : <li>Endereço da loja ainda não informado.</li>}
-                <li>✉️ contato@lowen.com.br</li>
-                {store.whatsapp && <li>📱 {formatWhatsapp(store.whatsapp)}</li>}
-              </ul>
-            </div>
-            <div className="md:text-right">
-              <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Horário loja física</h4>
-              <ul className="space-y-2 text-sm text-foreground/80">
-                {store.businessHours ? businessHoursLines(store.businessHours).map(line => <li key={line}>{line}</li>) : <li>{store.loading ? "Carregando horários..." : "Horários de funcionamento indisponíveis."}</li>}
-              </ul>
-            </div>
-          </div>
-          <div className="mt-10 pt-6 border-t border-border text-xs text-muted-foreground text-center">
-            © 2026 Löwen - Todos os direitos reservados.
-          </div>
-        </div>
-      </footer>
+      <StoreFooter store={store} />
 
       {/* ── Cart Drawer ────────────────────────────────────────────────────── */}
       {cartOpen && (
@@ -823,8 +807,47 @@ function ColorSelector({ product, onSelect, card = false }: { product: Product; 
   </div>;
 }
 
+function StoreFooter({ store }: { store: ReturnType<typeof useStoreDetails> }) {
+  return (
+    <footer id="contato" className="mt-20 bg-secondary border-t border-border">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-14">
+        <div className="grid md:grid-cols-3 gap-10">
+          <div>
+            <div className="flex items-baseline gap-1.5 mb-3">
+              <span className="text-xl font-bold text-primary leading-none" style={{ fontFamily: '"Bodoni Moda", serif', fontWeight: 500, letterSpacing: '0.25em' }}>LÖWEN</span>
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed">Vestindo fé. Carregando propósito.</p>
+          </div>
+          <div className="md:text-center">
+            <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Contato</h4>
+            <ul className="space-y-2 text-sm text-foreground/80">
+              {store.address ? <li><address className="not-italic break-words">
+                {store.address.street}, {store.address.number}{store.address.complement ? ` · ${store.address.complement}` : ""}<br />
+                {store.address.neighborhood}<br />{store.address.city} - {store.address.state}<br />CEP {formatCep(store.address.cep)}
+              </address></li> : <li>Endereço da loja ainda não informado.</li>}
+              <li>✉️ contato@lowen.com.br</li>
+              {store.whatsapp && <li>📱 {formatWhatsapp(store.whatsapp)}</li>}
+            </ul>
+          </div>
+          <div className="md:text-right">
+            <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Horário loja física</h4>
+            <ul className="space-y-2 text-sm text-foreground/80">
+              {store.businessHours ? businessHoursLines(store.businessHours).map(line => <li key={line}>{line}</li>) : <li>{store.loading ? "Carregando horários..." : "Horários de funcionamento indisponíveis."}</li>}
+            </ul>
+          </div>
+        </div>
+        <div className="mt-10 pt-6 border-t border-border text-xs text-muted-foreground text-center">
+          © 2026 Löwen - Todos os direitos reservados.
+        </div>
+      </div>
+    </footer>
+  );
+}
+
 function ProductDetailPage({
   product: baseProduct,
+  stockSettings,
+  recommendations, onOpenProduct, favorites, onFavorite, favoritePending, favoriteBusy,
   user,
   totalItems,
   onBack,
@@ -836,6 +859,13 @@ function ProductDetailPage({
   availableStock,
 }: {
   product: Product;
+  stockSettings: StockBadgeSettings | null;
+  recommendations: Product[];
+  onOpenProduct: (product: Product) => void;
+  favorites: Product[];
+  onFavorite: (id: number) => void;
+  favoritePending: (id: number) => boolean;
+  favoriteBusy: (id: number) => boolean;
   user: AuthUser | null;
   totalItems: number;
   onBack: () => void;
@@ -847,6 +877,7 @@ function ProductDetailPage({
   availableStock: (p: Product, s: Size) => number;
 }) {
   const [selectedColorId, setSelectedColorId] = useState(() => { const id = Number(new URLSearchParams(window.location.search).get("colorId")); return baseProduct.colors.some(c => c.id === id) ? id : baseProduct.colorId; });
+  const [badgeColorId, setBadgeColorId] = useState<number | null>(null);
   const product = selectProductColor(baseProduct, baseProduct.colors.some(c => c.id === selectedColorId) ? selectedColorId : baseProduct.colors[0].id);
 
   const productImages = product.images && product.images.length > 0 ? product.images : [product.imageUrl];
@@ -856,7 +887,7 @@ function ProductDetailPage({
   const added = additionState === "added";
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="store-product-detail min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-50 bg-card/95 [&_button]:text-[15px] backdrop-blur border-b border-border shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
@@ -917,14 +948,19 @@ function ProductDetailPage({
           ← Voltar para a loja
         </button>
 
-        <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-8 items-start">
+        <div className="store-product-detail-content grid lg:grid-cols-[1.1fr_0.9fr] gap-8 items-start">
           <div className="space-y-4">
-            <div className="overflow-hidden border border-border bg-card">
-              <ProductImage
-                src={productImages[activeImageIndex]}
-                alt={product.name}
-                className="w-full h-[520px] object-contain bg-muted"
-              />
+            <div className="store-product-photo store-detail-photo relative border border-border bg-card">
+              <div className="overflow-hidden">
+                <ProductImage
+                  src={productImages[activeImageIndex]}
+                  alt={product.name}
+                  className="w-full h-[520px] object-contain bg-muted"
+                />
+              </div>
+              <ProductBadges size="detail" product={baseProduct} settings={stockSettings} selection={{ colorId: badgeColorId ?? undefined, size: selectedSize ?? undefined }} />
+              <ProductFavoriteButton liked={favorites.some(favorite => favorite.id === baseProduct.id)}
+                onFavorite={() => onFavorite(baseProduct.id)} favoritePending={favoritePending(baseProduct.id)} favoriteBusy={favoriteBusy(baseProduct.id)} />
             </div>
 
             {productImages.length > 1 && (
@@ -933,6 +969,7 @@ function ProductDetailPage({
                   <button
                     key={`${product.id}-${index}`}
                     type="button"
+                    aria-label={`Ver imagem ${index + 1}`}
                     onClick={() => setActiveImageIndex(index)}
                     className={`relative h-20 w-20 shrink-0 overflow-hidden border transition-all ${activeImageIndex === index ? "border-primary" : "border-border"
                       }`}
@@ -957,7 +994,7 @@ function ProductDetailPage({
             <div className="text-2xl font-bold text-primary">{formatPrice(product.price)}</div>
             <ColorSelector product={product} onSelect={id => {
               const next = selectProductColor(baseProduct, id);
-              setSelectedColorId(id); setActiveImageIndex(0);
+              setSelectedColorId(id); setBadgeColorId(id); setActiveImageIndex(0);
               if (selectedSize && availableStock(next, selectedSize) <= 0) setSelectedSize(null);
             }} />
 
@@ -1013,6 +1050,15 @@ function ProductDetailPage({
             </div>
           </div>
         </div>
+        {recommendations.length > 0 && <section aria-labelledby="related-products-title" className="mt-12 border-t border-border pt-8">
+          <h2 id="related-products-title" className="mb-6 font-serif text-2xl font-bold tracking-wide">VEJA TAMBÉM</h2>
+          <div className="grid grid-cols-1 min-[390px]:grid-cols-2 md:grid-cols-3 gap-4">
+            {recommendations.map(related => <ProductCard key={related.id} product={related} stockSettings={stockSettings}
+              liked={favorites.some(favorite => favorite.id === related.id)} onFavorite={() => onFavorite(related.id)}
+              favoritePending={favoritePending(related.id)} favoriteBusy={favoriteBusy(related.id)}
+              availableStock={availableStock} onAddToCart={onAddToCart} addState={addState} onOpenProduct={onOpenProduct} />)}
+          </div>
+        </section>}
       </div>
 
     </div>
@@ -1027,6 +1073,7 @@ function ProductCard({
   onAddToCart,
   addState,
   availableStock,
+  onOpenProduct,
 }: {
   liked: boolean; onFavorite: () => void; favoriteBusy: boolean; favoritePending: boolean;
   product: Product;
@@ -1035,6 +1082,7 @@ function ProductCard({
   onAddToCart: (p: Product, s: Size) => Promise<boolean>;
   addState: GetAddState;
   availableStock: (p: Product, s: Size) => number;
+  onOpenProduct?: (product: Product) => void;
 }) {
   const [badgeColorId, setBadgeColorId] = useState<number | null>(null);
   const [selectedColorId, setSelectedColorId] = useState(baseProduct.colorId);
@@ -1067,8 +1115,12 @@ function ProductCard({
       <div className="store-product-photo relative aspect-[4/5] shrink-0 bg-muted rounded-none">
         <a
           href={`?productId=${product.id}&colorId=${product.colorId}`}
-          target="_blank"
+          target={onOpenProduct ? undefined : "_blank"}
           rel="noopener noreferrer"
+          onClick={onOpenProduct ? event => {
+            if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            event.preventDefault(); onOpenProduct(baseProduct);
+          } : undefined}
           className="absolute inset-0 block h-full w-full overflow-hidden"
         >
           <ProductImage
@@ -1107,7 +1159,8 @@ function ProductCard({
                 <ChevronRight className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden="true" />
               </span>
             </button>
-            <div className="absolute inset-x-0 bottom-2 z-10 flex items-center justify-center gap-1.5">
+            <div className="store-product-photo-pagination absolute inset-x-0 bottom-2 z-10 flex items-center justify-center gap-1.5"
+              style={product.badge ? { bottom: manualBadgeDimensions.height + 6 } : undefined}>
               {productImages.map((_, index) => (
                 <button
                   key={`${product.id}-${index}`}
@@ -1126,17 +1179,7 @@ function ProductCard({
         )}
         <ProductBadges product={badgeProduct ?? baseProduct} settings={stockSettings} selection={{ colorId: badgeColorId ?? undefined, size: selectedSize ?? undefined }} />
         {/* Wishlist */}
-        <button
-          onClick={onFavorite}
-          disabled={favoriteBusy}
-          aria-busy={favoritePending}
-          aria-pressed={liked}
-          type="button"
-          className="store-favorite-bookmark absolute -top-px -right-px z-20 flex h-11 w-11 items-start justify-end rounded-none border-0 bg-transparent p-0 outline-none focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed"
-          aria-label={liked ? "Remover dos favoritos" : "Favoritar"}
-        >
-          <FavoriteBookmark filled={liked} />
-        </button>
+        <ProductFavoriteButton liked={liked} onFavorite={onFavorite} favoriteBusy={favoriteBusy} favoritePending={favoritePending} />
       </div>
 
       {/* Info */}
@@ -1148,14 +1191,14 @@ function ProductCard({
           <p className="mt-1 text-base font-bold text-primary">{formatPrice(product.price)}</p>
         </div>
 
-        <ColorSelector card product={product} onSelect={id => {
+        {product.colors.length > 0 && <ColorSelector card product={product} onSelect={id => {
           const next = selectProductColor(baseProduct, id);
           setSelectedColorId(id); setBadgeColorId(id); setCurrentImageIndex(0);
           if (selectedSize && availableStock(next, selectedSize) <= 0) setSelectedSize(null);
-        }} />
+        }} />}
 
         {/* Size buttons */}
-        <div className="flex gap-1 flex-wrap">
+        {product.sizes.length > 0 && <div className={`store-product-sizes flex gap-1 flex-wrap ${product.colors.length > 0 ? "mt-2" : ""}`}>
           {product.sizes.map((size) => (
             <button
               key={size}
@@ -1171,7 +1214,7 @@ function ProductCard({
               {size}
             </button>
           ))}
-        </div>
+        </div>}
 
         {/* CTA */}
         <button

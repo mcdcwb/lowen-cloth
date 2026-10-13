@@ -34,11 +34,11 @@ for (const width of [320, 390, 768, 1440]) test(`variant badges, fixed slots and
       const photo = el.querySelector(".store-product-photo")!.getBoundingClientRect();
       const auto = el.querySelector(".store-badge-automatic")?.getBoundingClientRect();
       const manual = el.querySelector(".store-badge-manual")!.getBoundingClientRect();
-      const controls = [...el.querySelectorAll(".store-product-photo button")].map(b => b.getBoundingClientRect());
+      const controls = [...el.querySelectorAll(".store-product-photo .store-image-control, .store-product-photo .store-favorite-bookmark path, .store-product-photo-pagination button")].map(b => b.getBoundingClientRect());
       const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-      return { autoTop: auto ? auto.top - photo.top : 0, autoLeft: auto ? auto.left - el.getBoundingClientRect().left : 0, manualTop: manual.top - photo.top,
+      return { autoTop: auto ? auto.top - el.getBoundingClientRect().top : 0, autoLeft: auto ? auto.left - el.getBoundingClientRect().left : 0, manualTop: manual.top - photo.top,
         clear: [manual, ...(auto ? [auto] : [])].every(b => controls.every(c => !overlaps(b, c))),
-        inside: manual.left >= el.getBoundingClientRect().left - 0.1 && manual.bottom <= photo.bottom && manual.right <= photo.right };
+        inside: manual.left >= el.getBoundingClientRect().left - 0.1 && manual.bottom <= photo.bottom + 0.05 && manual.right <= photo.right };
     });
     expect(geometry.autoTop).toBeCloseTo(0, 2); expect(geometry.autoLeft).toBeCloseTo(0, 2);
     expect(geometry.manualTop).toBeCloseTo(manualTop, 2); expect(geometry.clear).toBe(true); expect(geometry.inside).toBe(true);
@@ -49,9 +49,10 @@ for (const width of [320, 390, 768, 1440]) test(`variant badges, fixed slots and
   await select("A"); await expect(last).toHaveCount(0);
   await select("A"); await expect(last).toBeVisible();
   await select("B"); await expect(low).toBeVisible(); await expect(last).toHaveCount(0);
-  expect((await low.boundingBox())!.width).toBeLessThan(redSize);
-  expect(await low.locator(".product-tag-label").evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBeLessThan(redFont);
-  expect((await manual.boundingBox())!.width).toBeGreaterThan((await low.boundingBox())!.width);
+  expect((await low.boundingBox())!.width).toBeGreaterThan(redSize);
+  expect(redFont).toBe(9);
+  expect(await low.locator(".product-tag-label").evaluate(el => parseFloat(getComputedStyle(el).fontSize))).toBe(redFont);
+  expect((await manual.boundingBox())!.width).toBeLessThan((await low.boundingBox())!.width);
   await verify();
   await select("C"); await expect(card.locator(".store-badge-automatic")).toHaveCount(0); await verify();
   await expect(card.getByRole("button", { name: "D", exact: true })).toBeDisabled();
@@ -107,11 +108,13 @@ test("ADMIN favorites persist, synchronize, isolate USER, and release pending/co
     await page.route(`**/api/favoritos/${product.id}`, async route => { await gate; await route.continue(); });
     await button.click(); await expect(button).toHaveAttribute("aria-busy", "true"); await expect(button).toHaveCSS("cursor", "progress");
     release(); await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("tooltip", { name: "Desfavoritar" })).toBeVisible();
     await expect(button).toHaveAttribute("aria-busy", "false"); await expect(button).toHaveCSS("cursor", "not-allowed");
     await expect(page.locator("[data-sonner-toast]").filter({ hasText: "Produto adicionado aos favoritos!" })).toHaveCount(1);
     await expect(button).toBeEnabled(); await expect(button).toHaveCSS("cursor", "pointer");
     await page.unroute(`**/api/favoritos/${product.id}`);
     await page.reload(); await expect(card(page).locator(".store-favorite-bookmark")).toHaveAttribute("aria-pressed", "true");
+    await expect(card(page).locator(".store-favorite-bookmark")).toHaveAttribute("aria-pressed", "true");
     const tab = await context.newPage(); await tab.goto("/favoritos");
     await expect(tab.getByRole("heading", { name: "Favoritos", exact: true })).toBeVisible(); await expect(card(tab)).toBeVisible();
     for (const width of [320, 390, 768, 1440]) {

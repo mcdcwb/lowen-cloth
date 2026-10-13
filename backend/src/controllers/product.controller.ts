@@ -41,6 +41,11 @@ export async function getAdminProducts(_req: Request, res: Response) {
     catch (error) { console.error(error); res.status(500).json({ error: "Erro ao buscar produtos." }); }
 }
 
+export async function getCarouselProducts(_req: Request, res: Response) {
+    try { res.set("Cache-Control", "no-store").json(await productService.getCarouselProducts()); }
+    catch (error) { console.error(error); res.status(500).json({ error: "Erro ao buscar o carrossel." }); }
+}
+
 export async function createProduct(req: Request, res: Response) {
     try {
         const result = createProductSchema.safeParse(req.body);

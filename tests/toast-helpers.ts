@@ -4,8 +4,9 @@ export const successToasts = (page: Page) => page.locator('[data-sonner-toast][d
 
 export async function expectSuccess(page: Page, message: string, tone: "positive" | "change" | "removal" = "positive") {
   await expect(successToasts(page)).toHaveCount(1);
-  await expect(successToasts(page).locator('[data-title]')).toHaveText(message);
+  await expect(successToasts(page).locator('[data-toast-message], [data-title]:not(:has([data-toast-message]))')).toHaveText(message);
   await expect(successToasts(page)).toHaveClass(new RegExp(`toast-${tone}`));
+  if (message.includes("favoritos")) await expect(successToasts(page).getByRole("button", { name: "Ver no Carrinho" })).toHaveCount(0);
   const path = new URL(page.url()).pathname;
   const manager = path === "/manager" || path.startsWith("/manager/");
   const colors = manager

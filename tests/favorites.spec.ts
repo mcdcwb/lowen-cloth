@@ -27,6 +27,10 @@ for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) {
         }
         const before = await edge();
         await favorite.hover();
+        const tooltip = page.locator(".store-favorite-tooltip");
+        await expect(tooltip).toHaveText("Adicionar aos Favoritos");
+        await expect(tooltip).toBeVisible();
+        expect(await tooltip.evaluate(el => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })).toBe(true);
         await expect(svg).toHaveCSS("transform", "matrix(1.1, 0, 0, 1.1, 0, 0)");
         const after = await edge();
         expect(after.top).toBeCloseTo(before.top, 1);
@@ -37,6 +41,8 @@ for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) {
       await favorite.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
       await expect(favorite).toBeFocused(); await expect(favorite).toHaveCSS("opacity", "1");
       await expect(favorite).toHaveCSS("outline-style", "solid");
+      await expect(page.locator(".store-favorite-tooltip")).toBeVisible();
+      await expect(favorite).toHaveAttribute("aria-describedby", await page.locator(".store-favorite-tooltip").getAttribute("id"));
       await page.emulateMedia({ reducedMotion: "reduce" });
       await card.getByText("Bookmark interaction", { exact: true }).hover();
       await favorite.hover();

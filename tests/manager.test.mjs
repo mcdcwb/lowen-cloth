@@ -231,7 +231,7 @@ test("manual badge colors roundtrip, legacy defaults and empty preview never inv
   assert.equal(d.badgeBackgroundColor, '#2457A7');
   assert.equal(d.badgeTextColor, '#FFFFFF');
   assert.equal(toInput(d).badge, null);
-  d.badge = 'POUCAS UNIDADES';
+  d.badge = 'LAN?AMENTO';
   d.badgeBackgroundColor = '#abcdef'; d.badgeTextColor = '#123456';
   assert.deepEqual(validateDraft(d), []);
   const input = toInput(d);
@@ -242,4 +242,19 @@ test("manual badge colors roundtrip, legacy defaults and empty preview never inv
     assert.match(validateDraft({ ...d, badgeBackgroundColor: invalid }).join(), /HEX/);
     assert.match(validateDraft({ ...d, badgeTextColor: invalid }).join(), /HEX/);
   }
+});
+
+
+test("manual badge limits preserve unchanged legacy drafts and allow removal", () => {
+  const d = draft();
+  d.badge = "123456789012";
+  assert.deepEqual(validateDraft(d), []);
+  d.badge = "1234567890123";
+  assert.match(validateDraft(d).join(), /12 caracteres/);
+  assert.deepEqual(validateDraft(d, d.badge), []);
+  d.badge = "OUTRO TEXTO LONGO";
+  assert.match(validateDraft(d, "1234567890123").join(), /12 caracteres/);
+  d.badge = "";
+  assert.deepEqual(validateDraft(d, "1234567890123"), []);
+  assert.equal(toInput(d).badge, null);
 });

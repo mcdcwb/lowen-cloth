@@ -4,13 +4,125 @@ import { expectSuccess, successToasts } from "./toast-helpers";
 const fixture = (id: number, inCarousel = true) => ({ id, name: `Carousel ${id}`, price: 30, public: id % 2 ? "masculino" : "feminino", category: "camisetas", inCarousel,
   colors: [{ id, colorName: "Preto", colorValue: "#111111", images: [`/carousel-${id % 2 ? "portrait" : "landscape"}.svg`], variants: [{ id, value: "M", stock: 4 }] }] });
 
+test("single unpublished carousel slide has no navigation or purchase controls", async ({ page }) => {
+  await page.route("**/api/produtos", route => route.fulfill({ json: [] }));
+  await page.route("**/api/produtos/carrossel", route => route.fulfill({ json: [{ ...fixture(2), isPublished: false }] }));
+  await page.goto("/");
+  const slider = page.getByRole("region", { name: "Carrossel de produtos" });
+  await expect(slider.getByRole("heading")).toHaveText("Carousel 2");
+  await expect(slider.getByRole("button", { name: /Produto anterior|Próximo produto|VER MAIS/, includeHidden: true })).toHaveCount(0);
+  await expect(slider.locator("a")).toHaveCount(0);
+  await expect(slider.locator(".store-carousel-image")).toBeVisible();
+});
+
+for (const width of [390, 1440]) test(`unpublished selected slides stay exclusive to the carousel at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const published = { ...fixture(1), isPublished: true, category: { id: 1, name: "Camisetas" } };
+  const draft = { ...fixture(2), name: "Lançamento roxo", isPublished: false, price: "9999.00", category: { id: 2, name: "Jaquetas" },
+    colors: [{ id: 102, colorName: "Roxo", colorValue: "#800080", images: [], variants: [{ id: 202, value: "XGG", stock: 1 }] }] };
+  const unselected = { ...draft, id: 3, name: "Rascunho fora dos slides", inCarousel: false };
+  // Deliberately include drafts in the catalog mock to exercise its defensive filter too.
+  await page.route("**/api/produtos", route => route.fulfill({ json: [published, draft, unselected] }));
+  await page.route("**/api/produtos/carrossel", route => route.fulfill({ json: [published, draft] }));
+  await page.addInitScript(draft => localStorage.setItem("brecho_guest_cart_v2", JSON.stringify([{ product: draft, colorId: 102, size: "XGG", quantity: 1 }])), draft);
+  await page.goto("/");
+  const slider = page.getByRole("region", { name: "Carrossel de produtos" });
+  await expect(slider.locator("article")).toHaveCount(2);
+  await expect(page.locator(".store-product-card")).toHaveCount(1);
+  await expect(page.locator(".store-product-card")).toContainText("Carousel 1");
+  await expect(page.getByText("1 peça encontrada", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "XGG", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Jaquetas", exact: true })).toHaveCount(0);
+  await expect(page.getByText("Rascunho fora dos slides", { exact: true })).toHaveCount(0);
+  await slider.hover();
+  await expect(slider.getByRole("button", { name: "VER MAIS", exact: true })).toBeVisible();
+  await slider.getByRole("button", { name: "Próximo produto", exact: true }).click();
+  await expect(slider.getByRole("heading")).toHaveText("Lançamento roxo");
+  await expect(slider.locator('article[aria-hidden="false"]').getByRole("button", { name: "VER MAIS", exact: true })).toHaveCount(0);
+  await expect(slider.locator('article[aria-hidden="false"] a')).toHaveCount(0);
+  await page.getByRole("button", { name: "Abrir carrinho", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Remover item", exact: true })).toHaveCount(0);
+  await page.goto("/?productId=2&colorId=102");
+  await expect(page.locator(".store-product-card")).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Adicionar ao carrinho", exact: true })).toHaveCount(0);
+  await page.goto("/");
+  await slider.hover();
+  await slider.getByRole("button", { name: "VER MAIS", exact: true }).click();
+  await expect(page).toHaveURL(/productId=1/);
+  await expect(page.getByRole("heading", { name: "Carousel 1", exact: true })).toBeVisible();
+});
+
+test("Manager explicitly selects a draft and publication toggles catalog access without losing its slide", async ({ page }) => {
+  await page.goto("/manager");
+  await page.getByRole("button", { name: "Entrar", exact: true }).click();
+  await page.getByLabel("E-mail", { exact: true }).fill(process.env.E2E_ADMIN_EMAIL!);
+  await page.getByLabel("Senha", { exact: true }).fill(process.env.E2E_ADMIN_PASSWORD!);
+  await page.locator('form button[type="submit"]').click();
+  await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+  const token = await page.evaluate(() => JSON.parse(localStorage.getItem("lowen-cloth_auth_v1")!).accessToken);
+  const headers = { Authorization: `Bearer ${token}` };
+  const selected = await (await page.request.get("/api/produtos/carrossel")).json();
+  test.skip(selected.length >= 5, "Preserve existing slides when the carousel is full.");
+  const categories = await (await page.request.get("/api/categorias", { headers })).json();
+  const name = `Draft carousel E2E ${Date.now()}`;
+  const response = await page.request.post("/api/produtos", { headers, data: {
+    name, price: 9999, public: "unissex", categoryId: categories[0].id, isPublished: false,
+    colors: [{ colorName: "Roxo", colorValue: "#800080", images: [], variants: [{ value: "XGG", stock: 1 }] }]
+  } });
+  expect(response.status()).toBe(201);
+  const product = await response.json();
+  try {
+    await page.getByRole("link", { name: "Ver loja", exact: true }).click();
+    await expect(page.getByText(name, { exact: true })).toHaveCount(0);
+    await page.goto("/manager/produtos");
+    await page.getByLabel("Buscar por nome").fill(name);
+    await page.getByRole("article", { name, exact: true }).getByRole("button", { name: "Adicionar ao carrossel", exact: true }).click();
+    await expectSuccess(page, "Produto adicionado ao carrossel!", "change");
+    await page.getByRole("link", { name: "Ver loja", exact: true }).click();
+    const slider = page.getByRole("region", { name: "Carrossel de produtos" });
+    const slide = slider.locator("article").filter({ has: page.getByText(name, { exact: true }) });
+    await expect(slide).toHaveCount(1);
+    await expect(slide.getByRole("button", { name: "VER MAIS", includeHidden: true })).toHaveCount(0);
+    await expect(page.locator(".store-product-card").filter({ has: page.getByText(name, { exact: true }) })).toHaveCount(0);
+    for (const published of [true, false]) {
+      await page.goto(`/manager/produtos/${product.id}/editar`);
+      await page.getByRole("checkbox", { name: "Publicado na loja", exact: true }).setChecked(published);
+      await page.getByRole("button", { name: "Salvar produto", exact: true }).click();
+      await expectSuccess(page, "Produto salvo com sucesso!", "positive");
+      await page.getByRole("link", { name: "Ver loja", exact: true }).click();
+      await expect(slide).toHaveCount(1);
+      await expect(slide.getByRole("button", { name: "VER MAIS", includeHidden: true })).toHaveCount(published ? 1 : 0);
+      await expect(page.locator(".store-product-card").filter({ has: page.getByText(name, { exact: true }) })).toHaveCount(published ? 1 : 0);
+    }
+  } finally { await page.request.delete(`/api/produtos/${product.id}`, { headers }); }
+});
+
+for (const role of ["USER", "ADMIN"]) test(`unpublished and stale favorites cannot become purchasable cards for ${role}`, async ({ page }) => {
+  const published = { ...fixture(1), isPublished: true };
+  const draft = { ...fixture(2), isPublished: false };
+  const stale = { ...fixture(3), isPublished: true }; // Formerly published; no longer in the catalog.
+  const account = { id: 1, name: "Cliente de teste", email: "favorites@example.test", role };
+  await page.addInitScript(() => localStorage.setItem("lowen-cloth_auth_v1", JSON.stringify({ accessToken: "favorites-test", expiresAt: Date.now() + 3600000 })));
+  await page.route("**/api/auth/me", route => route.fulfill({ json: { account } }));
+  await page.route("**/api/produtos", route => route.fulfill({ json: [published] }));
+  await page.route("**/api/produtos/carrossel", route => route.fulfill({ json: [published, draft] }));
+  await page.route("**/api/favoritos", route => route.fulfill({ json: [published, draft, stale].map(product => ({ product })) }));
+  await page.route("**/api/carrinho", route => route.fulfill({ json: { items: [], notices: [] } }));
+  await page.goto("/favoritos");
+  await expect(page.getByRole("heading", { name: "Favoritos", exact: true })).toBeVisible();
+  await expect(page.locator(".store-product-card")).toHaveCount(1);
+  await expect(page.locator(".store-product-card")).toContainText("Carousel 1");
+  await expect(page.getByText("Carousel 2", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Carousel 3", { exact: true })).toHaveCount(0);
+});
+
 for (const width of [320, 390, 768, 1440]) test(`active carousel image zooms and restarts at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 900 });
   await page.clock.install();
   await page.route("**/carousel-*.svg", route => route.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="${route.request().url().includes("portrait") ? 400 : 1600}" height="${route.request().url().includes("portrait") ? 500 : 900}"><rect width="100%" height="100%" fill="#555"/><circle cx="50%" cy="50%" r="100" fill="#aaa"/></svg>` }));
   const products = [fixture(1), fixture(2)];
   products[0].colors[0].images.push("/carousel-landscape.svg");
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: products }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: products }));
   await page.goto("/");
   const slider = page.getByRole("region", { name: "Carrossel de produtos" });
   const activeImage = slider.locator('article[aria-hidden="false"] .store-carousel-image');
@@ -50,7 +162,7 @@ for (const width of [320, 390, 768, 1440]) test(`active carousel image zooms and
 
 test("single slide keeps its final zoom and reduced motion preserves navigation", async ({ page }) => {
   let count = 1;
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: Array.from({ length: count }, (_, i) => fixture(i + 1)) }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: Array.from({ length: count }, (_, i) => fixture(i + 1)) }));
   await page.goto("/");
   const slider = page.getByRole("region", { name: "Carrossel de produtos" });
   const activeImage = slider.locator('article[aria-hidden="false"] .store-carousel-image');
@@ -73,11 +185,11 @@ test("single slide keeps its final zoom and reduced motion preserves navigation"
   expect(await activeImage.evaluate(image => image.getAnimations().length)).toBe(0);
 });
 
-for (const width of [1440, 390, 320]) test(`slider renders exactly 0–5 selections and preserves images at ${width}px`, async ({ page }, testInfo) => {
+for (const width of [1440, 768, 390, 320]) test(`slider renders exactly 0–5 selections and preserves images at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 900 });
   await page.route("**/carousel-*.svg", route => route.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="${route.request().url().includes("portrait") ? 400 : 1600}" height="${route.request().url().includes("portrait") ? 500 : 900}"><rect width="100%" height="100%" fill="#555"/></svg>` }));
   let count = 0;
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: Array.from({ length: 6 }, (_, i) => fixture(i + 1, i < count)).reverse() }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: Array.from({ length: 6 }, (_, i) => fixture(i + 1, i < count)).reverse() }));
   for (count = 0; count <= 5; count++) {
     await page.goto("/");
     await expect(page.locator("main div.group").filter({ has: page.getByText("Carousel 6", { exact: true }) })).toBeVisible();
@@ -99,10 +211,14 @@ for (const width of [1440, 390, 320]) test(`slider renders exactly 0–5 selecti
       await expect(currentImage).toHaveCSS("object-fit", "contain");
       await expect.poll(() => currentImage.evaluate(image => (image as HTMLImageElement).naturalWidth / (image as HTMLImageElement).naturalHeight)).toBe(count % 2 ? 4 / 5 : 16 / 9);
       if (count === 2) await page.screenshot({ path: testInfo.outputPath(`carousel-${width}.png`) });
+      await expect(slider.getByRole("button", { name: "Próximo produto", exact: true })).toHaveCount(count > 1 ? 1 : 0);
+      await expect(slider.getByRole("button", { name: "Produto anterior", exact: true })).toHaveCount(count > 1 ? 1 : 0);
+      if (count > 1) {
       await slider.getByRole("button", { name: "Próximo produto", exact: true }).click();
       await expect(slider.getByRole("heading")).toHaveText("Carousel 1");
       await slider.getByRole("button", { name: "Produto anterior", exact: true }).click();
       await expect(slider.getByRole("heading")).toHaveText(`Carousel ${count}`);
+      }
       await slider.getByRole("button", { name: "VER MAIS", exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`productId=${count}`));
     }
@@ -117,8 +233,8 @@ test("autoplay pauses on hover and shrinking selection clamps the current index"
   await page.route("**/api/auth/me", route => route.fulfill({ json: { account } }));
   await page.route("**/api/auth/login", route => route.fulfill({ json: { account, accessToken: "test-session", tokenType: "Bearer", expiresIn: 3600, expiresAt: Date.now() + 3600000 } }));
   await page.clock.install();
-  let count = 5;
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: Array.from({ length: count }, (_, i) => fixture(i + 1)) }));
+  let count = 2;
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: Array.from({ length: count }, (_, i) => fixture(i + 1)) }));
   await page.goto("/");
   const slider = page.getByRole("region", { name: "Carrossel de produtos" });
   await expect(slider.getByRole("heading")).toHaveText("Carousel 1");
@@ -127,8 +243,8 @@ test("autoplay pauses on hover and shrinking selection clamps the current index"
   await expect(slider.getByRole("heading")).toHaveText("Carousel 2");
   await slider.hover(); await page.clock.fastForward(10000);
   await expect(slider.getByRole("heading")).toHaveText("Carousel 2");
-  await slider.getByRole("button", { name: "Ir para o produto 5", exact: true }).click();
-  await expect(slider.getByRole("heading")).toHaveText("Carousel 5");
+  await slider.getByRole("button", { name: "Ir para o produto 2", exact: true }).click();
+  await expect(slider.getByRole("heading")).toHaveText("Carousel 2");
   // Trigger the existing catalog refresh by a confirmed Manager mutation.
   await page.evaluate(() => { history.pushState({}, "", "/manager"); window.dispatchEvent(new PopStateEvent("popstate")); });
   await page.getByRole("button", { name: "Entrar", exact: true }).click();
@@ -136,17 +252,18 @@ test("autoplay pauses on hover and shrinking selection clamps the current index"
   await page.getByLabel("Senha", { exact: true }).fill(process.env.E2E_ADMIN_PASSWORD!);
   await page.locator('form button[type="submit"]').click();
   await page.getByRole("link", { name: "Produtos", exact: true }).click();
-  await page.route("**/api/produtos/5/carrossel", route => { count = 2; return route.fulfill({ json: fixture(5, false) }); });
-  await page.getByRole("article", { name: "Carousel 5", exact: true }).getByRole("button", { name: "Remover do carrossel" }).click();
+  await page.route("**/api/produtos/2/carrossel", route => { count = 1; return route.fulfill({ json: fixture(2, false) }); });
+  await page.getByRole("article", { name: "Carousel 2", exact: true }).getByRole("button", { name: "Remover do carrossel" }).click();
   await expectSuccess(page, "Produto removido do carrossel!", "removal");
   await page.getByRole("link", { name: "Ver loja", exact: true }).click();
-  await expect(slider.locator("article")).toHaveCount(2);
-  await expect(slider.getByRole("heading")).toHaveText("Carousel 2");
+  await expect(slider.locator("article")).toHaveCount(1);
+  await expect(slider.getByRole("heading")).toHaveText("Carousel 1");
+  await expect(slider.getByRole("button", { name: /Produto anterior|Próximo produto/ })).toHaveCount(0);
 });
 
 test("carousel notifications distinguish confirmed changes, removals and real errors", async ({ page }) => {
   const product = fixture(1, false);
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [product] }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: [product] }));
   let fail = false;
   await page.route("**/api/produtos/1/carrossel", route => {
     if (fail) return route.fulfill({ status: 409, json: { error: "Limite de 5 produtos no carrossel." } });

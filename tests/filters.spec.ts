@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { badgeShape } from "../src/app/components/ProductBadge";
+import { badgeShape, manualBadgeViewBox } from "../src/app/components/ProductBadge";
 const originalBookmark = "M21.3,28.3L16,23l-5.3,5.3C10.1,28.9,9,28.5,9,27.6V5c0-0.6,0.4-1,1-1h12c0.6,0,1,0.4,1,1v22.6 C23,28.5,21.9,28.9,21.3,28.3z";
 
 for (const width of [320, 390, 768, 1440]) test(`automatic stock badges coexist with manual badges at ${width}px`, async ({ page }, info) => {
@@ -32,7 +32,7 @@ for (const width of [320, 390, 768, 1440]) test(`automatic stock badges coexist 
   await expect(favorite).toHaveCSS("border-width", "0px");
   await expect(favorite).toHaveCSS("outline-style", "none");
   await expect(favorite).toHaveCSS("box-shadow", "none");
-  await expect(favorite.locator("svg")).toHaveCSS("filter", "none");
+  await expect(favorite.locator("svg")).toHaveCSS("filter", "drop-shadow(rgba(0, 0, 0, 0.45) 0px 3px 5px)");
   await card(0).getByText("Badge case 0", { exact: true }).hover();
   await expect.poll(() => card(0).getByRole("img", { name: "Badge case 0", exact: true }).evaluate(image =>
     getComputedStyle(image).scale.split(" ").every(value => Math.abs(parseFloat(value) / (value.endsWith("%") ? 100 : 1) - 1.05) < 0.0001)
@@ -61,7 +61,7 @@ for (const width of [320, 390, 768, 1440]) test(`automatic stock badges coexist 
     const path = button.querySelector<SVGPathElement>("[data-bookmark-shape]")!;
     const bounds = path.getBBox(), matrix = path.getScreenCTM()!;
     const edge = new DOMPoint(bounds.x + bounds.width + 0.48, bounds.y - 0.48).matrixTransform(matrix);
-    const photo = button.parentElement!;
+    const photo = button.closest(".store-product-photo")!;
     const card = button.closest(".store-product-card")!;
     const outer = card.getBoundingClientRect();
     return {
@@ -93,7 +93,7 @@ for (const width of [320, 390, 768, 1440]) test(`automatic stock badges coexist 
   for (const index of [3, 4]) await expect(card(index).locator(".store-stock-last, .store-stock-low")).toHaveCount(0);
   for (let index = 0; index < catalog.length; index++) {
     await expect(card(index).getByText("EDIÇÃO ESPECIAL", { exact: true })).toBeVisible();
-    await expect(card(index).locator('.store-badge-manual').locator('svg')).toHaveAttribute('viewBox', '0 0 1792 1792');
+    await expect(card(index).locator('.store-badge-manual').locator('svg')).toHaveAttribute('viewBox', manualBadgeViewBox);
     await expect(card(index).locator('.store-badge-manual').locator('path')).toHaveAttribute('d', badgeShape);
     await expect(card(index).locator('.store-badge-manual').locator('path')).toHaveAttribute('fill', '#2457A7');
     const automatic = card(index).locator(".store-badge-automatic");
@@ -103,7 +103,7 @@ for (const width of [320, 390, 768, 1440]) test(`automatic stock badges coexist 
       const image = element.querySelector("a")!.getBoundingClientRect();
       const bounds = badges.getBoundingClientRect();
       const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-      const controls = [...badges.parentElement!.querySelectorAll("button")];
+      const controls = [...badges.parentElement!.querySelectorAll(".store-image-control, .store-favorite-bookmark path, .store-product-photo-pagination button")];
       return {
         fits: badges.scrollWidth <= badges.clientWidth,
         insideImage: bounds.top >= image.top && bounds.bottom <= image.bottom && bounds.left >= element.getBoundingClientRect().left - 0.1 && bounds.right <= image.right,
@@ -111,7 +111,7 @@ for (const width of [320, 390, 768, 1440]) test(`automatic stock badges coexist 
         labelsFit: [...badges.children].every(child => child.scrollWidth <= child.clientWidth),
         labelsOutsideTip: [...badges.children].every(child => {
           const path = child.querySelector<SVGPathElement>('path')!;
-          const tipStart = new DOMPoint(1394.5, 896).matrixTransform(path.getScreenCTM()!);
+          const tipStart = new DOMPoint(child.classList.contains("store-badge-manual") ? 94.1125 : 1490, 0).matrixTransform(path.getScreenCTM()!);
           const label = child.querySelector('.product-tag-label')!.getBoundingClientRect();
           const body = child.getBoundingClientRect();
           return label.right < tipStart.x && label.top >= body.top && label.bottom <= body.bottom;
@@ -165,7 +165,7 @@ for (const width of [320, 390, 768, 1440]) test(`automatic stock badges coexist 
 for (const width of [320, 390, 768, 1440]) test(`public dark palette, overlays, contrast and Manager isolation at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 1000 });
   await page.route("**/theme-product.svg", route => route.fulfill({ contentType: "image/svg+xml", body: '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="500"><rect width="400" height="500" fill="#d5d2c9"/><path d="M90 110L155 80H245L310 110L280 180L255 160V400H145V160L120 180Z" fill="#202326"/></svg>' }));
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({
     json: products.map((p, index) => ({
       ...p, inCarousel: index === 0,
       colors: [{ ...p.colors[0], images: ["/theme-product.svg"] }, { ...p.colors[0], id: p.id * 10 + 1, colorName: "Branco", colorValue: "#FFFFFF", images: ["/theme-product.svg"], variants: [{ id: p.id * 100 + 99, value: "P", stock: 2 }] }]
@@ -238,7 +238,7 @@ const products = [
   product(904, "Camiseta Livre", "unissex", "camisetas", [{ value: "Único", stock: 4 }])
 ];
 test.beforeEach(async ({ page }) => {
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: products }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: products }));
 });
 
 for (const width of [320, 390, 768, 1440]) test(`product card sizes never underline and retain selection and keyboard focus at ${width}px`, async ({ page }) => {
@@ -383,7 +383,7 @@ test("mobile filters support arbitrary sizes without overflowing", async ({ page
 test("catalog shows loading, retry after errors, and a separate empty state", async ({ page }) => {
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
-  await page.route("**/api/produtos{,/admin}", async route => {
+  await page.route("**/api/produtos{,/admin,/carrossel}", async route => {
     await gate;
     await route.fulfill({ status: 503, json: {} });
   });
@@ -391,7 +391,7 @@ test("catalog shows loading, retry after errors, and a separate empty state", as
   await expect(page.getByRole("status")).toHaveText("Carregando produtos...");
   release();
   await expect(page.getByRole("alert")).toContainText("Não foi possível carregar");
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [] }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: [] }));
   await page.getByRole("button", { name: "Tentar novamente" }).click();
   await expect(page.getByText("Nenhuma peça encontrada", { exact: true })).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
@@ -399,12 +399,13 @@ test("catalog shows loading, retry after errors, and a separate empty state", as
 
 test("detail and persisted cart respect variant stock and decimal prices", async ({ page }) => {
   await page.goto("/?productId=901");
+  const detail = page.locator(".store-product-detail-content");
   await expect(page.getByRole("heading", { name: "Camiseta API", exact: true })).toBeVisible();
   await expect(page.getByText("Descrição real do catálogo")).toBeVisible();
-  await expect(page.getByRole("button", { name: "M", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "P", exact: true }).click();
-  await page.getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
-  await expect(page.getByRole("button", { name: "P", exact: true })).toBeDisabled();
+  await expect(detail.getByRole("button", { name: "M", exact: true })).toBeDisabled();
+  await detail.getByRole("button", { name: "P", exact: true }).click();
+  await detail.getByRole("button", { name: "Adicionar ao carrinho", exact: true }).click();
+  await expect(detail.getByRole("button", { name: "P", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Abrir carrinho" }).click();
   await expect(page.getByRole("button", { name: "Aumentar quantidade" })).toBeDisabled();
   await expect(page.getByText(/R\$\s*129,90/).first()).toBeVisible();
@@ -424,7 +425,7 @@ test("detail and persisted cart respect variant stock and decimal prices", async
 });
 
 test("catalog loads real PostgreSQL products through the API proxy", async ({ page }) => {
-  await page.unroute("**/api/produtos{,/admin}");
+  await page.unroute("**/api/produtos{,/admin,/carrossel}");
   const response = await page.request.get("/api/produtos");
   expect(response.ok()).toBeTruthy();
   const realProducts = await response.json();
@@ -436,7 +437,7 @@ test("catalog loads real PostgreSQL products through the API proxy", async ({ pa
 
 test("cards cap additions by stock and replace broken images without changing their layout", async ({ page }) => {
   await page.route("**/broken-product.jpg", route => route.fulfill({ status: 404, body: "missing" }));
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [{ ...products[0], imageUrl: "/broken-product.jpg" }] }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: [{ ...products[0], imageUrl: "/broken-product.jpg" }] }));
   await page.goto("/");
   const main = page.locator("main");
   const image = main.getByRole("img", { name: "Camiseta API", exact: true });
@@ -451,14 +452,14 @@ test("cards cap additions by stock and replace broken images without changing th
 });
 
 test("malformed catalog data is an API error instead of a fabricated catalog", async ({ page }) => {
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [{ ...products[0], price: "invalid" }] }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: [{ ...products[0], price: "invalid" }] }));
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("Não foi possível carregar");
   await expect(page.locator("main").getByText("Camiseta API", { exact: true })).toHaveCount(0);
 });
 
 test("audience includes unisex only for adults and clearing resets every existing catalog filter", async ({ page }) => {
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({
     json: [...products,
     product(905, "Infantil API", "infantil", "camisetas", [{ value: "8", stock: 1 }])
     ]
@@ -498,7 +499,7 @@ test("audience includes unisex only for adults and clearing resets every existin
 test("size groups use only available variants, with a divider only between text and numbers", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   const variants = ["10", "9", "8", "M", "P", "Único"].map(value => ({ value, stock: 2 }));
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [product(910, "Tamanhos API", "unissex", "camisetas", [...variants, { value: "36", stock: 0 }])] }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: [product(910, "Tamanhos API", "unissex", "camisetas", [...variants, { value: "36", stock: 0 }])] }));
   await page.goto("/");
   const sizes = page.locator("aside section").first();
   await expect(sizes.locator("button[aria-pressed]")).toHaveText(["P", "M", "Único", "8", "9", "10"]);
@@ -509,7 +510,7 @@ test("size groups use only available variants, with a divider only between text 
   await sizes.locator("h3 button").click();
   await expect(sizes.getByRole("separator")).toBeVisible();
   for (const only of [[{ value: "Único", stock: 1 }], [{ value: "8", stock: 1 }]]) {
-    await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [product(911, "Grupo único", "unissex", "camisetas", only)] }));
+    await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: [product(911, "Grupo único", "unissex", "camisetas", only)] }));
     await page.reload();
     await expect(sizes.locator("button[aria-pressed]")).toHaveText([only[0].value]);
     await expect(sizes.getByRole("separator")).toHaveCount(0);
@@ -525,7 +526,7 @@ const sortedFixture = [
 
 test("catalog sort toggles independently of filters, clear and initial order", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: sortedFixture }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: sortedFixture }));
   await page.goto("/");
   const names = page.locator("main div.group p.line-clamp-2");
   const controls = page.getByRole("group", { name: "Ordenar produtos" });
@@ -581,7 +582,7 @@ test("catalog sort toggles independently of filters, clear and initial order", a
 
 for (const width of [1440, 390, 320]) test(`sorting header fits and remains stable at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 900 });
-  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: sortedFixture }));
+  await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: sortedFixture }));
   await page.goto("/");
   const heading = page.getByRole("heading", { name: "Todas as Peças", exact: true });
   const controls = page.getByRole("group", { name: "Ordenar produtos" });
@@ -615,6 +616,8 @@ for (const width of [1440, 390, 320]) test(`clear filters sits beside stable sor
   const name = controls.getByRole("button", { name: /Ordenar por nome/ });
   const price = controls.getByRole("button", { name: /Ordenar por preço/ });
   await clear.scrollIntoViewIfNeeded();
+  // Screenshots wait for fonts; take the baseline after the same font load.
+  await page.evaluate(() => document.fonts.ready);
   const bounds = await Promise.all([clear, name, price].map(control => control.boundingBox()));
   const section = page.locator("main section").filter({ has: controls });
   const header = section.locator(":scope > div").first();
@@ -651,7 +654,7 @@ for (const width of [1440, 390]) {
     pants.colors.push({ ...pants.colors[0], id: 9201, colorName: "Branco", colorValue: "#FFFFFF", variants: [{ id: 9202, value: "GG", stock: 2 }] });
     // Products absent from the public API cannot create filter options. This
     // public is the audience, while isPublished controls publication.
-    await page.route("**/api/produtos{,/admin}", route => route.fulfill({
+    await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({
       json: [
         pants, products[0],
         product(921, "Jaqueta esgotada", "unissex", "jaquetas", [{ value: "M", stock: 0 }]),
@@ -704,7 +707,7 @@ for (const change of ["removed", "sold out"] as const) {
   test(`catalog refresh clears a selected type when its last available product is ${change}`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     let catalog = [products[0], products[1]];
-    await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: catalog }));
+    await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: catalog }));
     // Exercise the existing onChanged -> useProducts retry flow without DB mutations.
     await page.route("**/api/produtos/902", async route => {
       if (route.request().method() === "DELETE") {
@@ -725,7 +728,7 @@ for (const change of ["removed", "sold out"] as const) {
     const category = page.locator("aside section").nth(2);
     await category.getByRole("button", { name: "Jaquetas / Agasalhos", exact: true }).click();
     await expect(page.getByText("1 peça encontrada", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: process.env.E2E_ADMIN_EMAIL!.split("@")[0], exact: true }).hover();
+    await page.getByRole("button", { name: process.env.E2E_ADMIN_EMAIL!.split("@")[0], exact: true }).click();
     await page.getByRole("link", { name: "Painel Administrativo", exact: true }).click();
     await page.getByRole("link", { name: "Produtos", exact: true }).click();
     const row = page.getByRole("article", { name: "Jaqueta API", exact: true });

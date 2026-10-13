@@ -208,7 +208,7 @@ test("empty cart and ADMIN direct access; logout clears checkout draft", async (
   await expect(page.locator("main")).toContainText("Seu carrinho está vazio");
   await expect(finalButton(page)).toBeDisabled();
   await page.getByRole("radio", { name: "Não preciso, irei retirar os produtos na loja." }).check();
-  await page.getByRole("button", { name: "João", exact: true }).hover();
+  await page.getByRole("button", { name: "João", exact: true }).click();
   await page.getByRole("button", { name: "Sair", exact: true }).click();
   expect(await page.evaluate(() => sessionStorage.getItem("lowen-cloth_checkout_v1"))).toBeNull();
   const adminPage = await page.context().newPage();

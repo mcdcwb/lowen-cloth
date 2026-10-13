@@ -1,6 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { stockBadge } from "../backend/src/lib/stock-badges.ts";
+import { relatedProducts } from "../src/app/lib/related-products.ts";
+
+test("related products prioritize category then audience, exclude private/self, deduplicate and remain stable", () => {
+  const make = (id, category = "calcas", audience = "feminino", isPublished = true) => ({ id, category, public: audience, isPublished });
+  const current = make(10, "camisetas", "masculino");
+  const catalog = [make(1), make(2, "calcas", "masculino"), make(5, "camisetas"), make(3, "camisetas"), make(3, "camisetas"), current, make(4, "camisetas", "masculino", false)];
+  assert.deepEqual(relatedProducts(current, catalog).map(p => p.id), [3, 5, 2]);
+  assert.deepEqual(relatedProducts(current, [...catalog].reverse()).map(p => p.id), [3, 5, 2]);
+  assert.equal(catalog.length, 7);
+});
+
+test("related products use public fallback and handle sparse or empty catalogs", () => {
+  const current = { id: 1, categoryId: 10, category: "Camisas", public: "masculino", isPublished: true };
+  const fallback = { ...current, id: 2, categoryId: 11, category: "Calças", public: "feminino" };
+  assert.deepEqual(relatedProducts(current, [current, fallback]), [fallback]);
+  assert.deepEqual(relatedProducts(current, [current, { ...fallback, isPublished: false }]), []);
+});
 
 test("public stock badge uses all adapted colors, preserves manual badge and ignores selected color", () => {
   const product = adaptNested({ id: 1, name: "Multicolor", price: 20, public: "unissex", category: "camisetas", badge: "NOVO",
@@ -166,6 +183,8 @@ test("selected badges require explicit dimensions and preserve stock toggles", (
   assert.equal(selectedStockBadge(product, { ...settings, showLastUnitBadge: false }, { colorId: 1, size: "P" }), "low-stock");
   assert.equal(selectedStockBadge(product, { ...settings, showLowStockBadge: false }, { colorId: 1, size: "M" }), null);
   assert.equal(selectedStockBadge({ colors: [{ variants: [{ value: "P", stock: 1 }] }] }, settings, { size: "P" }), "last-unit");
+  assert.equal(selectedStockBadge({ colors: [{ id: 10, colorName: "Preto", variants: [{ value: "P", stock: 1 }] }] }, settings, { size: "P" }), "last-unit");
+  assert.equal(selectedStockBadge({ colors: [{ id: 10, colorName: "Preto", variants: [{ value: "P", stock: 1 }] }] }, settings, { colorId: 99, size: "P" }), null);
   assert.equal(selectedStockBadge({ colors: [{ id: 1, colorName: "Black", variants: [{ stock: 1 }] }] }, settings, { colorId: 1 }), "last-unit");
   assert.equal(selectedStockBadge({ colors: [{ variants: [{ stock: 1 }] }] }, settings), null);
 });

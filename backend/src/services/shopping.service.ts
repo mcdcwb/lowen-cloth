@@ -7,10 +7,10 @@ export class ShoppingError extends Error {
 }
 type FavoriteOwner = { id: number; role: "USER" | "ADMIN" };
 export const favorites = (owner: FavoriteOwner) => owner.role === "ADMIN"
-    ? prisma.adminFavorite.findMany({ where: { adminId: owner.id }, include: { product: { include: productInclude } }, orderBy: { productId: "asc" } })
-    : prisma.favorite.findMany({ where: { userId: owner.id }, include: { product: { include: productInclude } }, orderBy: { productId: "asc" } });
+    ? prisma.adminFavorite.findMany({ where: { adminId: owner.id, product: { isPublished: true } }, include: { product: { include: productInclude } }, orderBy: { productId: "asc" } })
+    : prisma.favorite.findMany({ where: { userId: owner.id, product: { isPublished: true } }, include: { product: { include: productInclude } }, orderBy: { productId: "asc" } });
 export async function favorite(owner: FavoriteOwner, productId: number, remove = false) {
-    if (!remove && !await prisma.product.findUnique({ where: { id: productId } })) throw new ShoppingError(404, "Produto não encontrado.");
+    if (!remove && !await prisma.product.findFirst({ where: { id: productId, isPublished: true } })) throw new ShoppingError(404, "Produto não encontrado.");
     if (owner.role === "ADMIN") {
         if (remove) await prisma.adminFavorite.deleteMany({ where: { adminId: owner.id, productId } });
         else await prisma.adminFavorite.upsert({ where: { adminId_productId: { adminId: owner.id, productId } }, create: { adminId: owner.id, productId }, update: {} });
@@ -41,10 +41,14 @@ export async function cart(userId: number, action: "read" | "add" | "set" | "rem
                 for (const item of selections) {
                     // Legacy guest carts without colorId belong to the original (first) color.
                     const colorId = item.colorId ?? (await tx.productColor.findFirst({ where: { productId: item.productId }, orderBy: [{ position: "asc" }, { id: "asc" }] }))?.id;
-                    const variant = colorId === undefined ? null : await tx.productVariant.findFirst({ where: { colorId, value: item.size, color: { productId: item.productId } } });
+                    const variant = colorId === undefined ? null : await tx.productVariant.findFirst({ where: { colorId, value: item.size, color: { productId: item.productId } }, include: { color: { select: { product: { select: { isPublished: true } } } } } });
                     if (!variant) {
                         if (action === "merge") { notices.push(`Produto ${item.productId}, tamanho ${item.size}: indisponível.`); continue; }
                         throw new ShoppingError(404, "Variante não encontrada.");
+                    }
+                    if (!variant.color.product.isPublished && action !== "remove") {
+                        if (action === "merge") { notices.push(`Produto ${item.productId}, tamanho ${item.size}: indisponível para compra.`); continue; }
+                        throw new ShoppingError(409, "Produto indisponível para compra.");
                     }
                     const where = { userId_variantId: { userId, variantId: variant.id } };
                     const previous = await tx.cartItem.findUnique({ where });
@@ -59,7 +63,7 @@ export async function cart(userId: number, action: "read" | "add" | "set" | "rem
                 const rows = await tx.cartItem.findMany({ where: { userId }, include: { variant: { include: { color: { include: { product: { include: productInclude } } } } } }, orderBy: { variantId: "asc" } });
                 const items = [];
                 for (const row of rows) {
-                    const quantity = reconcile ? Math.min(row.quantity, row.variant.stock) : row.quantity;
+                    const quantity = reconcile ? (row.variant.color.product.isPublished ? Math.min(row.quantity, row.variant.stock) : 0) : row.quantity;
                     if (quantity !== row.quantity) {
                         notices.push(`${row.variant.color.product.name}, tamanho ${row.variant.value}: quantidade ajustada ao estoque (${quantity}).`);
                         if (quantity) await tx.cartItem.update({ where: { userId_variantId: { userId, variantId: row.variantId } }, data: { quantity } });

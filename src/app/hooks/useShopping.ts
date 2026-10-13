@@ -20,7 +20,7 @@ function readGuest(storageKey = key): CartItem[] {
 function saveGuest(items: CartItem[]) {
   try { localStorage.setItem(key, JSON.stringify(items)); } catch { /* Guest cart still works in memory. */ }
 }
-export function useShopping(products: Product[], accessToken: string | undefined, validating: boolean, user: Account | null, reviewing = false) {
+export function useShopping(products: Product[], accessToken: string | undefined, validating: boolean, user: Account | null, reviewing = false, onOpenCart?: () => void) {
   const favoriteToken = user ? accessToken : undefined;
   const token = user?.role === "USER" ? accessToken : undefined;
   const owner = user ? `${user.role}:${user.id}` : "guest";
@@ -147,7 +147,8 @@ export function useShopping(products: Product[], accessToken: string | undefined
   const items = !ready ? [] : token ? account?.token === token ? account.items : [] : guestItems;
   const cartSnapshot = useRef(items);
   cartSnapshot.current = items;
-  const favorites = favoriteReady && favoriteToken && account?.token === favoriteToken ? account.favorites : [];
+  const favorites = favoriteReady && favoriteToken && account?.token === favoriteToken
+    ? account.favorites.filter(product => product.isPublished && products.some(current => current.id === product.id && current.isPublished)) : [];
   useEffect(() => {
     if (!user && !validating && products.length && isCurrent()) {
       setGuest(guestItems);
@@ -185,7 +186,7 @@ export function useShopping(products: Product[], accessToken: string | undefined
     setGuest(next); saveGuest(next);
   }
   async function add(product: Product, size: string) {
-    if (!ready || !isCurrent()) return false;
+    if (!ready || !isCurrent() || !product.isPublished || !products.some(current => current.id === product.id && current.isPublished)) return false;
     const current = generation.current;
     return additions.run(product, size, () => {
       const operation = addQueue.current.then(async () => {
@@ -203,7 +204,7 @@ export function useShopping(products: Product[], accessToken: string | undefined
           updateGuest(previous ? snapshot.map(i => i === previous ? { ...i, quantity: i.quantity + 1 } : i) : [...snapshot, { product, colorId: product.colorId, size, quantity: 1 }]);
           changed = true;
         }
-        if (changed) notify.positive(`${product.name} — tamanho ${size} foi adicionado ao carrinho.`);
+        if (changed) notify.positive(`${product.name} — tamanho ${size} foi adicionado ao carrinho.`, onOpenCart ? { label: "Ver no Carrinho", onClick: onOpenCart } : undefined);
         return changed;
       });
       // Serialize server snapshots without discarding another variant's click.

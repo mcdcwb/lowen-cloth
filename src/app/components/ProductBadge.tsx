@@ -1,15 +1,21 @@
 export const badgeDefaults = { background: "#2457A7", text: "#FFFFFF" };
-export const badgeShape = "M0,507.7H1394.5c132.4,0,397.5,386.7,397.5,386.7s-265.1,389.9-397.5,389.9H0V507.7z";
+export type BadgeSize = "default" | "detail";
+// Scale the complete original manual shape proportionally, including its tip.
+export const manualBadgeDimensions = { width: 89.6, height: 27.9576 };
+export const manualBadgeViewBox = "0 0 112 34.947";
+export const badgeShape = "M0,0H94.1125c5.958,0,17.8875,17.4015,17.8875,17.4015s-11.9295,17.5455-17.8875,17.5455H0V0z";
+// Draw at the existing half-height, with a shorter shoulder and a rounded tip.
+export const automaticBadgeShape = "M0,0H1490Q1515,0 1533,14L1770,174Q1814,194.15 1770,214.3L1533,374.3Q1515,388.3 1490,388.3H0Z";
 
-export function ProductBadge({ label, background = badgeDefaults.background, color = badgeDefaults.text, className = "" }: {
-  label: string; background?: string; color?: string; className?: string;
+export function ProductBadge({ label, background = badgeDefaults.background, color = badgeDefaults.text, className = "", size = "default" }: {
+  label: string; background?: string; color?: string; className?: string; size?: BadgeSize;
 }) {
   const automatic = className.includes("store-badge-automatic");
-  return <span className={`product-tag ${className}`} title={label}
+  const factor = size === "detail" ? 1.5 : 1;
+  return <span className={`product-tag ${automatic ? "" : "product-tag-manual"} ${className}`} title={label} data-badge-size={size}
     {...(automatic ? { tabIndex: 0, role: "note", "aria-label": label } : {})}
-    style={{ width: `${Math.max(62, label.length * 6 + 24) * (className.includes("store-stock-low") ? 0.85 : className.includes("store-stock-last") || className.includes("store-badge-manual") ? 1.12 : 1)}px`, color }}>
-    {/* Keep the original path; only automatic tags compress vertically at their fixed width. */}
-    <svg viewBox="0 0 1792 1792" preserveAspectRatio={automatic ? "none" : undefined} aria-hidden="true" focusable="false"><path d={badgeShape} fill={background} /></svg>
+    style={{ ...(automatic ? { width: (className.includes("store-stock-low") ? 114 : Math.max(62, label.length * 6 + 24) * 1.12) * factor } : { width: manualBadgeDimensions.width * factor, height: manualBadgeDimensions.height * factor }), color }}>
+    <svg viewBox={automatic ? "0 0 1792 388.3" : manualBadgeViewBox} preserveAspectRatio="none" aria-hidden="true" focusable="false"><path d={automatic ? automaticBadgeShape : badgeShape} fill={background} /></svg>
     <span className="product-tag-label"><span>{label}</span></span>
   </span>;
 }

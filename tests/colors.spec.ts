@@ -24,7 +24,7 @@ test("manager adds second/third colors, isolates picker/images/stock, edits and 
     await expect(page.getByRole("alert")).toContainText("nome da cor");
     const name = "Multicor " + randomUUID();
     await page.getByLabel("Nome", { exact: true }).fill(name); await page.getByLabel("Preço (R$)", { exact: true }).fill("99.90");
-    await expect(page.getByLabel("Prévia do badge", { exact: true })).toContainText("NOVO");
+    await expect(page.getByLabel("Prévia do badge", { exact: true })).toContainText("Sem badge");
     await expect(page.getByLabel("Badge (opcional)")).toHaveValue("");
     await page.getByLabel("Badge (opcional)").fill("Novo");
     const preview = page.getByLabel("Prévia do badge", { exact: true });
@@ -134,16 +134,17 @@ test("catalog/details switch images and sizes; multi-color guest cart merges and
     await expect(card.getByRole("button", { name: "Remover dos favoritos" })).toBeVisible();
     await card.getByRole("button", { name: "Branco", exact: true }).click();
     await expect(card.getByRole("button", { name: "Remover dos favoritos" })).toBeVisible();
-    await page.getByRole("button", { name: "Cliente", exact: true }).hover(); await page.getByRole("button", { name: "Sair", exact: true }).click();
+    await page.getByRole("button", { name: "Cliente", exact: true }).click(); await page.getByRole("button", { name: "Sair", exact: true }).click();
     await login(page); await page.reload();
     const saved = (await (await page.request.get("/api/carrinho", { headers: userHeaders })).json()).items;
     expect(saved.map((i: any) => [i.colorId, i.size, i.quantity])).toEqual([[product.colors[0].id, "P", 1], [product.colors[1].id, "GG", 1]]);
     await page.goto(`/?productId=${product.id}`);
-    await page.getByRole("button", { name: "P", exact: true }).click();
-    await page.getByRole("button", { name: "Branco", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Selecione o tamanho" })).toBeDisabled();
+    const detail = page.locator(".store-product-detail-content");
+    await detail.getByRole("button", { name: "P", exact: true }).click();
+    await detail.getByRole("button", { name: "Branco", exact: true }).click();
+    await expect(detail.getByRole("button", { name: "Selecione o tamanho" })).toBeDisabled();
     await expect(page.getByRole("img", { name, exact: true })).toHaveAttribute("src", "/colors-white.svg");
-    await expect(page.getByRole("button", { name: "P", exact: true })).toBeDisabled();
+    await expect(detail.getByRole("button", { name: "P", exact: true })).toBeDisabled();
   } finally { await page.request.delete(`/api/produtos/${product.id}`, { headers }); }
 });
 

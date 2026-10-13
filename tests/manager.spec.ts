@@ -23,6 +23,63 @@ async function mockAdmin(page: Page) {
   await page.route("**/api/auth/login", route => route.fulfill({ json: { account, accessToken: "test-session", tokenType: "Bearer", expiresIn: 3600, expiresAt: Date.now() + 3600000 } }));
 }
 
+for (const editing of [false, true]) test(`manual badge input limits, counter, preview and legacy edits (${editing ? "edit" : "create"})`, async ({ page }) => {
+  await mockAdmin(page);
+  let product = { id: 9900, name: "Badge form fixture", price: "30.00", public: "unissex", categoryId: 1, category: { id: 1, name: "camisetas" }, isPublished: true, inCarousel: false,
+    badge: "LANÇAMENTO ANTIGO" as string | null, badgeBackgroundColor: "#ABCDEF", badgeTextColor: "#123456",
+    colors: [{ id: 9901, colorName: "Preto", colorValue: "#111111", images: [], variants: [{ id: 9902, value: "P", stock: 1 }] }] };
+  const writes: Record<string, any>[] = [];
+  const save = (body: Record<string, any>) => {
+    writes.push(body);
+    product = { ...product, ...body, colors: body.colors?.map((color: any, index: number) => ({ ...color, id: color.id ?? 9901 + index,
+      variants: color.variants.map((variant: any, i: number) => ({ ...variant, id: variant.id ?? 9910 + i })) })) ?? product.colors };
+  };
+  await page.route("**/api/produtos{,/admin}", route => {
+    if (route.request().method() === "POST") {
+      const body = route.request().postDataJSON(); save(body);
+      return route.fulfill({ status: 201, json: product });
+    }
+    return route.fulfill({ json: [product] });
+  });
+  await page.route("**/api/produtos/9900", route => {
+    const body = route.request().postDataJSON(); save(body);
+    return route.fulfill({ json: product });
+  });
+  await login(page);
+  const path = editing ? "/manager/produtos/9900/editar" : "/manager/produtos/novo";
+  await page.goto(path);
+  const input = page.getByLabel("Badge (opcional)", { exact: true }), preview = page.getByLabel("Prévia do badge", { exact: true });
+  await expect(input).toHaveAttribute("maxlength", "12");
+  if (editing) {
+    await expect(input).toHaveValue("LANÇAMENTO ANTIGO"); await expect(page.getByText("17/12", { exact: true })).toBeVisible();
+    await page.getByLabel("Nome", { exact: true }).fill("Outro nome do produto");
+    await page.getByRole("button", { name: "Salvar produto", exact: true }).click();
+    await expectSuccess(page, "Produto salvo com sucesso!", "positive");
+    expect(writes[0]).not.toHaveProperty("badge"); expect(product.badge).toBe("LANÇAMENTO ANTIGO");
+    await page.goto(path);
+  } else {
+    await page.getByLabel("Nome", { exact: true }).fill("Badge de criação");
+    await page.getByLabel("Preço (R$)", { exact: true }).fill("30");
+    await page.getByLabel("Nome da cor", { exact: true }).fill("Preto");
+    await page.getByLabel("Valor da cor", { exact: true }).fill("#111111");
+    await page.getByLabel("Variante 1", { exact: true }).fill("P");
+  }
+  await input.fill(""); await input.pressSequentially("123456789012345");
+  await expect(input).toHaveValue("123456789012"); await expect(page.getByText("12/12", { exact: true })).toBeVisible();
+  await expect(preview.locator(".product-tag-label")).toHaveText("123456789012");
+  await input.fill("NOVIDADE"); await expect(page.getByText("8/12", { exact: true })).toBeVisible();
+  await expect(preview.locator(".product-tag-label")).toHaveText("NOVIDADE");
+  if (editing) { await expect(preview.locator("path")).toHaveAttribute("fill", "#ABCDEF"); await expect(preview.locator(".product-tag")).toHaveCSS("color", "rgb(18, 52, 86)"); }
+  await page.getByRole("button", { name: "Salvar produto", exact: true }).click();
+  await expectSuccess(page, editing ? "Produto salvo com sucesso!" : "Produto criado com sucesso!", "positive");
+  expect(writes.at(-1)!.badge).toBe("NOVIDADE");
+  await page.goto("/manager/produtos/9900/editar");
+  await input.fill(""); await expect(page.getByText("0/12", { exact: true })).toBeVisible();
+  await expect(preview.locator(".product-tag")).toHaveCount(0);
+  await page.getByRole("button", { name: "Salvar produto", exact: true }).click();
+  await expectSuccess(page, "Produto salvo com sucesso!", "positive"); expect(writes.at(-1)!.badge).toBeNull();
+});
+
 for (const width of [1440, 390, 320]) test(`dashboard stock shortcuts, keyboard and layout at ${width}px`, async ({ page }, testInfo) => {
   await mockAdmin(page);
   const fixture = [[], [0, 0], [0, 1], [2, 3], [3, 3]].map((stocks, index) => ({

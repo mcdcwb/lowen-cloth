@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Pipette, Plus, Trash2 } from "lucide-react";
 import { ProductImage } from "../components/ProductImage";
 import { ProductBadge, badgeDefaults } from "../components/ProductBadge";
+import { manualBadgeMaxLength } from "../../../backend/src/lib/manual-badges.ts";
 import { audiences, labels, normalizeHex, toDraft, toInput, validateDraft, type ManagedProduct, colorDraft, type ColorDraft, type ProductDraft, type ProductInput } from "./products";
 import type { Category } from "../lib/categories";
 import { CategoryEditor } from "./CategoryEditor";
@@ -106,9 +107,14 @@ export function ProductForm({ product, categories, onSaveCategory, busy, onSave,
   return <form noValidate onSubmit={async event => {
     event.preventDefault();
     if (busy || picking || uploadJob.current) return;
-    const issues = validateDraft(draft);
+    const issues = validateDraft(draft, product?.badge);
     setErrors(issues);
-    if (!issues.length) await onSave(toInput(draft));
+    if (!issues.length) {
+      const input = toInput(draft);
+      // Preserve legacy text verbatim when only other fields are edited.
+      if (product && draft.badge === (product.badge ?? "")) delete input.badge;
+      await onSave(input);
+    }
   }} className="space-y-6">
     {errors.length > 0 && <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive"><ul className="list-disc pl-5">{errors.map(error => <li key={error}>{error}</li>)}</ul></div>}
     <fieldset disabled={busy} className="grid min-w-0 gap-6 disabled:opacity-60 lg:grid-cols-[1.3fr_1fr]">
@@ -119,7 +125,14 @@ export function ProductForm({ product, categories, onSaveCategory, busy, onSave,
           <label className="block space-y-2 text-sm font-medium">Descrição<textarea className={inputClass} rows={4} value={draft.description} onChange={event => change("description", event.target.value)} /></label>
           <div className="grid gap-4 sm:grid-cols-2">
             {field("Preço (R$)", "price", "number")}
-            {field("Badge (opcional)", "badge")}
+            <div className="space-y-2 text-sm font-medium">
+              <label htmlFor={`${colorId}-badge`}>Badge (opcional)</label>
+              <input id={`${colorId}-badge`} className={inputClass} value={draft.badge} maxLength={manualBadgeMaxLength}
+                aria-describedby={`${colorId}-badge-count${draft.badge.length > manualBadgeMaxLength ? ` ${colorId}-badge-legacy` : ""}`}
+                onChange={event => change("badge", event.target.value.slice(0, manualBadgeMaxLength))} />
+              <p id={`${colorId}-badge-count`} className="text-right text-xs font-normal text-muted-foreground">{draft.badge.length}/{manualBadgeMaxLength}</p>
+              {draft.badge.length > manualBadgeMaxLength && <p id={`${colorId}-badge-legacy`} className="text-xs font-normal text-muted-foreground">Texto antigo preservado. Ao alterar o badge, use até 12 caracteres; outros campos podem ser salvos normalmente.</p>}
+            </div>
             <label className="block space-y-2 text-sm font-medium">Público<select aria-label="Público" className={inputClass} value={draft.public} onChange={event => change("public", event.target.value)}>
               {[...new Set([...audiences, draft.public])].map(value => <option key={value} value={value}>{labels[value] ?? value}</option>)}
             </select></label>
@@ -152,7 +165,8 @@ export function ProductForm({ product, categories, onSaveCategory, busy, onSave,
             </div>)}
           </div>
           <div aria-label="Prévia do badge" className="max-w-full">
-            <ProductBadge label={draft.badge.trim() || 'NOVO'} background={normalizeHex(draft.badgeBackgroundColor) ?? badgeDefaults.background} color={normalizeHex(draft.badgeTextColor) ?? badgeDefaults.text} />
+            {draft.badge.trim() ? <ProductBadge label={draft.badge.trim()} background={normalizeHex(draft.badgeBackgroundColor) ?? badgeDefaults.background} color={normalizeHex(draft.badgeTextColor) ?? badgeDefaults.text} />
+              : <span className="text-sm text-muted-foreground">Sem badge</span>}
           </div>
         </section>
         <section className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-5">

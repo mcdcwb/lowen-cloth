@@ -109,12 +109,33 @@ async function loginCustomer(page: Page) {
   await expect(page.getByRole("button", { name: "Cliente", exact: true })).toBeVisible();
 }
 
-test("customer menu stays open across the gap, navigates, restores session and logs out", async ({ page }) => {
+for (const width of [320, 390, 768, 1440]) test(`account menu clicks and stays inside the viewport at ${width}px`, async ({ page }) => {
+  await loginCustomer(page);
+  await page.setViewportSize({ width, height: 1000 });
+  const trigger = page.getByRole("button", { name: "Cliente", exact: true });
+  const menu = page.getByRole("navigation", { name: "Menu da conta" });
+  await trigger.hover(); await expect(menu).toHaveCount(0);
+  await trigger.click(); await expect(menu).toBeVisible();
+  const bounds = (await menu.boundingBox())!;
+  expect(bounds.x).toBeGreaterThanOrEqual(0); expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+  await trigger.click(); await expect(menu).toHaveCount(0);
+  await trigger.focus(); await page.keyboard.press("Space"); await expect(menu).toBeVisible();
+  await page.keyboard.press("Tab"); await expect(menu.getByRole("link", { name: "Minha Conta", exact: true })).toBeFocused();
+  await page.keyboard.press("Escape"); await expect(menu).toHaveCount(0); await expect(trigger).toBeFocused();
+});
+
+test("customer menu opens only by click, toggles, navigates, restores session and logs out", async ({ page }) => {
   await loginCustomer(page);
   const trigger = page.getByRole("button", { name: "Cliente", exact: true });
   const menu = page.getByRole("navigation", { name: "Menu da conta" });
   await trigger.hover();
+  await expect(menu).toHaveCount(0);
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await trigger.click();
   await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Favoritos", "Sair"]);
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+  await trigger.click();
+  await expect(menu).toHaveCount(0);
   await trigger.click();
   await expect(menu).toBeVisible();
   const box = (await trigger.boundingBox())!;
@@ -123,8 +144,10 @@ test("customer menu stays open across the gap, navigates, restores session and l
   await menu.getByRole("link", { name: "Minha Conta" }).hover();
   await expect(menu).toBeVisible();
   await page.mouse.move(1, 200);
+  await expect(menu).toBeVisible();
+  await page.mouse.click(1, 200);
   await expect(menu).toBeHidden();
-  await trigger.hover();
+  await trigger.click();
   await menu.getByRole("link", { name: "Minha Conta" }).click();
   await expect(page).toHaveURL(/\/minha-conta$/);
   await expect(page.getByRole("heading", { name: "Minha Conta", exact: true })).toBeVisible();
@@ -138,11 +161,11 @@ test("customer menu stays open across the gap, navigates, restores session and l
   await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();
   await expect(trigger).toBeFocused();
-  await trigger.hover();
+  await trigger.click();
   await menu.getByRole("link", { name: "Favoritos" }).click();
   await expect(page).toHaveURL(/\/favoritos$/);
   await expect(page.getByRole("heading", { name: "Favoritos", exact: true })).toBeVisible();
-  await trigger.hover();
+  await trigger.click();
   await menu.getByRole("button", { name: "Sair", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Favoritos", exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Área de clientes" })).toBeVisible();
@@ -165,13 +188,13 @@ test("product detail shares the customer menu and browser back preserves navigat
   const productId = products[0].id;
   await page.goto(`/?productId=${productId}`);
   const trigger = page.getByRole("button", { name: "Cliente", exact: true });
-  await trigger.hover();
+  await trigger.click();
   await page.getByRole("navigation", { name: "Menu da conta" }).getByRole("link", { name: "Favoritos" }).click();
   await expect(page.getByRole("heading", { name: "Favoritos", exact: true })).toBeVisible();
   await page.goBack();
   await expect(page).toHaveURL(new RegExp(`productId=${productId}$`));
   await expect(page.getByRole("button", { name: "Voltar para a loja" })).toBeVisible();
-  await trigger.hover();
+  await trigger.click();
   await expect(page.getByRole("navigation", { name: "Menu da conta" })).toBeVisible();
 });
 
@@ -198,7 +221,7 @@ test("administrator keeps existing controls and cannot open customer content", a
   await page.goto("/minha-conta");
   await expect(page.getByText(email.split("@")[0], { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Minha Conta", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: email.split("@")[0], exact: true }).hover();
+  await page.getByRole("button", { name: email.split("@")[0], exact: true }).click();
   await expect(page.getByRole("button", { name: "Sair", exact: true })).toBeVisible();
 });
 
@@ -210,19 +233,20 @@ test("ADMIN reuses the account menu on storefront and detail with its own links 
   const trigger = page.getByRole("button", { name: email.split("@")[0], exact: true });
   const menu = page.getByRole("navigation", { name: "Menu da conta" });
   await trigger.hover();
+  await expect(menu).toHaveCount(0);
   await trigger.click();
-  await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Painel Administrativo", "Sair"]);
-  await expect(menu.getByRole("link", { name: "Favoritos" })).toHaveCount(0);
+  await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Painel Administrativo", "Favoritos", "Sair"]);
+  await expect(menu.getByRole("link", { name: "Favoritos" })).toHaveCount(1);
   await menu.getByRole("link", { name: "Minha Conta", exact: true }).click();
   await expect(page).toHaveURL(/\/minha-conta$/);
   await expect(page.getByRole("heading", { name: "Área de clientes" })).toBeVisible();
-  await trigger.hover();
+  await trigger.click();
   await menu.getByRole("link", { name: "Painel Administrativo" }).click();
   await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
   const products = await (await page.request.get("/api/produtos")).json();
   await page.goto(`/?productId=${products[0].id}`);
-  await trigger.hover();
-  await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Painel Administrativo", "Sair"]);
+  await trigger.click();
+  await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Painel Administrativo", "Favoritos", "Sair"]);
   await menu.getByRole("button", { name: "Sair", exact: true }).click();
   expect(await page.evaluate(key => localStorage.getItem(key) === null, storageKey)).toBe(true);
   await expect(trigger).toHaveCount(0);
@@ -239,7 +263,7 @@ test.describe("ADMIN mobile menu", () => {
     const trigger = page.getByRole("button", { name: email.split("@")[0], exact: true });
     await trigger.tap();
     const menu = page.getByRole("navigation", { name: "Menu da conta" });
-    await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Painel Administrativo", "Sair"]);
+    await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Painel Administrativo", "Favoritos", "Sair"]);
     await trigger.tap();
     await expect(menu).toBeHidden();
     await trigger.tap();
@@ -351,7 +375,7 @@ test("customer and administrator use the same login form and expose their roles"
   expect((await (await page.request.get("/api/auth/me", {
     headers: { Authorization: "Bearer " + (await page.evaluate(key => JSON.parse(localStorage.getItem(key)!).accessToken, storageKey)) }
   })).json()).account.role).toBe("USER");
-  await page.getByRole("button", { name: "Cliente", exact: true }).hover();
+  await page.getByRole("button", { name: "Cliente", exact: true }).click();
   await page.getByRole("button", { name: "Sair", exact: true }).first().click();
 
   await page.getByRole("button", { name: "Entrar", exact: true }).first().click();

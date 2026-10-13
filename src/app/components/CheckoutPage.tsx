@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { MessageCircle } from "lucide-react";
-import { toast } from "sonner";
+import { notify } from "../lib/notifications";
 import type { Account } from "../lib/auth";
 import { AUTH_STORAGE_KEY } from "../lib/auth-session";
 import { accountRequest, type Profile } from "../lib/account";
@@ -137,7 +137,7 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
         else if (reason.status === 409) { setRevision(value => value + 1); store.reload(); }
         if ([401, 403].includes(reason.status)) deny.current(message);
       }
-      toast.error(message);
+      notify.error(message);
     } finally { clearTimeout(timeout); controller.current = null; pending.current = false; if (alive.current) setSending(false); }
   }
   return <>

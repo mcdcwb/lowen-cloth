@@ -13,11 +13,20 @@ for (const width of [320, 390, 768, 1440]) test(`product photos retain original 
     const [w, h] = ratios[index];
     return route.fulfill({ contentType: "image/svg+xml", body: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="100%" height="100%" fill="#d5d2c9"/><path d="M0 0L${w} ${h}M${w} 0L0 ${h}" stroke="#202326" stroke-width="20"/></svg>` });
   });
-  await page.route("**/api/produtos", route => route.fulfill({ json: catalog }));
+  await page.route("**/api/produtos{,/carrossel}", route => route.fulfill({ json: catalog }));
   await page.route("**/api/settings/public", route => route.fulfill({ json: { address: null, whatsapp: null, lowStockThreshold: 5, showLowStockBadge: true, showLastUnitBadge: true } }));
   await page.goto("/");
   const cards = page.locator(".store-product-card");
   await expect(cards).toHaveCount(6);
+  for (const card of await cards.all()) {
+    const spacing = await card.evaluate(el => {
+      const colors = el.querySelector('[aria-label="Selecionar cor"]')!, sizes = el.querySelector(".store-product-sizes")!;
+      return { separation: sizes.getBoundingClientRect().top - colors.getBoundingClientRect().bottom, colorsGap: getComputedStyle(colors).gap, sizesGap: getComputedStyle(sizes).gap };
+    });
+    expect(spacing.separation).toBeCloseTo(16, 1);
+    expect(spacing.colorsGap).toBe("8px");
+    expect(spacing.sizesGap).toBe("4px");
+  }
   await expect.poll(() => cards.locator("img").evaluateAll(images => images.every(image => (image as HTMLImageElement).complete && (image as HTMLImageElement).naturalWidth > 0))).toBe(true);
   const geometry = () => cards.evaluateAll(elements => elements.map(card => {
     const outer = card.getBoundingClientRect(), photo = card.firstElementChild!.getBoundingClientRect();
@@ -58,6 +67,22 @@ for (const width of [320, 390, 768, 1440]) test(`product photos retain original 
   expect(overlay.top).toBeCloseTo(0, 1); expect(overlay.right).toBeCloseTo(8, 1);
   expect(overlay.clipping).toBe("hidden"); expect(overlay.static).toBe(true);
   await expect(cards.first().locator('[aria-label="Badges do produto"] > span')).toHaveCount(2);
+  const effects = await cards.first().evaluate(card => {
+    const photo = card.querySelector(".store-product-photo")!, layer = card.querySelector(".store-favorite-layer")!;
+    return {
+      filters: [...card.querySelectorAll(".store-product-badges svg, .store-favorite-bookmark svg")].map(svg => getComputedStyle(svg).filter),
+      clipping: getComputedStyle(layer).clipPath,
+      frameMatches: layer.getBoundingClientRect().width === photo.getBoundingClientRect().width && layer.getBoundingClientRect().height === photo.getBoundingClientRect().height,
+      hitArea: card.querySelector(".store-favorite-bookmark")!.getBoundingClientRect().width,
+      photoOverflow: getComputedStyle(photo).overflow,
+    };
+  });
+  expect(new Set(effects.filters).size).toBe(1);
+  expect(effects.filters[0]).toContain("drop-shadow");
+  expect(effects.clipping).toBe("inset(-1px 0px 0px)");
+  expect(effects.frameMatches).toBe(true);
+  expect(effects.hitArea).toBe(44);
+  expect(effects.photoOverflow).toBe("visible");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath(`uniform-cards-${width}.png`), fullPage: true });
 });

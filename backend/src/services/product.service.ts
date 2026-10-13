@@ -3,12 +3,15 @@ import type { Prisma } from "../generated/prisma/client.js";
 import type { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import type { createProductSchema, updateProductSchema } from "../schemas/product.schema.js";
+import { manualBadgeTextSchema } from "../schemas/product.schema.js";
 export const productInclude = { category: { select: { id: true, name: true } }, colors: { orderBy: [{ position: "asc" }, { id: "asc" }], include: { variants: { orderBy: { id: "asc" } } } } } satisfies Prisma.ProductInclude;
 export class ProductError extends Error {
     constructor(public status: number, message: string) { super(message); }
 }
 export const getProducts = () => prisma.product.findMany({ include: productInclude });
 export const getPublicProducts = () => prisma.product.findMany({ where: { isPublished: true }, include: productInclude });
+// Only explicitly selected slides are public here; catalog publication is independent.
+export const getCarouselProducts = () => prisma.product.findMany({ where: { inCarousel: true }, orderBy: { id: "asc" }, take: 5, include: productInclude });
 export const getProductById = (id: number) => prisma.product.findUnique({ where: { id }, include: productInclude });
 export async function setProductCarousel(id: number, inCarousel: boolean) {
     return prisma.$transaction(async tx => {
@@ -38,6 +41,8 @@ export async function updateProduct(id: number, data: z.infer<typeof updateProdu
         await tx.$queryRaw`SELECT id FROM "Product" WHERE id = ${id} FOR UPDATE`;
         const existing = await tx.product.findUnique({ where: { id }, include: productInclude });
         if (!existing) throw new ProductError(404, "Produto não encontrado.");
+        if (typeof data.badge === "string" && data.badge !== existing.badge && !manualBadgeTextSchema.safeParse(data.badge).success)
+            throw new ProductError(400, "O badge deve ter no máximo 12 caracteres.");
         const { colors, ...product } = data;
         if (product.categoryId !== undefined && !await tx.category.findUnique({ where: { id: product.categoryId } })) throw new ProductError(400, "Categoria não encontrada. Atualize a lista de categorias.");
         if (colors) {

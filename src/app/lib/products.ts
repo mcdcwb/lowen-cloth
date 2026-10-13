@@ -77,7 +77,7 @@ export const isNumericSize = (size: string) => /^\d+$/.test(size);
 
 export function catalogSizes(products: Product[]) {
   const clothing = ["PP", "P", "M", "G", "GG", "XG", "XGG"];
-  return [...new Set(products.flatMap(p => p.colors.flatMap(c => c.variants.filter(v => v.stock > 0).map(v => v.value))))].sort((a, b) => {
+  return [...new Set(products.filter(p => p.isPublished !== false).flatMap(p => p.colors.flatMap(c => c.variants.filter(v => v.stock > 0).map(v => v.value))))].sort((a, b) => {
     if (isNumericSize(a) !== isNumericSize(b)) return isNumericSize(a) ? 1 : -1;
     const ai = clothing.indexOf(a), bi = clothing.indexOf(b);
     if (ai >= 0 || bi >= 0) return ai < 0 ? 1 : bi < 0 ? -1 : ai - bi;
@@ -101,4 +101,12 @@ export async function fetchProducts(baseUrl = "/api", signal?: AbortSignal): Pro
   const body: unknown = await response.json();
   if (!Array.isArray(body)) throw new Error("Resposta inválida do catálogo.");
   return body.map(adaptProduct).filter(product => product.isPublished);
+}
+
+export async function fetchCarouselProducts(baseUrl = "/api", signal?: AbortSignal): Promise<Product[]> {
+  const response = await fetch(baseUrl.replace(/\/$/, "") + "/produtos/carrossel", { signal, cache: "no-store" });
+  if (!response.ok) throw new Error("Não foi possível carregar o carrossel. Tente novamente.");
+  const body: unknown = await response.json();
+  if (!Array.isArray(body)) throw new Error("Resposta inválida do carrossel.");
+  return body.map(adaptProduct).filter(product => product.inCarousel).sort((a, b) => a.id - b.id).slice(0, 5);
 }

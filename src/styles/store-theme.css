@@ -153,6 +153,32 @@ html[data-store-theme="dark"] {
   transition: opacity 180ms ease-out;
 }
 
+.store-favorite-tooltip {
+  position: absolute;
+  z-index: 30;
+  top: 48px;
+  right: 0;
+  max-width: calc(100vw - 16px);
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--foreground);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.3);
+  font-size: 12px;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.store-favorite-bookmark:hover .store-favorite-tooltip,
+.store-favorite-bookmark:focus-visible .store-favorite-tooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
 [data-store-theme="dark"] .store-favorite-bookmark svg {
   /* The visual path starts 4.4px below the SVG box; keep that edge fixed. */
   transform-origin: 50% 4.4px;
@@ -211,7 +237,7 @@ html[data-store-theme="dark"] {
   }
 }
 
-/* Crop empty viewBox margins; automatic tags use the half-height ratio below. */
+/* Each SVG now uses its painted bounds as the viewBox. */
 .product-tag {
   display: inline-block;
   position: relative;
@@ -226,8 +252,8 @@ html[data-store-theme="dark"] {
 .product-tag > svg {
   position: absolute;
   width: 100%;
-  height: 230.7494%;
-  top: -65.3747%;
+  height: 100%;
+  top: 0;
   left: 0;
 }
 .product-tag-label {
@@ -265,20 +291,42 @@ html[data-store-theme="dark"] {
   [data-store-theme="dark"] .store-product-arrow { transition: none; }
 }
 
-.store-product-photo { container-type: inline-size; }
+.store-product-photo {
+  container-type: inline-size;
+  --store-overlay-shadow: drop-shadow(0 3px 5px rgb(0 0 0 / 0.45));
+}
+.store-favorite-layer { clip-path: inset(-1px 0 -40px 0); }
+.store-favorite-bookmark svg { overflow: visible; filter: var(--store-overlay-shadow); }
 .store-product-badges {
   --badge-slot: min(54px, calc((100cqi * 0.625 - 26px) / 2));
-  height: calc(var(--badge-slot) * 2 + 2px);
+  height: 100%;
+  /* Clip only badge effects to the photo frame, including its existing top border. */
+  clip-path: inset(-1px 0 -2% 0);
 }
 .store-product-badges > .product-tag {
   position: absolute;
   top: 0;
   left: 0;
   max-width: min(100%, calc(var(--badge-slot) * 2.307494));
+  overflow: visible;
 }
-.store-product-badges > .store-badge-manual { top: calc(var(--badge-slot) + 2px); }
+.store-product-badges > .product-tag > svg {
+  overflow: visible;
+  filter: var(--store-overlay-shadow);
+}
+/* Include the detail photo's lower border in the visible badge frame. */
+.store-detail-photo > .store-product-badges { height: 100%; }
+/* The manual body ends at the outer photo edge while its original SVG tip stays intact. */
+.store-product-badges > .store-badge-manual { top: auto; bottom: -1%; }
+.store-badge-manual > .product-tag-label { bottom: 0; }
+.product-tag-manual,
+.store-product-badges > .product-tag-manual { max-width: none; aspect-ratio: auto; }
 .store-product-badges > .store-badge-automatic {
-  aspect-ratio: 1792 / 388.3;
+  /* Cover the card's one-pixel top border without moving the photograph or manual slot. */
+  top: -1px;
+  height: 12px;
+  max-width: min(100%, calc(100cqi - 26px));
+  aspect-ratio: auto;
   pointer-events: auto;
   transition: transform 225ms ease-out, clip-path 225ms ease-out;
 }
@@ -289,12 +337,13 @@ html[data-store-theme="dark"] {
 @media (hover: hover) and (pointer: fine) {
   .store-product-badges > .store-badge-automatic {
     /* Hide just the portion outside the left border; keep the visible tab interactive. */
-    transform: translateX(-72%);
-    clip-path: inset(0 0 0 72%);
+    transform: translateX(-85%);
+    clip-path: inset(-16px -16px -16px 85%);
   }
-  .store-product-card:hover .store-product-badges > .store-badge-automatic {
+  .store-product-card:hover .store-product-badges > .store-badge-automatic,
+  .store-detail-photo:hover .store-product-badges > .store-badge-automatic {
     transform: translateX(0);
-    clip-path: inset(0);
+    clip-path: inset(-16px -16px -16px 0);
   }
   .store-product-badges > .store-badge-automatic:focus-visible {
     transform: translateX(0);
@@ -305,12 +354,20 @@ html[data-store-theme="dark"] {
 @media (prefers-reduced-motion: reduce) {
   .store-product-badges > .store-badge-automatic { transition: none; }
 }
-.store-product-badges .store-stock-low { max-width: min(85%, calc(var(--badge-slot) * 2.307494 * 0.85)); }
-.store-badge-manual .product-tag-label,
-.store-stock-last .product-tag-label { font-size: clamp(8px, 9cqi, 11.2px); }
-.store-stock-low .product-tag-label { font-size: clamp(6px, 9cqi, 8.5px); }
-.store-product-badges .store-stock-last .product-tag-label { font-size: clamp(6px, 8cqi, 8px); }
-.store-product-badges .store-stock-low .product-tag-label { font-size: clamp(5px, 8cqi, 7px); }
+.product-tag-manual .product-tag-label { font-size: 8px; line-height: 1.25; inset: 0 18% 0 2%; }
+.store-badge-automatic .product-tag-label { font-size: 9.9px; font-weight: 700; line-height: 1.1; font-family: inherit; inset: 0 14% 0 2%; white-space: nowrap; }
+@media (max-width: 359px) {
+  .store-badge-automatic .product-tag-label { font-size: 9px; }
+}
+.store-product-badges > .store-badge-automatic[data-badge-size="detail"] {
+  height: 18px;
+  max-width: min(100%, calc(100cqi - 39px));
+}
+.store-badge-automatic[data-badge-size="detail"] .product-tag-label { font-size: 14.85px; }
+@media (max-width: 359px) {
+  .store-badge-automatic.store-stock-last[data-badge-size="detail"] .product-tag-label { font-size: 13.5px; }
+}
+.product-tag-manual[data-badge-size="detail"] .product-tag-label { font-size: 12px; inset: 0 18% 0 2%; }
 [data-store-theme="dark"] .store-favorite-bookmark { cursor: pointer; }
 [data-store-theme="dark"] .store-favorite-bookmark[aria-busy="true"] { cursor: progress; }
 

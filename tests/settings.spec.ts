@@ -58,6 +58,26 @@ test("stock badge switches save independently, persist and support keyboard navi
   await expect(page.locator("#low-stock-threshold")).toHaveValue("5");
 });
 
+test("saved Manager switches control selected storefront badges and the red-disabled fallback", async ({ page }) => {
+  await setup(page);
+  const lastUnit = { ...products[1], id: 8, name: "Peça 1", colors: [{ ...products[1].colors[0], id: 8, variants: [{ id: 8, value: "M", stock: 1 }] }] };
+  await page.route("**/api/produtos{,/admin}", route => route.fulfill({ json: [...products, lastUnit] }));
+  for (const [showLow, showLast, expected] of [[true, false, "POUCAS UNIDADES"], [false, false, null], [false, true, "ÚLTIMA PEÇA"]] as const) {
+    await page.goto("/manager");
+    await page.getByRole("link", { name: "Configurações", exact: true }).click();
+    await page.getByRole("checkbox", { name: 'Exibir badge "Poucas unidades"', exact: true }).setChecked(showLow);
+    await page.getByRole("checkbox", { name: 'Exibir badge "Última peça"', exact: true }).setChecked(showLast);
+    await page.getByRole("button", { name: "Salvar alterações", exact: true }).click();
+    await expectSuccess(page, "Configurações salvas com sucesso!", "positive");
+    await page.goto("/");
+    const card = page.locator(".store-product-card").filter({ has: page.getByText("Peça 1", { exact: true }) });
+    await expect(card.locator(".store-badge-automatic")).toHaveCount(0);
+    await card.getByRole("button", { name: "M", exact: true }).click();
+    if (expected) await expect(card.locator(".store-badge-automatic")).toHaveAccessibleName(expected);
+    else await expect(card.locator(".store-badge-automatic")).toHaveCount(0);
+  }
+});
+
 for (const width of [320, 390, 768, 1440]) test(`settings sections collapse independently and retain drafts at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 1000 });
   const state = await setup(page);

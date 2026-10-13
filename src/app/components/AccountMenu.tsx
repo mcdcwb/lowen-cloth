@@ -6,7 +6,6 @@ export function AccountMenu({ name, role, onLogout, compactMobile = false }: { n
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const mouseHovering = useRef(false);
   const id = useId();
   const location = useLocation();
 
@@ -20,14 +19,13 @@ export function AccountMenu({ name, role, onLogout, compactMobile = false }: { n
   }, []);
 
   return (
-    <div ref={root} className="relative" onPointerEnter={event => { if (event.pointerType === "mouse") { mouseHovering.current = true; setOpen(true); } }}
-      onPointerLeave={event => { if (event.pointerType === "mouse") { mouseHovering.current = false; setOpen(false); } }}
+    <div ref={root} className="relative"
       onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}
       onKeyDown={event => {
         if (event.key === "Escape") { setOpen(false); trigger.current?.focus(); }
       }}>
       <button ref={trigger} type="button" aria-expanded={open} aria-controls={id}
-        onClick={event => setOpen(value => event.detail > 0 && mouseHovering.current ? true : !value)}
+        onClick={() => setOpen(value => !value)}
         className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-muted text-muted-foreground hover:text-primary focus-visible:outline-2 focus-visible:outline-primary">
         <User aria-hidden="true" className="w-3.5 h-3.5 shrink-0" />
         <span className={`${compactMobile ? "sr-only sm:not-sr-only " : ""}text-[15px] font-medium max-w-24 max-[390px]:max-w-6 sm:max-w-40 truncate`}>{name.trim().split(/\s+/)[0]}</span>

@@ -1,3 +1,4 @@
+import { manualBadgeMaxLength } from "../../../backend/src/lib/manual-badges.ts";
 export const audiences = ["masculino", "feminino", "unissex", "infantil"];
 export const labels: Record<string, string> = {
   masculino: "Masculino", feminino: "Feminino", unissex: "Unissex", infantil: "Infantil"
@@ -8,7 +9,7 @@ export interface ColorInput {
 }
 export interface ProductInput {
   name: string; description: string; price: number; public: string; categoryId: number; isPublished: boolean;
-  badge: string | null; badgeBackgroundColor?: string; badgeTextColor?: string; colors: ColorInput[];
+  badge?: string | null; badgeBackgroundColor?: string; badgeTextColor?: string; colors: ColorInput[];
 }
 export interface ManagedProduct extends ProductInput { id: number; inCarousel: boolean; category: string }
 export interface ColorDraft {
@@ -61,8 +62,9 @@ export function toDraft(product?: ManagedProduct): ProductDraft {
     badgeBackgroundColor: product?.badgeBackgroundColor ?? "#2457A7", badgeTextColor: product?.badgeTextColor ?? "#FFFFFF",
     colors: product?.colors.map(colorDraft) ?? [colorDraft()] };
 }
-export function validateDraft(draft: ProductDraft): string[] {
+export function validateDraft(draft: ProductDraft, originalBadge?: string | null): string[] {
   const errors: string[] = [];
+  if (draft.badge.length > manualBadgeMaxLength && draft.badge !== originalBadge) errors.push("O badge deve ter no máximo 12 caracteres.");
   if (draft.name.trim().length < 3) errors.push("O nome deve ter pelo menos 3 caracteres.");
   if (!draft.price.trim() || !Number.isFinite(Number(draft.price)) || Number(draft.price) <= 0) errors.push("Informe um preço maior que zero.");
   if (!draft.public.trim() || !Number.isSafeInteger(Number(draft.categoryId)) || Number(draft.categoryId) <= 0) errors.push("Informe o público e a categoria.");
