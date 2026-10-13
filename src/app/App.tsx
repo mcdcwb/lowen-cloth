@@ -191,7 +191,7 @@ export default function App() {
   }
 
   function selectPublic(publicValue: Public | "todos") {
-    if (isAccountPage || isCheckoutPage) navigate("/");
+    if (detailProduct || isAccountPage || isCheckoutPage) navigate("/");
     setActivePublic(publicValue);
     setCatDropdownOpen(false);
     setMobileMenuOpen(false);
@@ -199,7 +199,7 @@ export default function App() {
   }
 
   function selectCategory(category: Category | null) {
-    if (isAccountPage || isCheckoutPage) navigate("/");
+    if (detailProduct || isAccountPage || isCheckoutPage) navigate("/");
     setActiveCategory(category);
     setCatDropdownOpen(false);
     setMobileMenuOpen(false);
@@ -278,66 +278,6 @@ export default function App() {
         onRegister={handleRegister} onSwitchMode={() => setAuthMode(mode => mode === "login" ? "register" : "login")}
         sessionError={sessionError} />}
     </>;
-  }
-
-  if (detailProduct && !isAccountPage && !isCheckoutPage) {
-    return (
-      <>
-        {shoppingStatus}
-        <ProductDetailPage
-          key={detailProduct.id}
-          product={detailProduct}
-          stockSettings={store.stockBadges ?? null}
-              recommendations={relatedProducts(detailProduct, products)}
-              onOpenProduct={openProductDetail}
-              favorites={shopping.favorites}
-              onFavorite={toggleFavorite}
-          favoritePending={id => shopping.favoriteState(id) === "pending"}
-          favoriteBusy={id => validating || (!!user && !shopping.favoriteReady) || shopping.favoriteBlocked(id)}
-          availableStock={availableStock}
-          user={user}
-          totalItems={totalItems}
-          onBack={() => {
-            setDetailProduct(null);
-            navigate("/", { replace: true });
-          }}
-          onOpenAuth={() => {
-            setAuthOpen(true);
-          }}
-          onLogout={handleLogout}
-          onOpenCart={() => setCartOpen(true)}
-          onAddToCart={addToCart} addState={shopping.addState}
-        />
-
-        <StoreFooter store={store} />
-
-        {cartOpen && (
-          <CartDrawer
-            busy={shopping.busy || !shopping.ready}
-            items={cartItems}
-            totalPrice={totalPrice}
-            user={user}
-            onClose={() => setCartOpen(false)}
-            onRemove={removeFromCart}
-            onChangeQty={changeQty}
-            onClearCart={clearCart}
-            onCheckout={startCheckout}
-            onOpenAuth={() => { setCartOpen(false); setAuthOpen(true); }}
-          />
-        )}
-
-        {authOpen && (
-          <AuthModal
-            mode={authMode}
-            onClose={closeAuth}
-            onLogin={handleLogin}
-            onRegister={handleRegister}
-            onSwitchMode={() => setAuthMode(mode => mode === "login" ? "register" : "login")}
-            sessionError={sessionError}
-          />
-        )}
-      </>
-    );
   }
 
   return (
@@ -493,7 +433,25 @@ export default function App() {
         </div>
       </header>
 
-      {isCheckoutPage ? <CheckoutPage user={user} token={accessToken} validating={validating} shopping={shopping} store={store} cartOpen={cartOpen}
+      {detailProduct && !isAccountPage && !isCheckoutPage ? <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+        <ProductDetailPage
+          key={detailProduct.id}
+          product={detailProduct}
+          stockSettings={store.stockBadges ?? null}
+          recommendations={relatedProducts(detailProduct, products)}
+          onOpenProduct={openProductDetail}
+          favorites={shopping.favorites}
+          onFavorite={toggleFavorite}
+          favoritePending={id => shopping.favoriteState(id) === "pending"}
+          favoriteBusy={id => validating || (!!user && !shopping.favoriteReady) || shopping.favoriteBlocked(id)}
+          availableStock={availableStock}
+          onBack={() => {
+            setDetailProduct(null);
+            navigate("/", { replace: true });
+          }}
+          onAddToCart={addToCart} addState={shopping.addState}
+        />
+      </div> : isCheckoutPage ? <CheckoutPage user={user} token={accessToken} validating={validating} shopping={shopping} store={store} cartOpen={cartOpen}
         onOpenCart={() => { setCartOpen(true); shopping.retry(); }} onLogin={startCheckout} onUnauthorized={message => invalidate(accessToken, message)} /> : isAccountPage ? <AccountPage accessToken={accessToken} onUpdated={updateAccount} user={user} favorites={accountPath === "/favoritos"} onLogin={() => setAuthOpen(true)}>
           {shopping.ready && !shopping.favorites.length && <p className="mt-4">Nenhum favorito salvo.</p>}
           <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -848,12 +806,7 @@ function ProductDetailPage({
   product: baseProduct,
   stockSettings,
   recommendations, onOpenProduct, favorites, onFavorite, favoritePending, favoriteBusy,
-  user,
-  totalItems,
   onBack,
-  onOpenAuth,
-  onLogout,
-  onOpenCart,
   onAddToCart,
   addState,
   availableStock,
@@ -866,12 +819,7 @@ function ProductDetailPage({
   onFavorite: (id: number) => void;
   favoritePending: (id: number) => boolean;
   favoriteBusy: (id: number) => boolean;
-  user: AuthUser | null;
-  totalItems: number;
   onBack: () => void;
-  onOpenAuth: () => void;
-  onLogout: () => void;
-  onOpenCart: () => void;
   onAddToCart: (p: Product, s: Size) => Promise<boolean>;
   addState: GetAddState;
   availableStock: (p: Product, s: Size) => number;
@@ -888,56 +836,7 @@ function ProductDetailPage({
 
   return (
     <div className="store-product-detail min-h-screen bg-background text-foreground">
-      <header className="sticky top-0 z-50 bg-card/95 [&_button]:text-[15px] backdrop-blur border-b border-border shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="flex items-center justify-between h-16">
-            <button
-              onClick={() => {
-                window.location.href = window.location.origin;
-              }}
-              className="flex items-baseline gap-1.5 group"
-            >
-              <span className="text-3xl font-bold text-primary leading-none" style={{ fontFamily: '"Bodoni Moda", serif', fontWeight: 500, letterSpacing: '0.25em' }}>LÖWEN</span>
-            </button>
 
-            <nav className="hidden md:flex items-center gap-3 lg:gap-7">
-              <button
-                onClick={() => {
-                  window.location.href = window.location.origin;
-                }}
-                className="text-[15px] font-medium cursor-pointer transition-colors hover:text-primary"
-              >
-                Início
-              </button>
-              <a href="/#contato" className="text-[15px] font-medium hover:text-primary transition-colors">Contato</a>
-            </nav>
-
-            <div className="flex items-center gap-2">
-              {user ? <AccountMenu name={user.name} role={user.role} onLogout={onLogout} /> : (<button
-                onClick={onOpenAuth}
-                className="hidden md:flex items-center gap-1.5 text-[15px] font-medium px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:text-primary transition-all"
-              >
-                <User className="w-4 h-4" />
-                Entrar
-              </button>
-              )}
-
-              <button
-                onClick={onOpenCart}
-                className="relative p-2 rounded-lg hover:bg-muted transition-colors"
-                aria-label="Abrir carrinho"
-              >
-                <ShoppingCart className="w-5 h-5" />
-                {totalItems > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">
-                    {totalItems > 99 ? "99+" : totalItems}
-                  </span>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         <button

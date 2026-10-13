@@ -37,3 +37,42 @@ for (const width of [320, 390, 768, 1440]) test(`store footer appears once after
   await expect(footer).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Footer 100", exact: true })).toHaveCount(0);
 });
+
+test("shared header filters work from product details and return to the filtered catalog", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await setup(page);
+  await page.goto("/?productId=100");
+
+  const header = page.locator("header");
+  await expect(header).toHaveCount(1);
+  await expect(header.getByRole("button", { name: "Público" })).toBeVisible();
+  await expect(header.getByRole("button", { name: "Categorias" })).toBeVisible();
+
+  await header.getByRole("button", { name: "Categorias" }).click();
+  await header.getByRole("button", { name: "camisetas", exact: true }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByRole("heading", { name: "camisetas", exact: true })).toBeVisible();
+  await expect(page.locator(".store-product-card")).toHaveCount(2);
+
+  await page.goto("/?productId=100");
+  await header.getByRole("button", { name: "Público" }).click();
+  await header.getByRole("button", { name: "Infantil", exact: true }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.locator(".store-product-card")).toHaveCount(0);
+});
+
+test("mobile header filters remain available from product details", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page);
+  await page.goto("/?productId=100");
+  const header = page.locator("header");
+  await expect(header).toHaveCount(1);
+  await header.getByRole("button", { name: "Abrir menu de navegação" }).click();
+  const mobileMenu = header.locator("div.md\\:hidden").filter({ has: page.getByText("Categorias", { exact: true }) });
+  await expect(mobileMenu.getByText("Categorias", { exact: true })).toBeVisible();
+  await expect(mobileMenu.getByText("Público", { exact: true })).toBeVisible();
+  await mobileMenu.getByRole("button", { name: "camisetas", exact: true }).click();
+  await expect(page).toHaveURL("/");
+  await expect(page.getByRole("heading", { name: "camisetas", exact: true })).toBeVisible();
+  await expect(page.locator(".store-product-card")).toHaveCount(2);
+});
