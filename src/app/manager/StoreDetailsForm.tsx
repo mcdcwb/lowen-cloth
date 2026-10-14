@@ -3,8 +3,7 @@ import { toast } from "sonner";
 import { notify } from "../lib/notifications";
 import { emptyAddress, formatCep, lookupCep, type Address } from "../lib/address";
 import { formatWhatsapp, storeDetailsRequest } from "../lib/store-settings";
-import { hoursDraft, hoursToInput } from "../lib/business-hours";
-import { BusinessHoursFields } from "./BusinessHoursFields";
+import { hoursDraft, hoursToInput, WEEK_DAYS, dayLabels, type HoursDraft, type WeekDay } from "../lib/business-hours";
 import { SettingsSectionContent } from "./SettingsSectionContent";
 
 const fields: { key: keyof Address; label: string; max: number }[] = [
@@ -13,6 +12,32 @@ const fields: { key: keyof Address; label: string; max: number }[] = [
   { key: "neighborhood", label: "Bairro", max: 100 }, { key: "city", label: "Cidade", max: 100 },
   { key: "state", label: "Estado / UF", max: 2 }
 ];
+
+function StoreBusinessHoursFields({ value, onChange }: {
+  value: HoursDraft;
+  onChange: (day: WeekDay, update: Partial<HoursDraft[WeekDay]>) => void;
+}) {
+  return <fieldset className="space-y-3" aria-describedby="hours-help">
+    <legend className="text-base font-semibold mb-2">Horário de funcionamento</legend>
+    <p id="hours-help" className="text-sm text-muted-foreground">Configure cada dia. A abertura e o fechamento devem ocorrer no mesmo dia.</p>
+    {WEEK_DAYS.map(day => <div key={day} className="grid gap-3 rounded-lg border border-border p-3 min-w-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] items-center">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">{dayLabels[day]}</p>
+        <label className="inline-flex min-h-11 items-center gap-2 text-sm">
+          <input type="checkbox" checked={value[day].isOpen} onChange={event => onChange(day, { isOpen: event.target.checked })} aria-label={`${dayLabels[day]} aberto`} className="size-4 accent-primary focus-visible:outline-2 focus-visible:outline-primary" />
+          <span>{value[day].isOpen ? "Aberto" : "Fechado"}</span>
+        </label>
+      </div>
+      <div className="grid min-w-0 gap-2 grid-cols-1 min-[390px]:grid-cols-2">
+        {(["openingTime", "closingTime"] as const).map(field => <label key={field} className={`block min-w-0 text-xs ${value[day].isOpen ? "text-foreground" : "text-muted-foreground"}`}>
+          {field === "openingTime" ? "Abertura" : "Fechamento"}
+          <input type="time" step={60} required={value[day].isOpen} disabled={!value[day].isOpen} value={value[day][field]} onChange={event => onChange(day, { [field]: event.target.value })} aria-label={`${field === "openingTime" ? "Abertura" : "Fechamento"} ${dayLabels[day]}`} className="mt-1 min-h-11 min-w-0 w-full rounded-lg border border-border bg-background px-2 focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-50 disabled:cursor-not-allowed" />
+        </label>)}
+      </div>
+    </div>)}
+  </fieldset>;
+}
+
 export function StoreDetailsForm({ token, onUnauthorized, onBusy, disabled = false }: {
   token: string; onUnauthorized: (message: string) => void; onBusy: (busy: boolean) => void; disabled?: boolean;
 }) {
@@ -111,7 +136,7 @@ export function StoreDetailsForm({ token, onUnauthorized, onBusy, disabled = fal
           <input type="tel" value={phone} maxLength={40} aria-describedby="store-phone-help" onChange={event => setPhone(event.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-border bg-background px-3 focus-visible:outline-2 focus-visible:outline-primary" />
         </label>
         <p id="store-phone-help" className="text-sm text-muted-foreground">Informe DDD e número, com ou sem +55. Deixe vazio para ocultar o contato por WhatsApp.</p>
-        <BusinessHoursFields value={hours} onChange={(day, update) => setHours(previous => ({ ...previous, [day]: { ...previous[day], ...update } }))} />
+        <StoreBusinessHoursFields value={hours} onChange={(day, update) => setHours(previous => ({ ...previous, [day]: { ...previous[day], ...update } }))} />
         {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
         <button disabled={saving} aria-busy={saving} className="min-h-11 rounded-lg bg-primary text-primary-foreground px-5 py-2.5 font-medium disabled:opacity-50">{saving ? "Salvando dados da loja..." : "Salvar dados da loja"}</button>
       </fieldset>

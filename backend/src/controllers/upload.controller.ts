@@ -12,6 +12,7 @@ export const uploadImage = (upload: ProductImageUploader) => async (req: Request
         return res.status(201).json({ url });
     } catch (error) {
         // Never log or return provider errors: they can contain request credentials.
+        if (error instanceof UploadUnavailableError) console.error("Cloudinary image upload unavailable: required environment configuration is incomplete");
         if (error instanceof UploadUnavailableError) return res.status(503).json({ error: "Upload de imagens indisponível. Tente novamente mais tarde." });
         return res.status(502).json({ error: "Não foi possível enviar a imagem. Tente novamente." });
     }

@@ -86,11 +86,45 @@ Publique backend e frontend juntos: o contrato de login agora inclui `expiresAt`
 
 ### Publicação
 
-O proxy do Vite atende ao desenvolvimento. No ambiente publicado, configure um
-proxy/rewrite que encaminhe `/api/*` ao backend, retirando o prefixo `/api`.
-Se optar por `VITE_API_URL` com outra origem, será necessário configurar CORS
-restrito à origem do frontend no backend. A configuração de hospedagem não é
-alterada por este trabalho. Sem um backend acessível, o login será recusado.
+A publicação web está preparada para Vercel (`vercel.json`): `npm run build`
+gera `dist`, e o rewrite serve a aplicação SPA nas rotas diretas como `/manager`
+e `/favoritos`. O Vite mantém o proxy `/api` apenas no desenvolvimento. Em
+produção, configure no projeto Vercel a variável pública `VITE_API_URL` como
+`https://lowen-cloth-api.onrender.com` para os ambientes Production e Preview
+que forem usados. Não inclua `/api` nem a barra final. Como o Vite incorpora
+essa variável no bundle, faça um novo deploy após alterá-la.
+
+No serviço Render, configure `FRONTEND_ORIGIN=https://lowen-cloth.vercel.app`.
+O backend permite essa origem exata (sem barra final); origens adicionais, como
+um domínio próprio, podem ser separadas por vírgulas. O CORS aceita os métodos
+e cabeçalhos necessários, incluindo o Bearer JWT, e responde a preflight OPTIONS.
+O servidor escuta `PORT` fornecida pelo Render e vincula em `0.0.0.0`.
+
+Variáveis do backend Render:
+
+- `DATABASE_URL`: URL de conexão do PostgreSQL Neon, com SSL exigido.
+- `JWT_SECRET`: segredo aleatório forte usado para assinar tokens; mantenha-o
+  somente no Render.
+- `NODE_ENV=production`.
+- `FRONTEND_ORIGIN=https://lowen-cloth.vercel.app` (e domínios frontend adicionais,
+  se houver).
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` e `CLOUDINARY_API_SECRET` são
+  opcionais para a aplicação funcionar, mas necessários para upload de imagens
+  pelo Manager. Sem eles, ainda é possível cadastrar URLs de imagem.
+- `PORT` é injetada pela plataforma; não é necessário defini-la manualmente.
+
+Variável do frontend Vercel:
+
+- `VITE_API_URL=https://lowen-cloth-api.onrender.com` (Production; adicione também
+  a Preview se os previews precisarem falar com o backend de produção).
+
+Não configure `DATABASE_URL`, `JWT_SECRET` nem segredos Cloudinary no frontend.
+O catálogo público, produtos/variantes/estoque e Manager, autenticação, conta,
+favoritos, carrinho e revisão de checkout usam as rotas existentes do backend.
+O checkout implementado prepara o pedido para envio pelo WhatsApp; esta versão
+não possui integração de pagamento online por cartão. A plataforma de deploy
+não configura variáveis nos painéis Render/Vercel automaticamente: salve-as
+nos respectivos serviços e publique/republique depois de configurá-las.
 
 ### Testes
 
