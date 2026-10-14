@@ -17,6 +17,25 @@ export function createApp(options: { uploadProductImage?: ProductImageUploader; 
     getJwtKey();
     const app = express();
 
+    const allowedOrigins = new Set((process.env.FRONTEND_ORIGIN ?? "")
+        .split(",").map(origin => origin.trim().replace(/\/$/, "")).filter(Boolean));
+    if (process.env.NODE_ENV !== "production") {
+        ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:4178", "http://127.0.0.1:4178"]
+            .forEach(origin => allowedOrigins.add(origin));
+    }
+    app.use((req, res, next) => {
+        const origin = req.get("Origin");
+        if (origin && allowedOrigins.has(origin)) {
+            res.setHeader("Access-Control-Allow-Origin", origin);
+            res.vary("Origin");
+            res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS");
+            res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+            if (req.method === "OPTIONS") return res.sendStatus(204);
+        }
+        if (req.method === "OPTIONS") return res.sendStatus(403);
+        next();
+    });
+
     app.use(express.json());
     app.use("/produtos", productRoutes);
     app.use("/categorias", categoryRoutes);
