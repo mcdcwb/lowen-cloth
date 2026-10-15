@@ -1,9 +1,12 @@
 import { Router } from "express";
 import { requireAdmin } from "../middlewares/require-admin.js";
-import { confirm, advance, cancel, list, details } from "../controllers/order.controller.js";
+import { confirm, advance, cancel, list, details, archive, reports, statusCounts } from "../controllers/order.controller.js";
 const router = Router();
 router.use(requireAdmin);
 router.get("/", list);
+router.get("/reports", reports);
+router.get("/status-counts", statusCounts);
+router.post("/:id/archive", archive);
 router.get("/:id", details);
 router.post("/:id/confirm", confirm);
 router.post("/:id/advance", advance);

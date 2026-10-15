@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { SettingsSectionContent } from "./SettingsSectionContent";
 import type { StockBadgeSettings } from "../../../backend/src/lib/stock-badges";
+import { Button } from "../components/ui/button";
 
 export function SettingsPage({ settings, saving, onSave }: { settings: StockBadgeSettings; saving: boolean; onSave: (value: StockBadgeSettings) => Promise<boolean> }) {
   const threshold = settings.lowStockThreshold;
@@ -34,7 +35,7 @@ export function SettingsPage({ settings, saving, onSave }: { settings: StockBadg
           Exibir badge "Última peça"
         </label>
       </fieldset>
-      <button type="submit" disabled={saving || (valid && parsed === threshold && showLowStockBadge === settings.showLowStockBadge && showLastUnitBadge === settings.showLastUnitBadge)} aria-busy={saving} className="mt-6 min-h-11 rounded-lg bg-primary text-primary-foreground px-5 py-2.5 font-medium disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">{saving ? "Salvando..." : "Salvar alterações"}</button>
+      <Button type="submit" disabled={saving || (valid && parsed === threshold && showLowStockBadge === settings.showLowStockBadge && showLastUnitBadge === settings.showLastUnitBadge)} aria-busy={saving} className="mt-6 h-auto min-h-11 rounded-lg px-5 py-2.5 font-semibold">{saving ? "Salvando..." : "Salvar alterações"}</Button>
       </SettingsSectionContent>
     </form>
   </>;

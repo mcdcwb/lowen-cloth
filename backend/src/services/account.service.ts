@@ -31,3 +31,25 @@ export async function changePassword(id: number, input: z.infer<typeof changePas
     const updated = await prisma.user.updateMany({ where: { id, passwordHash: user.passwordHash }, data: { passwordHash } });
     return updated.count === 1;
 }
+
+const adminSelect = { id: true, email: true } as const;
+function adminAccount(admin: { id: number; email: string }) {
+    return { id: admin.id, name: admin.email.split("@")[0]!, email: admin.email, role: "ADMIN" as const };
+}
+export async function getAdminProfile(id: number) {
+    const admin = await prisma.admin.findUnique({ where: { id }, select: adminSelect });
+    return admin ? { account: adminAccount(admin) } : null;
+}
+export async function updateAdminEmail(id: number, email: string) {
+    return registerUniqueEmail(email, async tx => {
+        const admin = await tx.admin.update({ where: { id }, data: { email }, select: adminSelect });
+        return { account: adminAccount(admin) };
+    }, undefined, id);
+}
+export async function changeAdminPassword(id: number, input: z.infer<typeof changePasswordSchema>) {
+    const admin = await prisma.admin.findUnique({ where: { id }, select: { passwordHash: true } });
+    if (!admin || !await verifyPassword(admin.passwordHash, input.currentPassword)) return false;
+    const passwordHash = await hashPassword(input.newPassword);
+    const updated = await prisma.admin.updateMany({ where: { id, passwordHash: admin.passwordHash }, data: { passwordHash } });
+    return updated.count === 1;
+}

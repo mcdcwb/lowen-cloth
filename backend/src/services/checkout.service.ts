@@ -49,7 +49,13 @@ export async function prepareCheckoutWhatsapp(userId: number, input: z.infer<typ
       input.reviewedContext.customerName, input.reviewedContext.whatsapp,
       input.reviewedContext.address && addressSchema.parse(input.reviewedContext.address),
       input.reviewedContext.pickupAddress && addressSchema.parse(input.reviewedContext.pickupAddress)])).digest("hex");
-    const previous = await tx.order.findUnique({ where: { userId_idempotencyKey: { userId, idempotencyKey: input.idempotencyKey } } });
+    // Checkout recovery only needs these persisted values. Keep this query independent
+    // of newer optional Order columns so checkout retries remain available while an
+    // additive reporting/archive migration is being rolled out.
+    const previous = await tx.order.findUnique({
+      where: { userId_idempotencyKey: { userId, idempotencyKey: input.idempotencyKey } },
+      select: { id: true, number: true, status: true, requestHash: true, whatsappUrl: true, whatsappMessage: true }
+    });
     if (previous) {
       if (previous.requestHash !== requestHash) throw new CheckoutError(409, "Esta tentativa já foi utilizada com outros dados.");
       return { order: { id: previous.id, number: previous.number, status: previous.status }, url: previous.whatsappUrl, message: previous.whatsappMessage };

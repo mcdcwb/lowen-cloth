@@ -273,7 +273,7 @@ export default function App() {
     return <>
       <Manager user={user} token={accessToken} validating={validating} sessionError={authOpen ? null : sessionError}
         onLogin={() => { setAuthMode("login"); setAuthOpen(true); }} onLogout={handleLogout}
-        onUnauthorized={message => invalidate(accessToken, message)} onChanged={() => { retryProducts(); retryCarousel(); }} />
+        onUnauthorized={message => invalidate(accessToken, message)} onChanged={() => { retryProducts(); retryCarousel(); }} onAccountUpdated={updateAccount} />
       {authOpen && <AuthModal mode={authMode} onClose={() => setAuthOpen(false)} onLogin={handleLogin}
         onRegister={handleRegister} onSwitchMode={() => setAuthMode(mode => mode === "login" ? "register" : "login")}
         sessionError={sessionError} />}
@@ -314,7 +314,7 @@ export default function App() {
                 Início
               </button>
 
-              <div className="relative" ref={publicDropdownRef}>
+              <div className="relative hidden" ref={publicDropdownRef}>
                 <button type="button" aria-expanded={publicDropdownOpen}
                   onClick={() => { setPublicDropdownOpen(value => !value); setCatDropdownOpen(false); }}
                   className="flex items-center gap-1 text-[15px] font-medium hover:text-primary">
@@ -403,8 +403,9 @@ export default function App() {
                 Categorias
               </div>
               <FilterOptions options={availableCategories} value={activeCategory} allValue={null} onChange={selectCategory} />
-              <div className="px-3 pt-2 pb-1 text-[15px] font-semibold uppercase tracking-widest text-muted-foreground">Público</div>
-              <FilterOptions options={PUBLICS} value={activePublic} allValue="todos" onChange={value => selectPublic(value ?? "todos")} />
+              <div className="hidden"><div className="px-3 pt-2 pb-1 text-[15px] font-semibold uppercase tracking-widest text-muted-foreground">Público</div>
+                <FilterOptions options={PUBLICS} value={activePublic} allValue="todos" onChange={value => selectPublic(value ?? "todos")} />
+              </div>
               <a
                 href="/#contato"
                 onClick={() => setMobileMenuOpen(false)}
@@ -695,7 +696,7 @@ export default function App() {
                   </button>}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+                <div className="store-catalog-grid grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
                   {sortedProducts.map((product) => (
                     <ProductCard stockSettings={store.stockBadges ?? null} key={product.id} liked={shopping.favorites.some(p => p.id === product.id)} onFavorite={() => toggleFavorite(product.id)} favoritePending={shopping.favoriteState(product.id) === "pending"} favoriteBusy={validating || (!!user && !shopping.favoriteReady) || shopping.favoriteBlocked(product.id)} product={product} availableStock={availableStock} onAddToCart={addToCart} addState={shopping.addState} />
                   ))}
@@ -769,14 +770,14 @@ function StoreFooter({ store }: { store: ReturnType<typeof useStoreDetails> }) {
   return (
     <footer id="contato" className="mt-20 bg-secondary border-t border-border">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 py-14">
-        <div className="grid md:grid-cols-3 gap-10">
-          <div>
+        <div className="grid md:grid-cols-3 gap-10 text-center md:text-left">
+          <div className="flex flex-col items-center md:items-start">
             <div className="flex items-baseline gap-1.5 mb-3">
               <span className="text-xl font-bold text-primary leading-none" style={{ fontFamily: '"Bodoni Moda", serif', fontWeight: 500, letterSpacing: '0.25em' }}>LÖWEN</span>
             </div>
             <p className="text-sm text-muted-foreground leading-relaxed">Vestindo fé. Carregando propósito.</p>
           </div>
-          <div className="md:text-center">
+          <div className="flex flex-col items-center md:text-center">
             <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Contato</h4>
             <ul className="space-y-2 text-sm text-foreground/80">
               {store.address ? <li><address className="not-italic break-words">
@@ -787,7 +788,7 @@ function StoreFooter({ store }: { store: ReturnType<typeof useStoreDetails> }) {
               {store.whatsapp && <li>📱 {formatWhatsapp(store.whatsapp)}</li>}
             </ul>
           </div>
-          <div className="md:text-right">
+          <div className="flex flex-col items-center md:items-end md:text-right">
             <h4 className="font-semibold text-sm uppercase tracking-widest text-muted-foreground mb-3">Horário loja física</h4>
             <ul className="space-y-2 text-sm text-foreground/80">
               {store.businessHours ? businessHoursLines(store.businessHours).map(line => <li key={line}>{line}</li>) : <li>{store.loading ? "Carregando horários..." : "Horários de funcionamento indisponíveis."}</li>}
@@ -1084,7 +1085,7 @@ function ProductCard({
       {/* Info */}
       <div className="p-3 flex flex-col gap-2 flex-1 rounded-t-2xl rounded-b-[15px] bg-card">
         <div>
-          <p className="text-sm font-medium leading-snug text-foreground line-clamp-2 min-h-[2.5rem]">
+          <p className="text-[15px] font-medium leading-[1.25] text-foreground line-clamp-2 min-h-[2.5rem]">
             {product.name}
           </p>
           <p className="mt-1 text-base font-bold text-primary">{formatPrice(product.price)}</p>

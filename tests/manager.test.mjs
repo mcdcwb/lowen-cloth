@@ -23,12 +23,13 @@ test("order cancellation uses the authenticated expected-state contract and usef
 test("order API sends combined validated controls and keeps stock conflicts", async () => {
   const calls = [], query = { search: " João & Silva ", status: "PREPARING", sort: "number", direction: "asc", page: 2 };
   const api = createManagerApi("admin", "/api/", async (url, init) => { calls.push({ url, init }); return Response.json({}); });
-  await api.orders(query); await api.order(7); await api.confirmOrder(7);
+  await api.orders(query); await api.order(7); await api.confirmOrder(7); await api.archiveOrder(7); await api.reports(); await api.statusCounts();
   const params = new URL(calls[0].url, "https://example.test").searchParams;
   assert.equal(params.get("search"), "João & Silva"); assert.equal(params.get("status"), "PREPARING");
   assert.equal(params.get("sort"), "number"); assert.equal(params.get("direction"), "asc"); assert.equal(params.get("page"), "2");
   assert.equal(calls[1].url, "/api/orders/7"); assert.equal(calls[2].url, "/api/orders/7/confirm");
   assert.equal(calls[2].init.method, "POST"); assert.equal(calls[2].init.body, "{}");
+  assert.deepEqual(calls.slice(3).map(call => call.url), ["/api/orders/7/archive", "/api/orders/reports", "/api/orders/status-counts"]);
   assert.ok(calls.every(c => c.init.headers.Authorization === "Bearer admin"));
   const conflicts = [{ variantId: 42, productName: "Produto histórico", colorName: "Branco", size: "GG", requested: 2, available: 1 }];
   const failing = createManagerApi("admin", "/api", async () => Response.json({ error: "Estoque insuficiente", conflicts }, { status: 409 }));

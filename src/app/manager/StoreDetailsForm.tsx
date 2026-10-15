@@ -5,6 +5,7 @@ import { emptyAddress, formatCep, lookupCep, type Address } from "../lib/address
 import { formatWhatsapp, storeDetailsRequest } from "../lib/store-settings";
 import { hoursDraft, hoursToInput, WEEK_DAYS, dayLabels, type HoursDraft, type WeekDay } from "../lib/business-hours";
 import { SettingsSectionContent } from "./SettingsSectionContent";
+import { Button } from "../components/ui/button";
 
 const fields: { key: keyof Address; label: string; max: number }[] = [
   { key: "cep", label: "CEP", max: 9 }, { key: "street", label: "Rua / Logradouro", max: 200 },
@@ -138,7 +139,7 @@ export function StoreDetailsForm({ token, onUnauthorized, onBusy, disabled = fal
         <p id="store-phone-help" className="text-sm text-muted-foreground">Informe DDD e número, com ou sem +55. Deixe vazio para ocultar o contato por WhatsApp.</p>
         <StoreBusinessHoursFields value={hours} onChange={(day, update) => setHours(previous => ({ ...previous, [day]: { ...previous[day], ...update } }))} />
         {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
-        <button disabled={saving} aria-busy={saving} className="min-h-11 rounded-lg bg-primary text-primary-foreground px-5 py-2.5 font-medium disabled:opacity-50">{saving ? "Salvando dados da loja..." : "Salvar dados da loja"}</button>
+        <Button disabled={saving} aria-busy={saving} className="h-auto min-h-11 rounded-lg px-5 py-2.5 font-semibold">{saving ? "Salvando dados da loja..." : "Salvar dados da loja"}</Button>
       </fieldset>
     </form>}
     </SettingsSectionContent>

@@ -203,6 +203,32 @@ test("checkout persists orders without changing cart/stock and confirms atomical
       assert.equal((await response.json()).items.find((item: any) => item.variantId === variant.id).quantity, 1);
       assert.equal((await review()).conflicts.length, 1);
     });
+    await t.test("idempotent WhatsApp recovery works when optional reporting/archive columns are not deployed", async () => {
+      await prisma.productVariant.update({ where: { id: variant.id }, data: { stock: 5 } });
+      const input = await body("PICKUP");
+      const first = await req("/checkout/whatsapp", "POST", input);
+      assert.equal(first.status, 200);
+      const created = await first.json();
+
+      // Simulate an older app database in the disposable lowen_test_* database.
+      await prisma.$executeRaw`ALTER TABLE "Order" DROP COLUMN "completedAt", DROP COLUMN "archivedAt"`;
+      try {
+        await assert.rejects(
+          prisma.order.findUnique({ where: { userId_idempotencyKey: { userId: user.id, idempotencyKey: input.idempotencyKey } } }),
+          /completedAt|archivedAt/
+        );
+
+        const recovered = await req("/checkout/whatsapp", "POST", input);
+        assert.equal(recovered.status, 200);
+        const replay = await recovered.json();
+        assert.equal(replay.order.id, created.order.id);
+        assert.equal(replay.url, created.url);
+        assert.equal(await prisma.order.count({ where: { id: created.order.id } }), 1);
+      } finally {
+        // Restore the shared isolated schema before other integration files use it.
+        await prisma.$executeRaw`ALTER TABLE "Order" ADD COLUMN "completedAt" TIMESTAMP(3), ADD COLUMN "archivedAt" TIMESTAMP(3)`;
+      }
+    });
   } finally {
     await server.close(); await isolated.$disconnect();
     if (productId) await prisma.product.deleteMany({ where: { id: productId } });

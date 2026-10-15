@@ -115,3 +115,51 @@ test("customer profile, address and password use the authenticated identity", as
         await prisma.$disconnect();
     }
 });
+
+test("administrator account changes are limited to the authenticated admin", async () => {
+    const suffix = randomUUID();
+    const adminEmail = `admin-${suffix}@example.test`, nextEmail = `updated-${suffix}@example.test`, otherEmail = `other-${suffix}@example.test`, userEmail = `user-${suffix}@example.test`;
+    const password = `old-${suffix}`, nextPassword = `new-${suffix}`;
+    const server = await startTestServer(createApp());
+    let adminIds: number[] = [], userId: number | undefined;
+    try {
+        const first = await createAdmin({ email: adminEmail, password });
+        const second = await createAdmin({ email: otherEmail, password });
+        const user = await createUser({ name: "Cliente de teste", email: userEmail, password });
+        adminIds = [first.id, second.id]; userId = user.id;
+        const login = async (email: string, secret = password) => server.request("/auth/login", "POST", { email, password: secret });
+        const firstToken = (await (await login(adminEmail)).json()).accessToken;
+        const secondToken = (await (await login(otherEmail)).json()).accessToken;
+        const userToken = (await (await login(userEmail)).json()).accessToken;
+        const req = (path: string, method = "GET", body?: unknown, token = firstToken) => server.request(path, method, body, token);
+        const own = await req("/conta/admin");
+        assert.equal(own.status, 200);
+        assert.deepEqual(await own.json(), { account: { id: first.id, name: adminEmail.split("@")[0], email: adminEmail, role: "ADMIN" } });
+        for (const body of [{ email: "invalid" }, { email: otherEmail }, { email: userEmail }, { email: nextEmail, id: second.id }]) {
+            assert.ok([400, 409].includes((await req("/conta/admin", "PATCH", body)).status));
+        }
+        const changed = await req("/conta/admin", "PATCH", { email: nextEmail });
+        assert.equal(changed.status, 200);
+        assert.equal((await changed.json()).account.email, nextEmail);
+        assert.equal((await (await req("/auth/me")).json()).account.email, nextEmail);
+        assert.equal((await req("/conta/admin", "GET", undefined, secondToken)).status, 200);
+        assert.equal((await req("/conta/admin", "PATCH", { email: `hijack-${suffix}@example.test`, id: second.id }, secondToken)).status, 400);
+        assert.equal((await req("/conta/admin", "GET", undefined, userToken)).status, 403);
+        const passwordChange = { currentPassword: password, newPassword: nextPassword, confirmPassword: nextPassword };
+        for (const invalid of [{ ...passwordChange, currentPassword: "wrong" }, { ...passwordChange, confirmPassword: "other" }, { ...passwordChange, id: second.id }]) {
+            const response = await req("/conta/admin/senha", "PUT", invalid);
+            assert.equal(response.status, 400);
+            const body = await response.text(); assert.ok(!body.includes(password) && !body.includes(nextPassword));
+        }
+        const changedPassword = await req("/conta/admin/senha", "PUT", passwordChange);
+        assert.equal(changedPassword.status, 200);
+        assert.deepEqual(await changedPassword.json(), { message: "Senha alterada com sucesso." });
+        assert.equal((await login(nextEmail, password)).status, 401);
+        assert.equal((await login(nextEmail, nextPassword)).status, 200);
+        assert.equal((await prisma.admin.findUniqueOrThrow({ where: { id: first.id } })).passwordHash.startsWith("$argon2id$"), true);
+    } finally {
+        if (userId) await prisma.user.deleteMany({ where: { id: userId } });
+        if (adminIds.length) await prisma.admin.deleteMany({ where: { id: { in: adminIds } } });
+        await server.close(); await prisma.$disconnect();
+    }
+});

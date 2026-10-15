@@ -1,6 +1,23 @@
 import type { Request, Response } from "express";
+import { prisma } from "../lib/prisma.js";
 import { orderIdSchema, confirmOrderSchema, advanceOrderSchema, cancelOrderSchema, orderListSchema } from "../schemas/order.schema.js";
-import { confirmOrder, advanceOrder, cancelOrder, getOrder, listOrders, OrderError } from "../services/order.service.js";
+import { confirmOrder, advanceOrder, cancelOrder, getOrder, listOrders, archiveOrder, orderReports, OrderError } from "../services/order.service.js";
+export async function archive(req: Request, res: Response) {
+  const id = orderIdSchema.safeParse(req.params.id);
+  if (!id.success) return res.status(400).json({ error: "Pedido inválido." });
+  try { return res.json(await archiveOrder(id.data)); }
+  catch (error) { if (error instanceof OrderError) return res.status(error.status).json({ error: error.message }); console.error(error); return res.status(500).json({ error: "Não foi possível arquivar o pedido." }); }
+}
+export async function reports(_req: Request, res: Response) {
+  try { return res.json(await orderReports()); }
+  catch (error) { console.error(error); return res.status(500).json({ error: "Não foi possível carregar os relatórios." }); }
+}
+export async function statusCounts(_req: Request, res: Response) {
+  try {
+    const rows = await prisma.order.groupBy({ by: ["status"], where: { archivedAt: null }, _count: { _all: true } });
+    return res.json(Object.fromEntries(["PENDING_CONFIRMATION", "PREPARING", "READY_OR_SHIPPED", "COMPLETED", "CANCELLED"].map(status => [status, rows.find(row => row.status === status)?._count._all ?? 0])));
+  } catch (error) { console.error(error); return res.status(500).json({ error: "Não foi possível carregar o resumo de pedidos." }); }
+}
 export async function cancel(req: Request, res: Response) {
   const id = orderIdSchema.safeParse(req.params.id);
   const input = cancelOrderSchema.safeParse(req.body);

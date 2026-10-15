@@ -15,13 +15,16 @@ for (const width of [320, 390, 768, 1440]) test(`automatic badges share readable
   await expect(page.locator(".store-badge-automatic")).toHaveCount(2);
   const metrics = await page.locator(".store-badge-automatic").evaluateAll(elements => elements.map(el => {
     const label = el.querySelector<HTMLElement>(".product-tag-label")!, text = label.firstElementChild as HTMLElement, style = getComputedStyle(label);
-    return { lastUnit: el.classList.contains("store-stock-last"), font: style.fontSize, weight: style.fontWeight, line: style.lineHeight, family: style.fontFamily, height: el.getBoundingClientRect().height, fits: text.scrollWidth <= label.clientWidth && text.scrollHeight <= label.clientHeight, textTransform: getComputedStyle(text).transform };
+    const bounds = el.getBoundingClientRect();
+    return { lastUnit: el.classList.contains("store-stock-last"), font: style.fontSize, weight: style.fontWeight, line: style.lineHeight, family: style.fontFamily, height: bounds.height, widthScale: bounds.width / parseFloat(getComputedStyle(el).width), fits: text.scrollWidth <= label.clientWidth && text.scrollHeight <= label.clientHeight, textTransform: getComputedStyle(text).transform };
   }));
   expect(metrics).toHaveLength(2);
   for (const metric of metrics) {
     const compactBadge = width === 320;
-    expect(metric).toMatchObject({ font: compactBadge ? "9px" : "9.9px", weight: "700", line: compactBadge ? "9.9px" : "10.89px", fits: true, textTransform: "none" });
-    expect(metric.height).toBeCloseTo(12, 3);
+    const mobile = width < 768;
+    expect(metric).toMatchObject({ font: mobile ? compactBadge ? "9px" : "10px" : compactBadge ? "9px" : "9.9px", weight: "700", line: mobile ? compactBadge ? "9.9px" : "11px" : compactBadge ? "9.9px" : "10.89px", fits: true, textTransform: "none" });
+    expect(metric.height).toBeCloseTo(mobile ? 18 : 12, 3);
+    expect(metric.widthScale).toBeCloseTo(mobile ? 1.5 : 1, 3);
   }
   expect(metrics[0].family).toBe(metrics[1].family);
 });
@@ -140,12 +143,14 @@ for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) {
       }
       for (const badge of [automatic, other]) {
         const size = await badge.boundingBox();
-        expect(size!.height).toBeCloseTo(12, 3);
+        expect(size!.height).toBeCloseTo(width < 768 ? 18 : 12, 3);
+        const baseWidth = await badge.evaluate(el => parseFloat(getComputedStyle(el).width));
+        expect(size!.width).toBeCloseTo(baseWidth * (width < 768 ? 1.5 : 1), 2);
         const paintedHeight = await badge.evaluate(el => {
           const path = el.querySelector<SVGPathElement>("path")!, box = path.getBBox(), matrix = path.getScreenCTM()!;
           return new DOMPoint(0, box.y + box.height).matrixTransform(matrix).y - new DOMPoint(0, box.y).matrixTransform(matrix).y;
         });
-        expect(paintedHeight).toBeCloseTo(12, 3);
+        expect(paintedHeight).toBeCloseTo(width < 768 ? 18 : 12, 3);
         const textCenter = await badge.evaluate(el => {
           const outer = el.getBoundingClientRect(), text = el.querySelector(".product-tag-label > span")!.getBoundingClientRect();
           return text.top + text.height / 2 - outer.top - outer.height / 2;
@@ -166,14 +171,15 @@ for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) {
       expect(bottomAlignment).toBeLessThan(0);
       expect(bottomAlignment).toBeGreaterThan(-3.1);
       const retracted = () => automatic.evaluate(el => {
-        const matrix = new DOMMatrixReadOnly(getComputedStyle(el).transform);
-        return Math.abs(matrix.m41 / el.getBoundingClientRect().width + 0.85) < 0.001;
+        const matrix = new DOMMatrixReadOnly(getComputedStyle(el).transform), scale = innerWidth < 768 ? 1.5 : 1;
+        return Math.abs(matrix.a - scale) < 0.001 && Math.abs(matrix.m41 / (el.getBoundingClientRect().width / scale) + 0.85) < 0.001;
       });
-      if (touch) await expect(automatic).toHaveCSS("transform", "none");
+      const expandedTransform = width < 768 ? "matrix(1.5, 0, 0, 1, 0, 0)" : "matrix(1, 0, 0, 1, 0, 0)";
+      if (touch) await expect(automatic).toHaveCSS("transform", width < 768 ? "matrix(1.5, 0, 0, 1, 0, 0)" : "none");
       else {
         await expect.poll(retracted).toBe(true);
         await card.getByText("Badge motion 0", { exact: true }).hover();
-        await expect(automatic).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+        await expect(automatic).toHaveCSS("transform", expandedTransform);
         await page.mouse.move(0, 0); await expect.poll(retracted).toBe(true);
       }
       const original = await card.evaluate(el => {
@@ -192,8 +198,8 @@ for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) {
         const photo = await card.locator(".store-product-photo").boundingBox();
         const badge = await automatic.boundingBox();
         await page.mouse.move(photo!.x - 1 + badge!.width * 0.12, badge!.y + badge!.height / 2);
-        await expect(automatic).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
-        await expect(other).not.toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+        await expect(automatic).toHaveCSS("transform", expandedTransform);
+        await expect(other).not.toHaveCSS("transform", expandedTransform);
         await expect(automatic).toHaveCSS("transition-duration", "0.225s, 0.225s");
         const expanded = await automatic.boundingBox();
         expect(expanded!.width).toBeCloseTo(badge!.width, 2); expect(expanded!.height).toBeCloseTo(badge!.height, 2);
@@ -201,15 +207,15 @@ for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) {
         await card.screenshot({ path: info.outputPath("badge-expanded-light.png") });
         for (const target of [card.getByRole("img"), card.getByText("R$ 30,00", { exact: true }), card.getByRole("button", { name: "Adicionar ao carrinho", exact: true })]) {
           await target.hover();
-          await expect(automatic).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
-          await expect(other).not.toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
+          await expect(automatic).toHaveCSS("transform", expandedTransform);
+          await expect(other).not.toHaveCSS("transform", expandedTransform);
         }
         await page.mouse.move(0, 0); await expect.poll(retracted).toBe(true);
       }
       await automatic.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
       await expect(automatic).toBeFocused();
       await expect(automatic).toHaveCSS("outline-style", "solid");
-      await expect(automatic).toHaveCSS("transform", touch ? "none" : "matrix(1, 0, 0, 1, 0, 0)");
+      await expect(automatic).toHaveCSS("transform", touch ? width < 768 ? "matrix(1.5, 0, 0, 1, 0, 0)" : "none" : expandedTransform);
       const clipping = await automatic.evaluate(el => ({ photo: getComputedStyle(el.closest(".store-product-photo")!).overflow, card: getComputedStyle(el.closest(".store-product-card")!).overflow, image: getComputedStyle(el.closest(".store-product-photo")!.querySelector("a")!).overflow }));
       expect(clipping).toEqual({ photo: "visible", card: "visible", image: "hidden" });
       await card.getByRole("button", { name: "G", exact: true }).click();
@@ -236,13 +242,17 @@ for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       const clear = await cards.evaluateAll(elements => {
         const overlaps = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
-        const controls = elements.flatMap(el => [...el.querySelectorAll(".store-product-photo .store-image-control, .store-product-photo .store-favorite-bookmark path, .store-product-photo-pagination button")].map(button => button.getBoundingClientRect()));
+        const controls = elements.flatMap(el => [...el.querySelectorAll<HTMLElement>(".store-product-photo .store-image-control, .store-product-photo .store-favorite-bookmark path, .store-product-photo-pagination button")].map(element => ({ element, bounds: element.getBoundingClientRect() })));
         return elements.flatMap(el => [...el.querySelectorAll(".product-tag")].flatMap(badge => {
           const bounds = badge.getBoundingClientRect();
           const clip = getComputedStyle(badge).clipPath;
           const left = clip.startsWith("inset(") ? parseFloat(clip.slice(6, -1).split(" ")[3] ?? "0") / 100 : 0;
           const painted = new DOMRect(bounds.x + bounds.width * left, bounds.y, bounds.width * (1 - left), bounds.height);
-          return controls.filter(control => overlaps(painted, control)).map(control => ({ label: badge.textContent, clip, painted: painted.toJSON(), control: control.toJSON() }));
+          return controls.filter(({ bounds, element }) => {
+            if (!overlaps(painted, bounds)) return false;
+            const favoriteLayer = element.closest(".store-favorite-layer");
+            return !favoriteLayer || Number(getComputedStyle(favoriteLayer).zIndex) <= Number(getComputedStyle(badge.parentElement!).zIndex);
+          }).map(({ bounds: control }) => ({ label: badge.textContent, clip, painted: painted.toJSON(), control: control.toJSON() }));
         }));
       });
       expect(clear).toEqual([]);

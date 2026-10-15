@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { GalleryHorizontalEnd, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { ProductImage } from "../components/ProductImage";
+import { Button } from "../components/ui/button";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "../components/ui/alert-dialog";
 import { isLowStock, isEmptyVariant, labels, matchesStock, stockFilterLabels, getProductVariants, isProductOutOfStock, totalStock, type ManagedProduct, type StockFilter } from "./products";
 
@@ -12,13 +13,18 @@ export function StockBadge({ product }: { product: ManagedProduct }) {
   return <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${empty ? "bg-destructive/10 text-destructive" : "bg-primary/10 text-primary"}`}>{label}</span>;
 }
 export function ProductList({ categories, threshold, products, busy, error, onDelete, onCarousel }: { categories: Category[]; threshold: number; products: ManagedProduct[]; busy: boolean; error: string | null; onDelete: (id: number) => Promise<boolean>; onCarousel: (id: number, selected: boolean) => Promise<boolean> }) {
+  const [params, setParams] = useSearchParams();
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("");
+  const [category, setCategory] = useState(() => params.get("categoria") ?? "");
   const [audience, setAudience] = useState("");
   const [onlyCarousel, setOnlyCarousel] = useState(false);
   const [publication, setPublication] = useState("");
-  useEffect(() => { if (category && !categories.some(c => String(c.id) === category)) setCategory(""); }, [categories, category]);
-  const [params, setParams] = useSearchParams();
+  useEffect(() => { if (category && !categories.some(c => String(c.id) === category)) setCategoryFilter(""); }, [categories, category]);
+  useEffect(() => { const nextCategory = params.get("categoria") ?? ""; if (nextCategory !== category) setCategory(nextCategory); }, [params, category]);
+  function setCategoryFilter(value: string) {
+    setCategory(value);
+    setParams(previous => { const next = new URLSearchParams(previous); if (value) next.set("categoria", value); else next.delete("categoria"); return next; });
+  }
   const rawStock = params.get("estoque");
   const stock: StockFilter = rawStock === "sem-estoque" || rawStock === "variante-sem-estoque" || rawStock === "variante-baixo" ? rawStock : "";
   useEffect(() => {
@@ -45,11 +51,11 @@ export function ProductList({ categories, threshold, products, busy, error, onDe
   return <>
     <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
       <div><h1 className="font-serif text-3xl font-bold">Produtos</h1><p className="text-muted-foreground mt-1">Gerencie as peças e a disponibilidade da loja.</p></div>
-      <Link to="/manager/produtos/novo" className="inline-flex gap-2 items-center rounded-lg bg-primary text-primary-foreground px-4 py-2.5 font-medium"><Plus size={18} />Novo produto</Link>
+      <Button asChild className="h-auto min-h-11 rounded-lg px-4 py-2.5 font-semibold"><Link to="/manager/produtos/novo"><Plus size={18} />Novo produto</Link></Button>
     </div>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 rounded-xl border border-border bg-card p-4 mb-5">
       <label className="flex flex-col gap-2 text-sm"><span className="flex items-center gap-2"><Search size={14} />Buscar por nome</span><input type="search" value={search} onChange={event => setSearch(event.target.value)} className="h-10 w-full min-w-0 rounded-lg border border-border bg-background px-3 py-2" placeholder="Nome do produto" /></label>
-      <label className="flex flex-col gap-2 text-sm"><span>Categoria</span><select aria-label="Categoria" value={category} onChange={event => setCategory(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2"><option value="">Todas as categorias</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      <label className="flex flex-col gap-2 text-sm"><span>Categoria</span><select aria-label="Categoria" value={category} onChange={event => setCategoryFilter(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2"><option value="">Todas as categorias</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
       <label className="flex flex-col gap-2 text-sm"><span>Público</span><select aria-label="Público" value={audience} onChange={event => setAudience(event.target.value)} className="h-10 w-full rounded-lg border border-border bg-background px-3 py-2"><option value="">Todos os públicos</option>{[...new Set(products.map(p => p.public))].map(value => <option key={value} value={value}>{labels[value] ?? value}</option>)}</select></label>
       <label className="flex min-w-0 flex-col gap-2 text-sm xl:col-span-2"><span>Estoque</span><select aria-label="Estoque" value={stock} onChange={event => setStock(event.target.value)} className="h-10 w-full min-w-0 rounded-lg border border-border bg-background px-3 py-2"><option value="">Todos os estoques</option>{Object.entries(stockFilterLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="flex items-center gap-2 self-end h-10 text-sm whitespace-nowrap"><input type="checkbox" checked={onlyCarousel} onChange={event => setOnlyCarousel(event.target.checked)} className="size-4 accent-primary" />Apenas itens do carrossel</label>
@@ -74,7 +80,7 @@ export function ProductList({ categories, threshold, products, busy, error, onDe
           <div className="flex gap-2 items-center flex-wrap"><span className="text-sm">Estoque: {totalStock(product)}</span><StockBadge product={product} /></div>
         </div>
         <div className="flex flex-col gap-2">
-          <Link to={`/manager/produtos/${product.id}/editar`} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted"><Pencil size={15} />Editar</Link>
+          <Link to={`/manager/produtos/${product.id}/editar`} className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-amber-300 bg-amber-100 px-3 py-2 text-sm font-semibold text-amber-950 transition-colors hover:border-amber-400 hover:bg-amber-200 active:bg-amber-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-500 dark:border-amber-700 dark:bg-amber-200 dark:text-slate-950 dark:hover:bg-amber-100"><Pencil size={15} />Editar</Link>
           <span title={!product.inCarousel && carouselFull ? "Limite de 5 produtos no carrossel" : product.inCarousel ? undefined : "Adicionar ao carrossel"}>
             <button disabled={busy || (!product.inCarousel && carouselFull)} aria-label={product.inCarousel ? "Remover do carrossel" : "Adicionar ao carrossel"} aria-pressed={product.inCarousel} onClick={() => onCarousel(product.id, !product.inCarousel)} className={`group/carousel inline-flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-sm disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${product.inCarousel ? "border-primary/30 bg-primary/10 text-primary" : "border-border hover:bg-muted"}`}>
               <GalleryHorizontalEnd size={15} />

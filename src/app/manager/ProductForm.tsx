@@ -6,6 +6,7 @@ import { manualBadgeMaxLength } from "../../../backend/src/lib/manual-badges.ts"
 import { audiences, labels, normalizeHex, toDraft, toInput, validateDraft, type ManagedProduct, colorDraft, type ColorDraft, type ProductDraft, type ProductInput } from "./products";
 import type { Category } from "../lib/categories";
 import { CategoryEditor } from "./CategoryEditor";
+import { Button } from "../components/ui/button";
 
 type EyeDropperConstructor = new () => { open: (options?: { signal: AbortSignal }) => Promise<{ sRGBHex: string }> };
 
@@ -44,13 +45,15 @@ export function ProductForm({ product, categories, onSaveCategory, busy, onSave,
     try {
       const url = await onUpload(file, controller.signal);
       if (controller.signal.aborted) return;
-      setDraft(previous => ({ ...previous, colors: previous.colors.map(color => {
-        if (color.key !== key) return color;
-        const images = color.images.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
-        if (color.imageUrl.trim() === url || images.includes(url)) return color;
-        return !color.imageUrl.trim() && !images.length ? { ...color, imageUrl: url }
-          : { ...color, images: [...images, url].join("\n") };
-      }) }));
+      setDraft(previous => ({
+        ...previous, colors: previous.colors.map(color => {
+          if (color.key !== key) return color;
+          const images = color.images.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+          if (color.imageUrl.trim() === url || images.includes(url)) return color;
+          return !color.imageUrl.trim() && !images.length ? { ...color, imageUrl: url }
+            : { ...color, images: [...images, url].join("\n") };
+        })
+      }));
       setUploadNotice({ key, error: false, message: "Imagem enviada. Salve o produto para confirmar a alteração." });
     } catch (error) {
       if (!controller.signal.aborted) setUploadNotice({ key, error: true, message: error instanceof Error ? error.message : "Não foi possível enviar a imagem. Tente novamente." });
@@ -141,15 +144,16 @@ export function ProductForm({ product, categories, onSaveCategory, busy, onSave,
                 <option value="">Selecione uma categoria</option>
                 {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
               </select></label>
-              <button type="button" aria-expanded={addingCategory} onClick={() => setAddingCategory(!addingCategory)} className="min-h-11 text-sm text-primary">+ Nova categoria</button>
+              <Button type="button" variant="outline" aria-expanded={addingCategory} onClick={() => setAddingCategory(!addingCategory)} className="h-auto min-h-11 rounded-lg px-3 py-2 text-primary">+ Nova categoria</Button>
               {addingCategory && <CategoryEditor busy={busy} onCancel={() => setAddingCategory(false)} onSave={async name => {
                 const category = await onSaveCategory(name);
                 if (category) change("categoryId", String(category.id));
                 return category;
               }} />}
             </div>
-            <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={draft.isPublished} onChange={event => setDraft(previous => ({ ...previous, isPublished: event.target.checked }))} />Publicado na loja</label>
-            </div>
+            <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={draft.isPublished} onChange={event => setDraft(previous => ({ ...previous, isPublished: event.target.checked }))} />Publicado na loja
+              <p className="text-xs text-muted-foreground ml-2 mt-0.5">Itens não publicados ainda aparecerão no carrossel.</p></label>
+          </div>
         </section>
         <section className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-5">
           <h2 className="font-semibold text-lg">Cores do badge manual</h2>
@@ -176,7 +180,7 @@ export function ProductForm({ product, categories, onSaveCategory, busy, onSave,
               onClick={() => selectColor(color.key)} className={`max-w-full break-words rounded-lg border px-3 py-2 ${color.key === active.key ? "bg-primary text-primary-foreground border-primary" : "border-border"}`}>
               {color.colorName || `Cor ${index + 1}`}
             </button>)}
-            <button type="button" onClick={() => { const color = colorDraft(); setDraft(p => ({ ...p, colors: [...p.colors, color] })); selectColor(color.key); }} className="rounded-lg border border-border px-3 py-2">+ Adicionar cor</button>
+            <Button type="button" variant="outline" onClick={() => { const color = colorDraft(); setDraft(p => ({ ...p, colors: [...p.colors, color] })); selectColor(color.key); }} className="h-auto min-h-10 rounded-lg px-3 py-2">+ Adicionar cor</Button>
           </div>
           <button type="button" disabled={draft.colors.length === 1} className="text-sm text-destructive disabled:opacity-40" onClick={() => {
             if (active.id || active.colorName || active.colorValue || active.imageUrl || active.images || active.variants.some(v => v.value || Number(v.stock))) setRemoving(active.key);
@@ -211,7 +215,7 @@ export function ProductForm({ product, categories, onSaveCategory, busy, onSave,
         </section>
         <section className="rounded-xl border border-border bg-card p-5 sm:p-6 space-y-4">
           <div className="flex flex-wrap justify-between gap-3 items-center"><h2 className="font-semibold text-lg">Variantes e estoque</h2>
-            <button type="button" onClick={() => changeColor("variants", [...active.variants, { value: "", stock: "0" }])} className="inline-flex gap-2 items-center text-sm text-primary font-semibold"><Plus size={16} />Adicionar variante</button>
+            <Button type="button" variant="outline" onClick={() => changeColor("variants", [...active.variants, { value: "", stock: "0" }])} className="h-auto min-h-10 rounded-lg px-3 py-2 font-semibold text-primary"><Plus size={16} />Adicionar variante</Button>
           </div>
           <p className="text-sm text-muted-foreground">Use tamanhos, numerações ou outros valores. Cada variante tem seu próprio estoque.</p>
           {active.variants.length === 0 && <p className="text-sm text-muted-foreground">Sem variantes. Esta cor ficará sem estoque.</p>}
@@ -233,7 +237,7 @@ export function ProductForm({ product, categories, onSaveCategory, busy, onSave,
             const file = event.target.files?.[0]; event.target.value = "";
             if (file) void uploadImage(file);
           }} />
-          <button type="button" disabled={Boolean(uploading)} onClick={() => fileInput.current?.click()} className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed">{uploading ? "Enviando imagem..." : "Selecionar imagem"}</button>
+          <Button type="button" variant="outline" disabled={Boolean(uploading)} onClick={() => fileInput.current?.click()} className="h-auto min-h-11 rounded-lg px-3 py-2">{uploading ? "Enviando imagem..." : "Selecionar imagem"}</Button>
           <p className="text-xs text-muted-foreground">JPEG, PNG ou WebP. Até 5 MiB por imagem.</p>
           {uploading && <p role="status" className="text-sm text-muted-foreground">Enviando imagem para {draft.colors.find(color => color.key === uploading)?.colorName || "a cor selecionada"}...</p>}
           {uploadNotice && <p role={uploadNotice.error ? "alert" : "status"} className={`text-sm rounded-lg border p-3 ${uploadNotice.error ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-primary/20 bg-primary/10 text-foreground"}`}>
@@ -247,8 +251,8 @@ export function ProductForm({ product, categories, onSaveCategory, busy, onSave,
       </section>
     </fieldset>
     <div className="flex flex-wrap justify-end gap-3 border-t border-border pt-5">
-      <button type="button" disabled={busy} onClick={onCancel} className="px-5 py-2.5 rounded-lg border border-border disabled:opacity-50">Cancelar</button>
-      <button type="submit" disabled={busy || picking || Boolean(uploading)} className="px-5 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold disabled:opacity-50">{busy ? "Salvando..." : "Salvar produto"}</button>
+      <button type="button" disabled={busy} onClick={onCancel} className="min-h-11 rounded-lg border border-border px-5 py-2.5 transition-colors hover:bg-muted active:bg-muted/70 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-50">Cancelar</button>
+      <Button type="submit" disabled={busy || picking || Boolean(uploading)} aria-busy={busy} className="h-auto min-h-11 rounded-lg px-5 py-2.5 font-semibold">{busy ? "Salvando..." : "Salvar produto"}</Button>
     </div>
   </form>;
 }

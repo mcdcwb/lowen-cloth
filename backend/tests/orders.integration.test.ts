@@ -53,6 +53,59 @@ test("ADMIN order reads validate filters, pagination and historical snapshots", 
         assert.deepEqual(data.items.map(o => o.id), expected.map(o => o.id));
       }
     });
+    await t.test("archive is ADMIN-only, hides operationally, and preserves history, status and stock", async () => {
+      const order = await prisma.order.create({ data: { number: "26119999", sequence: 9999, userId: user.id, customerName: `Arquivar ${tag}`, status: "PENDING_CONFIRMATION", fulfillmentMethod: "PICKUP", total: "1.00", idempotencyKey: randomUUID(), requestHash: "archive", whatsappUrl: "https://wa.me/5541999999999", whatsappMessage: "fixture", items: { create: { originalVariantId: 42, productName: "Arquivo histórico", colorName: "Preto", size: "P", quantity: 1, unitPrice: "1.00", subtotal: "1.00" } } } });
+      assert.equal((await server.request(`/orders/${order.id}/archive`, "POST", {}, customer)).status, 403);
+      assert.equal((await server.request(`/orders/${order.id}/archive`, "POST", {})).status, 401);
+      const archived = await server.request(`/orders/${order.id}/archive`, "POST", {}, admin);
+      assert.equal(archived.status, 200);
+      const saved = await prisma.order.findUniqueOrThrow({ where: { id: order.id }, include: { items: true } });
+      assert.ok(saved.archivedAt); assert.equal(saved.status, order.status); assert.equal(saved.items.length, 1);
+      const list = await (await read("&pageSize=50")).json(); assert.equal(list.items.some((item: any) => item.id === order.id), false);
+      assert.equal((await server.request(`/orders/${order.id}/archive`, "POST", {}, admin)).status, 409);
+    });
+    await t.test("reports rank only completed sales in the six-month window and retain archived orders without stock or status changes", async () => {
+      const category = await prisma.category.upsert({ where: { normalizedName: tag.toLowerCase() }, update: {}, create: { name: tag, normalizedName: tag.toLowerCase() } });
+      const product = await prisma.product.create({ data: { name: tag, price: "10.00", public: "unissex", categoryId: category.id,
+        colors: { create: { colorName: "Preto", colorValue: "#111111", images: [], variants: { create: { value: "P", stock: 7 } } } },
+      }, include: { colors: { include: { variants: true } } } });
+      const variant = product.colors[0].variants[0];
+      const completedAt = new Date();
+      const makeReportOrder = (sequence: number, productName: string, quantity: number, total: string, date: Date, variantId: number | null = null) => {
+        const unitPrice = (Number(total) / quantity).toFixed(2);
+        return prisma.order.create({ data: {
+          number: `2611${String(sequence).padStart(4, "0")}`, sequence, userId: user.id, customerName: "Pedido de relatório", status: "COMPLETED", fulfillmentMethod: "PICKUP",
+          total, completedAt: date, idempotencyKey: randomUUID(), requestHash: "report-fixture", whatsappUrl: "https://wa.me/5541999999999", whatsappMessage: "fixture",
+          items: { create: { variantId, originalVariantId: variantId ?? 42, productName, colorName: "Preto", size: "P", quantity, unitPrice, subtotal: total } }
+        } });
+      };
+      const archivedName = `Relatório ${tag}-A`, tieName = `Relatório ${tag}-B`, topName = `Relatório ${tag}-C`, oldName = `Relatório ${tag}-fora-do-período`;
+      const archived = await makeReportOrder(1200, archivedName, 3, "30.00", completedAt, variant.id);
+      await makeReportOrder(1201, tieName, 3, "30.00", completedAt);
+      await makeReportOrder(1202, topName, 5, "50.00", completedAt);
+      await makeReportOrder(1203, oldName, 9, "90.00", new Date(completedAt.getTime() - 300 * 24 * 60 * 60 * 1000));
+
+      const response = await server.request(`/orders/${archived.id}/archive`, "POST", {}, admin);
+      assert.equal(response.status, 200);
+      const saved = await prisma.order.findUniqueOrThrow({ where: { id: archived.id }, include: { items: true } });
+      assert.ok(saved.archivedAt); assert.equal(saved.status, "COMPLETED"); assert.equal(saved.items.length, 1);
+      assert.equal(saved.items[0].productName, archivedName); assert.equal(saved.items[0].quantity, 3);
+      assert.equal((await prisma.productVariant.findUniqueOrThrow({ where: { id: variant.id } })).stock, 7);
+
+      const reportResponse = await server.request("/orders/reports", "GET", undefined, admin);
+      assert.equal(reportResponse.status, 200);
+      const report = await reportResponse.json();
+      assert.deepEqual(report.topProducts.slice(0, 3), [
+        { productName: topName, quantity: 5 }, { productName: archivedName, quantity: 3 }, { productName: tieName, quantity: 3 }
+      ]);
+      assert.deepEqual(report.lowestProducts.slice(0, 3), [
+        { productName: archivedName, quantity: 3 }, { productName: tieName, quantity: 3 }, { productName: topName, quantity: 5 }
+      ]);
+      assert.ok(!report.topProducts.some((item: { productName: string }) => [oldName, "Produto Histórico"].includes(item.productName)));
+      assert.ok(!report.lowestProducts.some((item: { productName: string }) => [oldName, "Produto Histórico"].includes(item.productName)));
+      assert.equal(report.monthly.length, 6);
+      assert.deepEqual(report.monthly.map((item: { revenue: string }) => item.revenue).sort(), ["0.00", "0.00", "0.00", "0.00", "0.00", "110.00"]);
+    });
     await t.test("number/name search, every status and combined criteria", async () => {
       const byNumber = await (await server.request(`/orders?search=%23${orders[0].number}`, "GET", undefined, admin)).json();
       assert.deepEqual(byNumber.items.map(o => o.id), [orders[0].id]);
@@ -125,6 +178,7 @@ test("ADMIN order reads validate filters, pagination and historical snapshots", 
   } finally {
     await server.close(); await prisma.order.deleteMany({ where: { user: { email } } });
     await prisma.product.deleteMany({ where: { name: tag } });
+    await prisma.category.deleteMany({ where: { normalizedName: tag.toLowerCase() } });
     await prisma.user.deleteMany({ where: { email } }); await prisma.admin.deleteMany({ where: { email: adminEmail } });
     await prisma.$disconnect();
   }

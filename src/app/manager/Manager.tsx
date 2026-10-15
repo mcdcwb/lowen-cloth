@@ -1,9 +1,9 @@
 import { StoreDetailsForm } from "./StoreDetailsForm";
 import { OrdersPage } from "./OrdersPage";
-import { useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { CategoryManagement } from "./CategoryManagement";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
-import { LayoutDashboard, Package, ClipboardList, ArrowUpRight, ArrowRight, LogOut, Settings } from "lucide-react";
+import { LayoutDashboard, Package, ClipboardList, ArrowUpRight, ArrowRight, LogOut, Settings, ChartNoAxesCombined, UserRound } from "lucide-react";
 import type { Account } from "../lib/auth";
 import { ProductList } from "./ProductList";
 import { ProductForm } from "./ProductForm";
@@ -11,10 +11,16 @@ import { useManagerProducts } from "./useManagerProducts";
 import { productStats } from "./products";
 import { useManagerSettings } from "./useManagerSettings";
 import { SettingsPage } from "./SettingsPage";
+import { createManagerApi } from "./api";
+import { OrderStatusPreview } from "./OrderStatusPreview";
+import { orderMoney, orderStatusLabels, type OrderStatus } from "./orders";
+import { AdminAccountPage } from "./AdminAccountPage";
+
+const OrderReportsPage = lazy(() => import("./OrderReportsPage").then(module => ({ default: module.OrderReportsPage })));
 
 interface Props {
   user: Account | null; token?: string; validating: boolean; sessionError: string | null;
-  onLogin: () => void; onLogout: () => void; onUnauthorized: (message: string) => void; onChanged: () => void;
+  onLogin: () => void; onLogout: () => void; onUnauthorized: (message: string) => void; onChanged: () => void; onAccountUpdated: (token: string, account: Account) => void;
 }
 export function Manager(props: Props) {
   if (props.validating) return <main className="min-h-screen bg-background grid place-items-center"><p role="status">Validando sessão...</p></main>;
@@ -30,7 +36,7 @@ export function Manager(props: Props) {
   return <ManagerWorkspace key={props.token} {...props} user={props.user} token={props.token} />;
 }
 
-function ManagerWorkspace({ user, token, onLogout, onUnauthorized, onChanged }: Props & { user: Account; token: string }) {
+function ManagerWorkspace({ user, token, onLogout, onUnauthorized, onChanged, onAccountUpdated }: Props & { user: Account; token: string }) {
   const navigate = useNavigate();
   const location = useLocation();
   const data = useManagerProducts(token, onUnauthorized, onChanged);
@@ -38,6 +44,19 @@ function ManagerWorkspace({ user, token, onLogout, onUnauthorized, onChanged }: 
   const [storeSaving, setStoreSaving] = useState(false);
   const [orderSaving, setOrderSaving] = useState(false);
   const settings = useManagerSettings(token, path, onUnauthorized);
+  const orderApi = useMemo(() => createManagerApi(token, import.meta.env.VITE_API_URL || "/api"), [token]);
+  const [counts, setCounts] = useState<Record<string, number> | null>(null);
+  const [countError, setCountError] = useState("");
+  const [countRevision, setCountRevision] = useState(0);
+  const [dashboardStatus, setDashboardStatus] = useState("");
+  const [dashboardReport, setDashboardReport] = useState<{ revenue: string; completedOrders: number; averageTicket: string } | null>(null);
+  useEffect(() => {
+    if (path !== "/manager") return;
+    const abort = new AbortController();
+    orderApi.statusCounts(abort.signal).then(value => { setCounts(value); setCountError(""); }).catch(error => { if (!abort.signal.aborted) setCountError(error.message); });
+    orderApi.reports(abort.signal).then(setDashboardReport).catch(error => { if (!abort.signal.aborted && [401, 403].includes(error.status)) onUnauthorized(error.message); });
+    return () => abort.abort();
+  }, [orderApi, path, countRevision, onUnauthorized]);
   const edit = /^\/manager\/produtos\/(\d+)\/editar$/.exec(path);
   const isNew = path === "/manager/produtos/novo";
   const product = edit ? data.products.find(item => item.id === Number(edit[1])) : undefined;
@@ -46,7 +65,9 @@ function ManagerWorkspace({ user, token, onLogout, onUnauthorized, onChanged }: 
     { to: "/manager", label: "Dashboard", icon: LayoutDashboard, end: true },
     { to: "/manager/produtos", label: "Produtos", icon: Package, end: false },
     { to: "/manager/pedidos", label: "Pedidos", icon: ClipboardList, end: true },
-    { to: "/manager/settings", label: "Configurações", icon: Settings, end: true }
+    { to: "/manager/relatorios", label: "Relatórios", icon: ChartNoAxesCombined, end: true },
+    { to: "/manager/settings", label: "Configurações", icon: Settings, end: true },
+    { to: "/manager/minha-conta", label: "Minha Conta", icon: UserRound, end: true }
   ];
   return <div className="min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[240px_minmax(0,1fr)]">
     <aside className="lg:sticky lg:top-0 lg:h-screen bg-card border-b lg:border-b-0 lg:border-r border-border p-5 flex flex-col">
@@ -61,9 +82,9 @@ function ManagerWorkspace({ user, token, onLogout, onUnauthorized, onChanged }: 
     </aside>
     <main className="min-w-0 w-full max-w-7xl mx-auto p-4 sm:p-8 lg:p-10">
       {path !== "/manager/pedidos" && data.error && <div role="alert" className="mb-5 bg-destructive/10 text-destructive border border-destructive/20 rounded-lg p-4 text-sm"><p>{data.error}</p><button disabled={data.busy} onClick={data.reload} className="underline mt-2">Atualizar lista</button></div>}
-      {path === "/manager/pedidos" ? <OrdersPage token={token} onUnauthorized={onUnauthorized} onBusy={setOrderSaving} onConfirmed={() => { data.reload(); onChanged(); }} /> : settings.loading ? <p role="status" className="py-20 text-center text-muted-foreground">Carregando configurações...</p> : settings.error || settings.threshold === null || !stats ? <div role="alert" className="rounded-xl border border-destructive/20 bg-card p-6"><p>{settings.error || "Configurações indisponíveis."}</p><button type="button" onClick={settings.reload} className="min-h-11 text-primary underline">Tentar novamente</button></div> : path === "/manager/settings" ? <><SettingsPage settings={settings.settings!} saving={settings.saving || storeSaving} onSave={settings.save} /><StoreDetailsForm disabled={settings.saving || data.busy} token={token} onUnauthorized={onUnauthorized} onBusy={setStoreSaving} />{data.loading ? <p role="status" className="mt-6 text-sm text-muted-foreground">Carregando categorias...</p> : data.loaded && <CategoryManagement settings categories={data.categories} busy={data.busy} onSave={data.saveCategory} onDelete={data.removeCategory} />}</> : data.loading ? <p role="status" className="py-20 text-center text-muted-foreground">Carregando produtos...</p> : data.error && !data.loaded ? null : path === "/manager" ? <>
+      {path === "/manager/pedidos" ? <OrdersPage token={token} onUnauthorized={onUnauthorized} onBusy={setOrderSaving} onConfirmed={() => { data.reload(); onChanged(); setCountRevision(n => n + 1); }} /> : path === "/manager/relatorios" ? <Suspense fallback={<p role="status" className="py-16 text-center text-muted-foreground">Carregando relatórios...</p>}><OrderReportsPage token={token} onUnauthorized={onUnauthorized} /></Suspense> : path === "/manager/minha-conta" ? <AdminAccountPage token={token} user={user} onUpdated={onAccountUpdated} /> : settings.loading ? <p role="status" className="py-20 text-center text-muted-foreground">Carregando configurações...</p> : settings.error || settings.threshold === null || !stats ? <div role="alert" className="rounded-xl border border-destructive/20 bg-card p-6"><p>{settings.error || "Configurações indisponíveis."}</p><button type="button" onClick={settings.reload} className="min-h-11 text-primary underline">Tentar novamente</button></div> : path === "/manager/settings" ? <><SettingsPage settings={settings.settings!} saving={settings.saving || storeSaving} onSave={settings.save} /><StoreDetailsForm disabled={settings.saving || data.busy} token={token} onUnauthorized={onUnauthorized} onBusy={setStoreSaving} />{data.loading ? <p role="status" className="mt-6 text-sm text-muted-foreground">Carregando categorias...</p> : data.loaded && <CategoryManagement settings categories={data.categories} busy={data.busy} onSave={data.saveCategory} onDelete={data.removeCategory} />}</> : data.loading ? <p role="status" className="py-20 text-center text-muted-foreground">Carregando produtos...</p> : data.error && !data.loaded ? null : path === "/manager" ? <>
         <div className="mb-8"><p className="text-sm text-primary font-medium mb-2">VISÃO GERAL</p><h1 className="font-serif text-3xl font-bold">Dashboard</h1><p className="text-muted-foreground mt-2">Acompanhe a disponibilidade do seu catálogo.</p></div>
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[
+        <div className="mb-6 grid gap-4 sm:grid-cols-3">{[["Faturamento concluído", dashboardReport?.revenue ? orderMoney(dashboardReport.revenue) : "—"], ["Pedidos concluídos", dashboardReport?.completedOrders.toLocaleString("pt-BR") ?? "—"], ["Ticket médio", dashboardReport?.averageTicket ? orderMoney(dashboardReport.averageTicket) : "—"]].map(([label, value]) => <Link key={label} to="/manager/relatorios" className="rounded-xl border border-border bg-card p-5 transition-colors hover:border-primary"><h2 className="text-sm text-muted-foreground">{label}</h2><p className="mt-3 text-2xl font-semibold">{value}</p><span className="mt-2 inline-block text-sm text-primary">Ver relatórios</span></Link>)}</div><div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">{[
           { label: "Total de produtos", count: stats.products, to: "/manager/produtos", detail: "Ver catálogo completo" },
           { label: "Total de variantes (cor/tamanho)", count: stats.variants, detail: <><span>{stats.stockedVariants} com estoque</span>{" · "}{stats.emptyVariants > 0 ? <Link to="/manager/produtos?estoque=variante-sem-estoque" aria-label={`Ver ${stats.emptyVariants} variantes sem estoque`} onClick={event => { if (data.busy || settings.saving || storeSaving || orderSaving) event.preventDefault(); }} className="inline-block py-1 text-primary underline decoration-primary/40 underline-offset-2 transition-colors duration-200 hover:text-foreground hover:decoration-current focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none">{stats.emptyVariants} sem estoque</Link> : <span>0 sem estoque</span>}</> },
           { label: "Produtos sem estoque", count: stats.empty, to: "/manager/produtos?estoque=sem-estoque", arrow: true },
@@ -75,7 +96,7 @@ function ManagerWorkspace({ user, token, onLogout, onUnauthorized, onChanged }: 
           return to ? <Link key={label} to={to} onClick={event => { if (data.busy || settings.saving || storeSaving || orderSaving) event.preventDefault(); }} className={`${base} group block cursor-pointer motion-safe:hover:-translate-y-0.5 hover:shadow-md hover:border-primary/40 motion-safe:focus-visible:-translate-y-0.5 focus-visible:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transform-none motion-reduce:translate-none`}>{content}</Link>
             : <section key={label} aria-label={label} className={`${base} hover:border-primary/20 hover:shadow-sm`}>{content}</section>;
         })}</div>
-        <section className="mt-6 bg-card border border-border rounded-xl p-6 sm:p-8"><h2 className="text-lg font-semibold">Seu catálogo, em dia</h2><p className="text-muted-foreground text-sm mt-2">O estoque de cada produto é a soma de suas variantes. Variantes com estoque baixo: de 1 a {settings.threshold} unidades.</p><Link to="/manager/produtos" className="inline-flex mt-5 text-primary font-semibold items-center gap-2">Gerenciar produtos <ArrowUpRight size={18} /></Link></section>
+        <section aria-labelledby="order-status-title" className="mt-6 bg-card border border-border rounded-xl p-6 sm:p-8"><div className="flex flex-wrap items-center justify-between gap-3"><h2 id="order-status-title" className="text-lg font-semibold">Pedidos por status</h2><label className="text-sm">Filtrar pedidos <select aria-label="Filtrar pedidos por status" className="ml-2 min-h-10 rounded-md border border-border bg-background px-3" value={dashboardStatus} onChange={event => setDashboardStatus(event.target.value)}><option value="">Todos</option>{Object.entries(orderStatusLabels).map(([status, label]) => <option key={status} value={status}>{label}</option>)}</select></label></div>{countError ? <div role="alert" className="mt-4 text-destructive">{countError}<button className="ml-3 underline" onClick={() => setCountRevision(n => n + 1)}>Tentar novamente</button></div> : <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">{(Object.keys(orderStatusLabels) as OrderStatus[]).map(status => <Link key={status} to={`/manager/pedidos?status=${status}`} aria-label={`Ver pedidos: ${orderStatusLabels[status]}`} className="rounded-lg border border-border p-3 text-left transition-colors hover:border-primary hover:bg-primary/5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"><span className="block text-xs text-muted-foreground">{orderStatusLabels[status]}</span><strong className="mt-1 block text-2xl">{counts?.[status] ?? "—"}</strong></Link>)}</div>}<OrderStatusPreview api={orderApi} status={dashboardStatus} onUnauthorized={onUnauthorized} /></section><section className="mt-6 bg-card border border-border rounded-xl p-6 sm:p-8"><h2 className="text-lg font-semibold">Seu catálogo, em dia</h2><p className="text-muted-foreground text-sm mt-2">O estoque de cada produto é a soma de suas variantes. Variantes com estoque baixo: de 1 a {settings.threshold} unidades.</p><Link to="/manager/produtos" className="inline-flex mt-5 text-primary font-semibold items-center gap-2">Gerenciar produtos <ArrowUpRight size={18} /></Link></section>
       </> : path === "/manager/produtos" ? <ProductList categories={data.categories} threshold={settings.threshold} products={data.products} busy={data.busy} error={data.error} onDelete={data.remove} onCarousel={data.setCarousel} /> : isNew || (edit && product) ? <>
         <h1 className="font-serif text-3xl font-bold mb-2">{isNew ? "Novo produto" : "Editar produto"}</h1><p className="text-muted-foreground mb-6">{isNew ? "Adicione uma nova peça ao catálogo." : product?.name}</p>
         <ProductForm categories={data.categories} onSaveCategory={data.saveCategory} key={product?.id ?? "new"} product={product} busy={data.busy} onUpload={data.upload} onCancel={() => navigate("/manager/produtos")} onSave={async input => { if (await data.save(input, product?.id)) navigate("/manager/produtos"); }} />

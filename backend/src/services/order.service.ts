@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma.js";
 import { Prisma } from "../generated/prisma/client.js";
 import type { z } from "zod";
 import type { orderListSchema } from "../schemas/order.schema.js";
+import { BUSINESS_TIME_ZONE } from "../config/business.js";
 
 const orderSummarySelect = {
   id: true, number: true, sequence: true, customerName: true, createdAt: true,
@@ -10,6 +11,7 @@ const orderSummarySelect = {
 
 export async function listOrders(input: z.infer<typeof orderListSchema>) {
   const where: Prisma.OrderWhereInput = {
+    archivedAt: null,
     ...(input.status ? { status: input.status } : {}),
     ...(input.search ? { OR: [
       { number: { contains: input.search.replace(/^#/, "") } },
@@ -28,8 +30,9 @@ export async function listOrders(input: z.infer<typeof orderListSchema>) {
 }
 
 export async function getOrder(id: number) {
-  const order = await prisma.order.findUnique({ where: { id }, select: {
+  const order = await prisma.order.findFirst({ where: { id, archivedAt: null }, select: {
     ...orderSummarySelect, updatedAt: true, deliveryAddress: true, pickupAddress: true,
+    completedAt: true, archivedAt: true,
     items: { orderBy: { id: "asc" }, select: {
       id: true, productName: true, colorName: true, size: true, quantity: true, unitPrice: true, subtotal: true
     } }
@@ -52,6 +55,7 @@ export async function cancelOrder(id: number, expectedStatus: "PENDING_CONFIRMAT
     await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${id} FOR UPDATE`;
     const order = await tx.order.findUnique({ where: { id }, include: { items: { orderBy: { id: "asc" } } } });
     if (!order) throw new OrderError(404, "Pedido não encontrado.");
+    if (order.archivedAt) throw new OrderError(409, "O pedido foi arquivado e não pode ser atualizado operacionalmente.");
     if (order.status !== expectedStatus)
       throw new OrderError(409, "O status do pedido mudou ou não permite cancelamento. Confira os dados atualizados.");
     if (order.status !== "PENDING_CONFIRMATION") {
@@ -90,20 +94,67 @@ export async function advanceOrder(id: number, expectedStatus: "PREPARING" | "RE
     throw new OrderError(409, "Transição de status inválida.");
   const status = expectedStatus === "PREPARING" ? "READY_OR_SHIPPED" : "COMPLETED";
   return prisma.$transaction(async tx => {
-    const updated = await tx.order.updateMany({ where: { id, status: expectedStatus }, data: { status } });
+    const updated = await tx.order.updateMany({ where: { id, status: expectedStatus, archivedAt: null }, data: { status, ...(status === "COMPLETED" ? { completedAt: new Date() } : {}) } });
     if (updated.count !== 1) {
-      const order = await tx.order.findUnique({ where: { id }, select: { id: true } });
+      const order = await tx.order.findUnique({ where: { id }, select: { id: true, archivedAt: true } });
       if (!order) throw new OrderError(404, "Pedido não encontrado.");
+      if (order.archivedAt) throw new OrderError(409, "O pedido foi arquivado e não pode ser atualizado operacionalmente.");
       throw new OrderError(409, "O status do pedido mudou ou não permite esta ação. Confira os dados atualizados.");
     }
-    return tx.order.findUniqueOrThrow({ where: { id }, select: { id: true, number: true, status: true, updatedAt: true } });
+    return tx.order.findUniqueOrThrow({ where: { id }, select: { id: true, number: true, status: true, updatedAt: true, completedAt: true } });
   }, { isolationLevel: "ReadCommitted" });
+}
+export async function archiveOrder(id: number) {
+  const updated = await prisma.order.updateMany({ where: { id, archivedAt: null }, data: { archivedAt: new Date() } });
+  if (!updated.count) {
+    const order = await prisma.order.findUnique({ where: { id }, select: { archivedAt: true } });
+    if (!order) throw new OrderError(404, "Pedido não encontrado.");
+    throw new OrderError(409, "O pedido já foi arquivado.");
+  }
+  return prisma.order.findUniqueOrThrow({ where: { id }, select: { id: true, number: true, archivedAt: true } });
+}
+
+function monthStart(date: Date, offset: number) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: BUSINESS_TIME_ZONE, year: "numeric", month: "2-digit" }).formatToParts(date);
+  const year = Number(parts.find(part => part.type === "year")!.value);
+  const month = Number(parts.find(part => part.type === "month")!.value) - 1 + offset;
+  const localMonth = new Date(Date.UTC(year, month, 1));
+  const target = `${localMonth.getUTCFullYear()}-${String(localMonth.getUTCMonth() + 1).padStart(2, "0")}-01T00:00:00`;
+  const utcGuess = new Date(`${target}Z`);
+  const zoned = new Intl.DateTimeFormat("en-US", { timeZone: BUSINESS_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(utcGuess);
+  const value = (type: string) => Number(zoned.find(part => part.type === type)!.value);
+  const represented = Date.UTC(value("year"), value("month") - 1, value("day"), value("hour"), value("minute"), value("second"));
+  return new Date(utcGuess.getTime() + utcGuess.getTime() - represented);
+}
+export async function orderReports(now = new Date()) {
+  const currentMonth = monthStart(now, 0);
+  const start = monthStart(now, -5);
+  const end = monthStart(now, 1);
+  const reportPeriod = { status: "COMPLETED" as const, completedAt: { gte: start, lt: end } };
+  const orders = await prisma.order.findMany({ where: reportPeriod, select: { total: true, completedAt: true } });
+  const monthly = Array.from({ length: 6 }, (_, index) => {
+    const date = monthStart(currentMonth, index - 5);
+    const amount = orders.filter(order => order.completedAt && order.completedAt >= date && order.completedAt < monthStart(date, 1))
+      .reduce((sum, order) => sum.add(order.total), new Prisma.Decimal(0));
+    const month = new Intl.DateTimeFormat("en-CA", { timeZone: BUSINESS_TIME_ZONE, year: "numeric", month: "2-digit" }).format(date);
+    return { month, revenue: amount.toFixed(2) };
+  });
+  const grouped = await prisma.orderItem.groupBy({ by: ["productName"], where: { order: reportPeriod }, _sum: { quantity: true } });
+  const ranking = grouped.map(item => ({ productName: item.productName, quantity: item._sum.quantity ?? 0 })).filter(item => item.quantity > 0);
+  const topProducts = [...ranking].sort((a, b) => b.quantity - a.quantity || a.productName.localeCompare(b.productName)).slice(0, 5);
+  const lowestProducts = [...ranking].sort((a, b) => a.quantity - b.quantity || a.productName.localeCompare(b.productName)).slice(0, 5);
+  const revenue = await prisma.order.aggregate({ where: { status: "COMPLETED" }, _sum: { total: true }, _count: { _all: true } });
+  const total = revenue._sum.total ?? new Prisma.Decimal(0);
+  return { revenue: total.toFixed(2), completedOrders: revenue._count._all,
+    averageTicket: revenue._count._all ? total.div(revenue._count._all).toFixed(2) : "0.00", monthly,
+    topProducts, lowestProducts };
 }
 export async function confirmOrder(id: number) {
   return prisma.$transaction(async tx => {
     await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${id} FOR UPDATE`;
     const order = await tx.order.findUnique({ where: { id }, include: { items: { orderBy: { id: "asc" } } } });
     if (!order) throw new OrderError(404, "Pedido não encontrado.");
+    if (order.archivedAt) throw new OrderError(409, "O pedido foi arquivado e não pode ser atualizado operacionalmente.");
     if (order.status !== "PENDING_CONFIRMATION") throw new OrderError(409, "O pedido não está aguardando confirmação.");
     if (!order.items.length) throw new OrderError(409, "Pedido sem itens.");
     const ids = [...new Set(order.items.flatMap(item => item.variantId === null ? [] : [item.variantId]))].sort((a, b) => a - b);
@@ -123,6 +174,7 @@ export async function confirmOrder(id: number) {
       const updated = await tx.productVariant.updateMany({ where: { id: variantId, stock: { gte: quantity } }, data: { stock: { decrement: quantity } } });
       if (updated.count !== 1) throw new OrderError(409, "O estoque mudou. Tente novamente.");
     }
-    return tx.order.update({ where: { id }, data: { status: "PREPARING" }, select: { id: true, number: true, status: true, updatedAt: true } });
+    await tx.order.update({ where: { id }, data: { status: "PREPARING" }, select: { id: true } });
+    return tx.order.findUniqueOrThrow({ where: { id }, select: { id: true, number: true, status: true, updatedAt: true } });
   }, { isolationLevel: "ReadCommitted" });
 }

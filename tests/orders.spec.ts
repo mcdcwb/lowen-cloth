@@ -47,6 +47,56 @@ test("navigation, combined search/status, number/date arrows and pagination", as
   }
   await search(page, "no-such-customer-xyz", 0); await expect(page.getByText("Nenhum pedido corresponde aos filtros selecionados.")).toBeVisible();
 });
+
+test("dashboard shows real status counts and supports status-filtered operational orders", async ({ page }) => {
+  await admin(page);
+  await page.goto("/manager");
+  await expect(page.getByRole("heading", { name: "Pedidos por status" })).toBeVisible();
+  const selector = page.getByLabel("Filtrar pedidos por status");
+  await expect(selector.locator("option")).toHaveText(["Todos", "Aguardando confirmação", "Em preparação", "Pronto ou enviado", "Finalizado", "Cancelado"]);
+  for (const label of ["Aguardando confirmação", "Em preparação", "Pronto ou enviado", "Finalizado", "Cancelado"])
+    await expect(page.getByRole("link", { name: `Ver pedidos: ${label}` })).toBeVisible();
+  await selector.selectOption("COMPLETED");
+  await expect(page.locator("section[aria-labelledby='order-status-title'] article").first()).toContainText("Finalizado");
+  await selector.selectOption("");
+  await expect(page.getByRole("link", { name: "Abrir pedidos" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("closing archive and cancellation dialogs resets the next order action", async ({ page }) => {
+  await admin(page);
+  let dialog = await details(page, 5);
+  await dialog.getByRole("button", { name: "Arquivar pedido", exact: true }).click();
+  let confirmation = page.getByRole("alertdialog");
+  await expect(confirmation.getByRole("heading")).toContainText("Arquivar o pedido");
+  await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
+
+  await dialog.getByRole("button", { name: "Cancelar pedido", exact: true }).click();
+  confirmation = page.getByRole("alertdialog");
+  await expect(confirmation.getByRole("heading")).toContainText("Cancelar o pedido");
+  await confirmation.getByRole("button", { name: "Voltar", exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  dialog = await details(page, 5);
+  await dialog.getByRole("button", { name: "Confirmar pedido", exact: true }).click();
+  confirmation = page.getByRole("alertdialog");
+  await expect(confirmation.getByRole("heading")).toContainText("Confirmar o pedido");
+  await expect(confirmation).toContainText("estoque das variantes deste pedido será reduzido");
+  await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click();
+  await expect(dialog).toContainText("Aguardando confirmação");
+});
+
+test("reports page renders real metrics and six monthly buckets", async ({ page }) => {
+  await admin(page);
+  await page.getByRole("link", { name: "Relatórios" }).click();
+  await expect(page.getByRole("heading", { name: "Relatórios", exact: true })).toBeVisible();
+  await expect(page.getByText("Faturamento mensal · últimos seis meses")).toBeVisible();
+  await expect(page.locator(".recharts-bar-rectangle")).toHaveCount(6);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
 test("historical DELIVERY/PICKUP details, confirmation dialog, repeated submit protection and success", async ({ page }) => {
   const token = await admin(page);
   let dialog = await details(page, 1);

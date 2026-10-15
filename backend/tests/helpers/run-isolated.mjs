@@ -7,6 +7,9 @@ import { resolve } from "node:path";
 // Run from backend. A fresh database keeps seed/integration tests away from real carts.
 const database = "lowen_test_" + randomUUID().replaceAll("-", "");
 const url = new URL(process.env.DATABASE_URL);
+if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
+  throw new Error("Refusing integration tests unless DATABASE_URL points to a local PostgreSQL host.");
+}
 const admin = new pg.Client({ connectionString: url.toString() });
 await admin.connect();
 const run = (args, cwd = process.cwd(), env = process.env) => new Promise((resolveRun, reject) => {
@@ -24,7 +27,7 @@ try {
   } else {
     const files = process.argv.length > 2 ? process.argv.slice(2)
       : (await readdir("tests")).filter(f => f.endsWith(".test.ts")).map(f => "tests/" + f);
-    await run(["--import", "tsx", "--test", ...files], process.cwd(), env);
+    await run(["--import", "tsx", "--test", "--test-concurrency=1", ...files], process.cwd(), env);
   }
 } finally {
   await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);

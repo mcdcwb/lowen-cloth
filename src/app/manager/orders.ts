@@ -13,7 +13,7 @@ export function orderCancellationDescription(status: CancellableOrderStatus) {
 }
 export const orderStatusLabels: Record<OrderStatus, string> = {
   PENDING_CONFIRMATION: "Aguardando confirmação", PREPARING: "Em preparação",
-  READY_OR_SHIPPED: "Enviado / Pronto", COMPLETED: "Finalizado", CANCELLED: "Cancelado"
+  READY_OR_SHIPPED: "Pronto ou enviado", COMPLETED: "Finalizado", CANCELLED: "Cancelado"
 };
 export interface OrderSummary {
   id: number; number: string; sequence: number; customerName: string; createdAt: string;
@@ -33,7 +33,7 @@ export function orderAction(order: Pick<OrderSummary, "status" | "fulfillmentMet
   return null;
 }
 export interface OrderDetails extends OrderSummary {
-  updatedAt: string; deliveryAddress: Address | null; pickupAddress: Address | null;
+  updatedAt: string; completedAt: string | null; archivedAt: string | null; deliveryAddress: Address | null; pickupAddress: Address | null;
   items: { id: number; productName: string; colorName: string; size: string; quantity: number; unitPrice: string; subtotal: string }[];
 }
 export interface OrderPage { items: OrderSummary[]; total: number; page: number; pageSize: number; totalPages: number }

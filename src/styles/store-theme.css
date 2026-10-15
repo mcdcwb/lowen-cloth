@@ -330,6 +330,14 @@ html[data-store-theme="dark"] {
   pointer-events: auto;
   transition: transform 225ms ease-out, clip-path 225ms ease-out;
 }
+@media (max-width: 767px) {
+  .store-product-card .store-product-badges > .store-badge-automatic { height: 18px; max-width: min(100%, calc(100cqi - 26px)); --badge-width-scale: 1.5; transform: scaleX(var(--badge-width-scale)); transform-origin: left top; }
+  .store-product-card .store-product-badges > .store-badge-automatic .product-tag-label { font-size: 10px; inset: 0 14% 0 4%; }
+  .store-product-card .store-product-badges > .store-badge-automatic .product-tag-label > span { -webkit-line-clamp: 1; }
+}
+@media (max-width: 359px) {
+  .store-product-card .store-product-badges > .store-badge-automatic .product-tag-label { font-size: 9px; inset: 0 14% 0 4%; }
+}
 .store-badge-automatic:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
@@ -337,16 +345,19 @@ html[data-store-theme="dark"] {
 @media (hover: hover) and (pointer: fine) {
   .store-product-badges > .store-badge-automatic {
     /* Hide just the portion outside the left border; keep the visible tab interactive. */
-    transform: translateX(-85%);
+    transform: translateX(-85%) scaleX(var(--badge-width-scale, 1));
     clip-path: inset(-16px -16px -16px 85%);
+  }
+  .store-product-card .store-product-badges > .store-badge-automatic {
+    transform: translateX(-85%) scaleX(var(--badge-width-scale, 1));
   }
   .store-product-card:hover .store-product-badges > .store-badge-automatic,
   .store-detail-photo:hover .store-product-badges > .store-badge-automatic {
-    transform: translateX(0);
+    transform: translateX(0) scaleX(var(--badge-width-scale, 1));
     clip-path: inset(-16px -16px -16px 0);
   }
   .store-product-badges > .store-badge-automatic:focus-visible {
-    transform: translateX(0);
+    transform: translateX(0) scaleX(var(--badge-width-scale, 1));
     clip-path: none;
     transition: none;
   }

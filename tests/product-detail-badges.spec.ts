@@ -66,7 +66,7 @@ for (const width of [320, 390, 768, 1440]) test(`detail badges respect size stoc
 
 for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) test.describe(`detail scale ${touch ? "touch" : "desktop"} ${width}`, () => {
   test.use({ viewport: { width, height: 1000 }, hasTouch: touch, isMobile: touch });
-  test("only main photo badges grow 1.5x with unchanged motion, text and layout", async ({ page }, info) => {
+  test("main photo badges retain detail sizing while catalog cards scale on mobile", async ({ page }, info) => {
     await setup(page, false, true);
     const content = page.locator(".store-product-detail-content"), photo = page.locator(".store-detail-photo");
     const auto = photo.locator(".store-badge-automatic"), manual = photo.locator(".store-badge-manual");
@@ -77,13 +77,13 @@ for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) te
       width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height, font: getComputedStyle(el.querySelector(".product-tag-label")!).fontSize,
       shape: el.querySelector("path")!.getAttribute("d"), shadow: getComputedStyle(el.querySelector("svg")!).filter,
     })));
-    expect(defaults.map(b => b.font)).toEqual(width === 320 ? ["9px", "9px"] : ["9.9px", "9.9px"]);
-    for (const badge of defaults) expect(badge.height).toBeCloseTo(12, 2);
+    expect(defaults.map(b => b.font)).toEqual(width < 768 ? [width === 320 ? "9px" : "10px", width === 320 ? "9px" : "10px"] : ["9.9px", "9.9px"]);
+    for (const badge of defaults) expect(badge.height).toBeCloseTo(width < 768 ? 18 : 12, 2);
     const defaultManual = (await recommended.first().locator(".store-badge-manual").boundingBox())!;
     expect(defaultManual.width).toBeCloseTo(89.6, 1); expect(defaultManual.height).toBeCloseTo(27.9576, 1);
     await content.getByRole("button", { name: "P", exact: true }).click();
     const red = (await auto.boundingBox())!;
-    expect(red.width).toBeCloseTo(defaults[0].width * 1.5, 1); expect(red.height).toBeCloseTo(18, 2);
+    expect(red.width).toBeCloseTo(defaults[0].width / (width < 768 ? 1.5 : 1) * 1.5, 1); expect(red.height).toBeCloseTo(18, 2);
     await expect(auto).toHaveAttribute("data-badge-size", "detail");
     await expect(auto.locator("path")).toHaveAttribute("d", defaults[0].shape!);
     await expect(auto.locator("svg")).toHaveCSS("filter", defaults[0].shadow);
@@ -98,7 +98,7 @@ for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) te
     }
     await content.getByRole("button", { name: "M", exact: true }).click();
     await expect(auto).toHaveAccessibleName("POUCAS UNIDADES");
-    expect((await auto.boundingBox())!.width).toBeCloseTo(defaults[1].width * 1.5, 1);
+    expect((await auto.boundingBox())!.width).toBeCloseTo(defaults[1].width / (width < 768 ? 1.5 : 1) * 1.5, 1);
     const metrics = await photo.locator(".product-tag").evaluateAll(elements => elements.map(el => {
       const label = el.querySelector<HTMLElement>(".product-tag-label")!, text = label.firstElementChild as HTMLElement;
       const bounds = el.getBoundingClientRect(), frame = el.closest(".store-product-photo")!.getBoundingClientRect();
@@ -119,8 +119,8 @@ for (const touch of [false, true]) for (const width of [320, 390, 768, 1440]) te
     await expect(page.locator('[data-badge-size="detail"]')).toHaveCount(0);
     const catalogCard = page.locator(".store-product-card").filter({ has: page.getByText("Produto detalhe badges", { exact: true }) });
     await catalogCard.getByRole("button", { name: "P", exact: true }).click();
-    await expect(catalogCard.locator(".store-badge-automatic")).toHaveCSS("height", "12px");
-    await expect(catalogCard.locator(".store-badge-automatic .product-tag-label")).toHaveCSS("font-size", width === 320 ? "9px" : "9.9px");
+    await expect(catalogCard.locator(".store-badge-automatic")).toHaveCSS("height", width < 768 ? "18px" : "12px");
+    await expect(catalogCard.locator(".store-badge-automatic .product-tag-label")).toHaveCSS("font-size", width < 768 ? width === 320 ? "9px" : "10px" : "9.9px");
     expect((await catalogCard.locator(".store-badge-manual").boundingBox())!.width).toBeCloseTo(89.6, 1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });

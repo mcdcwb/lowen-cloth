@@ -1,8 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { expectSuccess, successToasts } from "./toast-helpers";
 
-const fixture = (id: number, inCarousel = true) => ({ id, name: `Carousel ${id}`, price: 30, public: id % 2 ? "masculino" : "feminino", category: "camisetas", inCarousel,
-  colors: [{ id, colorName: "Preto", colorValue: "#111111", images: [`/carousel-${id % 2 ? "portrait" : "landscape"}.svg`], variants: [{ id, value: "M", stock: 4 }] }] });
+const fixture = (id: number, inCarousel = true) => ({
+  id, name: `Carousel ${id}`, price: 30, public: id % 2 ? "masculino" : "feminino", category: "camisetas", inCarousel,
+  colors: [{ id, colorName: "Preto", colorValue: "#111111", images: [`/carousel-${id % 2 ? "portrait" : "landscape"}.svg`], variants: [{ id, value: "M", stock: 4 }] }]
+});
 
 test("single unpublished carousel slide has no navigation or purchase controls", async ({ page }) => {
   await page.route("**/api/produtos", route => route.fulfill({ json: [] }));
@@ -18,8 +20,10 @@ test("single unpublished carousel slide has no navigation or purchase controls",
 for (const width of [390, 1440]) test(`unpublished selected slides stay exclusive to the carousel at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 900 });
   const published = { ...fixture(1), isPublished: true, category: { id: 1, name: "Camisetas" } };
-  const draft = { ...fixture(2), name: "Lançamento roxo", isPublished: false, price: "9999.00", category: { id: 2, name: "Jaquetas" },
-    colors: [{ id: 102, colorName: "Roxo", colorValue: "#800080", images: [], variants: [{ id: 202, value: "XGG", stock: 1 }] }] };
+  const draft = {
+    ...fixture(2), name: "Lançamento roxo", isPublished: false, price: "9999.00", category: { id: 2, name: "Jaquetas" },
+    colors: [{ id: 102, colorName: "Roxo", colorValue: "#800080", images: [], variants: [{ id: 202, value: "XGG", stock: 1 }] }]
+  };
   const unselected = { ...draft, id: 3, name: "Rascunho fora dos slides", inCarousel: false };
   // Deliberately include drafts in the catalog mock to exercise its defensive filter too.
   await page.route("**/api/produtos", route => route.fulfill({ json: [published, draft, unselected] }));
@@ -65,10 +69,12 @@ test("Manager explicitly selects a draft and publication toggles catalog access 
   test.skip(selected.length >= 5, "Preserve existing slides when the carousel is full.");
   const categories = await (await page.request.get("/api/categorias", { headers })).json();
   const name = `Draft carousel E2E ${Date.now()}`;
-  const response = await page.request.post("/api/produtos", { headers, data: {
-    name, price: 9999, public: "unissex", categoryId: categories[0].id, isPublished: false,
-    colors: [{ colorName: "Roxo", colorValue: "#800080", images: [], variants: [{ value: "XGG", stock: 1 }] }]
-  } });
+  const response = await page.request.post("/api/produtos", {
+    headers, data: {
+      name, price: 9999, public: "unissex", categoryId: categories[0].id, isPublished: false,
+      colors: [{ colorName: "Roxo", colorValue: "#800080", images: [], variants: [{ value: "XGG", stock: 1 }] }]
+    }
+  });
   expect(response.status()).toBe(201);
   const product = await response.json();
   try {
@@ -214,10 +220,10 @@ for (const width of [1440, 768, 390, 320]) test(`slider renders exactly 0–5 se
       await expect(slider.getByRole("button", { name: "Próximo produto", exact: true })).toHaveCount(count > 1 ? 1 : 0);
       await expect(slider.getByRole("button", { name: "Produto anterior", exact: true })).toHaveCount(count > 1 ? 1 : 0);
       if (count > 1) {
-      await slider.getByRole("button", { name: "Próximo produto", exact: true }).click();
-      await expect(slider.getByRole("heading")).toHaveText("Carousel 1");
-      await slider.getByRole("button", { name: "Produto anterior", exact: true }).click();
-      await expect(slider.getByRole("heading")).toHaveText(`Carousel ${count}`);
+        await slider.getByRole("button", { name: "Próximo produto", exact: true }).click();
+        await expect(slider.getByRole("heading")).toHaveText("Carousel 1");
+        await slider.getByRole("button", { name: "Produto anterior", exact: true }).click();
+        await expect(slider.getByRole("heading")).toHaveText(`Carousel ${count}`);
       }
       await slider.getByRole("button", { name: "VER MAIS", exact: true }).click();
       await expect(page).toHaveURL(new RegExp(`productId=${count}`));

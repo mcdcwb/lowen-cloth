@@ -241,6 +241,18 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/produtos{,/admin,/carrossel}", route => route.fulfill({ json: products }));
 });
 
+test("home category filters use subtle tracking and product card names use a slightly larger type", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 }); await page.goto("/");
+  const audienceLabel = page.locator("aside section").nth(1).getByRole("button", { name: "Masculino", exact: true });
+  await expect(audienceLabel).toHaveCSS("letter-spacing", "0.35px");
+  const header = page.locator("header");
+  await expect(header.getByRole("button", { name: "Público", exact: true })).toHaveCount(0);
+  await header.getByRole("button", { name: "Categorias", exact: true }).click();
+  await expect(header.getByRole("button", { name: "Camisetas / Camisas", exact: true })).toHaveCSS("letter-spacing", "0.375px");
+  const productName = page.locator(".store-product-card").filter({ has: page.getByText("Camiseta API", { exact: true }) }).locator("p").first();
+  await expect(productName).toHaveCSS("font-size", "15px");
+});
+
 for (const width of [320, 390, 768, 1440]) test(`product card sizes never underline and retain selection and keyboard focus at ${width}px`, async ({ page }) => {
   await page.setViewportSize({ width, height: 1000 });
   await page.goto("/");
@@ -321,8 +333,8 @@ for (const width of [320, 390, 768, 1440]) test(`filters and sorting omit underl
   await expect(price).toHaveAttribute("aria-pressed", "true");
   // Selected dropdown/Aside options retain their background and font indicator.
   if (width < 768) await page.getByRole("button", { name: "Abrir menu de navegação", exact: true }).click();
-  else if (width !== 1440) await page.locator("header").getByRole("button", { name: "Público", exact: true }).click();
-  const options = width === 1440 ? page.locator("aside section").nth(1) : page.locator("header");
+  else if (width !== 1440) await page.locator("header").getByRole("button", { name: "Categorias", exact: true }).click();
+  const options = width === 1440 ? page.locator("aside section").nth(2) : page.locator("header");
   const all = options.getByRole("button", { name: "Todos", exact: true }).first();
   await expect(all).toHaveAttribute("aria-pressed", "true");
   await expect(all).toHaveCSS("font-weight", "500");
@@ -342,12 +354,12 @@ test("catalog combines audience, category and in-stock sizes across header and a
   const sections = aside.locator("section");
   const [sizes, audience, category] = [sections.nth(0), sections.nth(1), sections.nth(2)];
   const header = page.locator("header");
+  await expect(header.getByRole("button", { name: "Público", exact: true })).toHaveCount(0);
   const count = page.getByText(/^[0-9]+ peças? encontrad[ao]s?$/);
   await expect(count).toHaveText("4 peças encontradas");
   await expect(page.getByRole("button", { name: "Limpar filtros", exact: true })).toHaveCount(0);
   await expect(aside.locator("h3")).toHaveText(["Tamanhos", "Público", "Categoria"]);
-  await header.getByRole("button", { name: "Público", exact: true }).click();
-  await header.getByRole("button", { name: "Masculino", exact: true }).click();
+  await audience.getByRole("button", { name: "Masculino", exact: true }).click();
   await expect(audience.getByRole("button", { name: "Masculino" })).toHaveAttribute("aria-pressed", "true");
   await header.getByRole("button", { name: "Categorias", exact: true }).click();
   await header.getByRole("button", { name: "Camisetas / Camisas", exact: true }).click();
@@ -688,18 +700,23 @@ for (const width of [1440, 390]) {
     await expect(page.getByText("4 peças encontradas", { exact: true })).toBeVisible();
     await checkOptions();
     await expect(options.getByRole("button", { name: "Todos", exact: true })).toHaveAttribute("aria-pressed", "true");
-    const audience = mobile ? page.locator("header") : page.locator("aside section").nth(1);
-    await audience.getByRole("button", { name: "Masculino", exact: true }).click();
-    await expect(page.getByText("2 peças encontradas", { exact: true })).toBeVisible();
-    await checkOptions();
-    await audience.getByRole("button", { name: "Infantil", exact: true }).click();
-    await sizes.getByRole("button", { name: "GG", exact: true }).click();
-    await expect(page.getByText("Nenhuma peça encontrada", { exact: true })).toBeVisible();
-    await checkOptions();
+    if (!mobile) {
+      const audience = page.locator("aside section").nth(1);
+      await audience.getByRole("button", { name: "Masculino", exact: true }).click();
+      await expect(page.getByText("2 peças encontradas", { exact: true })).toBeVisible();
+      await checkOptions();
+      await audience.getByRole("button", { name: "Infantil", exact: true }).click();
+      await sizes.getByRole("button", { name: "GG", exact: true }).click();
+      await expect(page.getByText("Nenhuma peça encontrada", { exact: true })).toBeVisible();
+      await checkOptions();
+    } else {
+      await expect(page.locator("header").getByRole("button", { name: "Público", exact: true })).toHaveCount(0);
+    }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    if (mobile) await menu.click();
-    await page.getByRole("button", { name: "Limpar filtros", exact: true }).first().click();
-    await expect(page.getByText("4 peças encontradas", { exact: true })).toBeVisible();
+    if (!mobile) {
+      await page.getByRole("button", { name: "Limpar filtros", exact: true }).first().click();
+      await expect(page.getByText("4 peças encontradas", { exact: true })).toBeVisible();
+    }
   });
 }
 

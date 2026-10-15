@@ -5,6 +5,7 @@
 
 @theme {
     --font-cloister: "Cloister Black", serif;
+    --font-display: "Oswald", Impact, sans-serif;
 }
 
 html {

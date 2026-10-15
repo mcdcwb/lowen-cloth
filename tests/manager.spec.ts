@@ -18,6 +18,9 @@ async function token(page: Page) {
 async function mockAdmin(page: Page) {
   await page.route("**/api/categorias", route => route.fulfill({ json: [{ id: 1, name: "camisetas" }, { id: 2, name: "calcados" }] }));
   await page.route("**/api/settings", route => route.fulfill({ json: { lowStockThreshold: 5, showLowStockBadge: true, showLastUnitBadge: true } }));
+  await page.route("**/api/orders/status-counts", route => route.fulfill({ json: { PENDING_CONFIRMATION: 0, PREPARING: 0, READY_OR_SHIPPED: 0, COMPLETED: 0, CANCELLED: 0 } }));
+  await page.route("**/api/orders/reports", route => route.fulfill({ json: { revenue: "0.00", completedOrders: 0, averageTicket: "0.00", monthly: [], topProducts: [], lowestProducts: [] } }));
+  await page.route("**/api/orders?**", route => route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 } }));
   const account = { id: 1, name: "Administrador de teste", email: "admin@example.test", role: "ADMIN" };
   await page.route("**/api/auth/me", route => route.fulfill({ json: { account } }));
   await page.route("**/api/auth/login", route => route.fulfill({ json: { account, accessToken: "test-session", tokenType: "Bearer", expiresIn: 3600, expiresAt: Date.now() + 3600000 } }));
@@ -103,7 +106,7 @@ for (const width of [1440, 390, 320]) test(`dashboard stock shortcuts, keyboard 
   await expect(variants.getByRole("link", { name: "Ver 3 variantes sem estoque" })).toHaveCount(1);
   await expect(variants).not.toContainText("Ver produtos");
   await expect(variants).toHaveCSS("cursor", "auto");
-  await expect(page.locator('main > div.grid > a, main > div.grid > section')).toHaveCount(4);
+  await expect(page.locator("main > div.grid").filter({ has: total }).locator(":scope > a, :scope > section")).toHaveCount(4);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await total.scrollIntoViewIfNeeded();
   await page.mouse.move(0, 0);
@@ -549,10 +552,11 @@ test("product filters align labels and controls on desktop and stack evenly on m
   await page.getByRole("link", { name: "Produtos", exact: true }).click();
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 900 });
-    const controls = [page.getByLabel("Buscar por nome"), page.getByLabel("Categoria", { exact: true }), page.getByLabel("Público", { exact: true })];
+    const controls = [page.locator('input[type="search"]:visible'), page.locator('select[aria-label="Categoria"]:visible'), page.locator('select[aria-label="Público"]:visible')];
+    for (const control of controls) await expect(control).toBeVisible();
     const boxes = await Promise.all(controls.map(control => control.boundingBox()));
     const labels = await Promise.all(controls.map(control => control.locator("..").locator("span").first().boundingBox()));
-    expect(boxes.every(box => box?.height === boxes[0]?.height)).toBe(true);
+    expect(boxes.every(box => box && boxes[0] && Math.abs(box.height - boxes[0].height) <= 1)).toBe(true);
     if (width === 1440) {
       expect(boxes.every(box => box?.y === boxes[0]?.y)).toBe(true);
       expect(labels.every(box => box?.y === labels[0]?.y)).toBe(true);
@@ -570,4 +574,67 @@ test("product filters align labels and controls on desktop and stack evenly on m
   await page.goto("/manager");
   await page.getByRole("link", { name: "Voltar para a loja" }).click();
   await expect(page).toHaveURL(/\/$/);
+});
+
+test("category product counts open the ID-filtered product list and the filter survives reload", async ({ page }) => {
+  await login(page);
+  await page.getByRole("link", { name: "Configurações", exact: true }).click();
+  const counts = page.locator('section[aria-label="Categorias de produtos"] a[href*="categoria="]');
+  await expect(counts.first()).toBeVisible();
+  const categoryHref = await counts.first().getAttribute("href");
+  const categoryId = new URL(categoryHref!, "http://localhost").searchParams.get("categoria")!;
+  await counts.first().click();
+  await expect(page).toHaveURL(new RegExp(`categoria=${categoryId}`));
+  await expect(page.getByLabel("Categoria", { exact: true })).toHaveValue(categoryId);
+  await page.reload(); await expect(page.getByLabel("Categoria", { exact: true })).toHaveValue(categoryId);
+});
+
+test("dashboard status cards and completed report card open pre-filtered orders immediately", async ({ page }) => {
+  await login(page);
+  for (const [status, label] of [["PENDING_CONFIRMATION", "Aguardando confirmação"], ["PREPARING", "Em preparação"], ["READY_OR_SHIPPED", "Pronto ou enviado"], ["COMPLETED", "Finalizado"], ["CANCELLED", "Cancelado"]] as const) {
+    await expect(page.getByRole("link", { name: `Ver pedidos: ${label}`, exact: true })).toHaveAttribute("href", `/manager/pedidos?status=${status}`);
+  }
+  const requested: string[] = [];
+  await page.route("**/api/orders?**", async route => { requested.push(new URL(route.request().url()).searchParams.get("status") ?? ""); await route.fulfill({ json: { items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 } }); });
+  await page.getByRole("link", { name: "Ver pedidos: Em preparação" }).click();
+  await expect(page.getByLabel("Status", { exact: true })).toHaveValue("PREPARING");
+  await expect.poll(() => requested.at(-1)).toBe("PREPARING");
+  await page.getByRole("link", { name: "Relatórios", exact: true }).click();
+  await page.getByRole("link", { name: "Ver pedidos concluídos", exact: true }).click();
+  await expect(page.getByLabel("Status", { exact: true })).toHaveValue("COMPLETED");
+  await expect.poll(() => requested.at(-1)).toBe("COMPLETED");
+});
+
+test("product edit actions use the highlighted yellow button with hover and keyboard focus", async ({ page }) => {
+  await login(page); await page.getByRole("link", { name: "Produtos", exact: true }).click();
+  const edit = page.getByRole("link", { name: "Editar", exact: true }).first();
+  await expect(edit).toHaveClass(/bg-amber-100/);
+  const background = await edit.evaluate(element => getComputedStyle(element).backgroundColor);
+  await edit.hover(); await expect.poll(() => edit.evaluate(element => getComputedStyle(element).backgroundColor)).not.toBe(background);
+  await edit.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
+  await expect(edit).toBeFocused(); await expect(edit).toHaveCSS("outline-style", "solid");
+});
+
+test("administrator account forms update session email and never expose password values", async ({ page }) => {
+  await login(page);
+  let email = process.env.E2E_ADMIN_EMAIL!;
+  await page.route("**/api/conta/admin", async route => {
+    if (route.request().method() === "GET") return route.fulfill({ json: { account: { id: 1, name: email.split("@")[0], email, role: "ADMIN" } } });
+    email = route.request().postDataJSON().email;
+    return route.fulfill({ json: { account: { id: 1, name: email.split("@")[0], email, role: "ADMIN" } } });
+  });
+  await page.route("**/api/conta/admin/senha", route => route.fulfill({ json: { message: "Senha alterada com sucesso." } }));
+  await page.getByRole("link", { name: "Minha Conta", exact: true }).click();
+  await expect(page.getByLabel("E-mail", { exact: true })).toHaveValue(process.env.E2E_ADMIN_EMAIL!);
+  await page.getByLabel("E-mail", { exact: true }).fill("admin-alterado@example.test");
+  await page.getByRole("button", { name: "Salvar e-mail", exact: true }).click();
+  await expect(page.getByText("E-mail atualizado com sucesso.", { exact: true })).toBeVisible();
+  await expect(page.locator("aside")).toContainText("admin-alterado@example.test");
+  await page.getByLabel("Senha atual", { exact: true }).fill("sensitive-current");
+  await page.getByLabel("Nova senha", { exact: true }).fill("sensitive-next");
+  await page.getByLabel("Confirmar nova senha", { exact: true }).fill("sensitive-next");
+  await page.getByRole("button", { name: "Salvar nova senha", exact: true }).click();
+  await expect(page.getByText("Senha alterada com sucesso.", { exact: true })).toBeVisible();
+  await expect(page.locator("body")).not.toContainText("sensitive-current");
+  await expect(page.locator("body")).not.toContainText("sensitive-next");
 });

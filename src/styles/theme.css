@@ -3,7 +3,7 @@
 :root {
   --font-size: 16px;
   --font-sans: "DM Sans", system-ui, sans-serif;
-  --font-serif: "Playfair Display", Georgia, serif;
+  --font-serif: "Oswald", Impact, sans-serif;
   --background: #F7F3EE;
   --foreground: #1F3A4D;
   --card: #FFFDFB;
@@ -46,7 +46,7 @@
 :root {
   --font-size: 16px;
   --font-sans: "DM Sans", system-ui, sans-serif;
-  --font-serif: "Playfair Display", Georgia, serif;
+  --font-serif: "Oswald", Impact, sans-serif;
   --background: #F1F5F8;
   --foreground: #183246;
   --card: #FDFEFE;
