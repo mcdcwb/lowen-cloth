@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode, type FormEvent } from "react";
 import { Link, useLocation } from "react-router";
+import { ArrowLeft } from "lucide-react";
 import type { Account } from "../lib/auth";
 import { accountRequest, emptyAddress, formatCep, lookupCep, type Address, type Profile } from "../lib/account";
 
@@ -11,7 +12,7 @@ export function AccountPage({ user, favorites, onLogin, children, accessToken, o
   const checkoutReturn = !favorites && new URLSearchParams(location.search).get("returnTo") === "/checkout";
   return (
     <main className="max-w-7xl mx-auto px-4 sm:px-6 py-16 min-h-[60vh]">
-      <Link to="/" className="text-sm text-muted-foreground hover:text-primary">← Voltar para a loja</Link>
+      <Link to="/" className="inline-flex items-center text-sm text-muted-foreground hover:text-primary"><ArrowLeft aria-hidden="true" size={16} className="mr-2" />Voltar para a loja</Link>
       {checkoutReturn && user?.role === "USER" && <Link to="/checkout" className="ml-4 inline-flex min-h-11 items-center text-sm text-primary underline focus-visible:outline-2 focus-visible:outline-primary">Voltar ao checkout</Link>}
       <section className="mt-8 p-6 sm:p-8 bg-card border border-border rounded-xl">
         {user && (favorites || user.role === "USER") ? (
@@ -49,6 +50,7 @@ const addressFields: { key: keyof Address; label: string; max: number; autoCompl
 
 function AccountForm({ user, token, onUpdated, checkoutReturn }: { user: Account; token: string; onUpdated: (token: string, account: Account) => void; checkoutReturn: boolean }) {
   const [email, setEmail] = useState(user.email);
+  const [phone, setPhone] = useState("");
   const [address, setAddress] = useState<Address>({ ...emptyAddress });
   const [loaded, setLoaded] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -75,6 +77,7 @@ function AccountForm({ user, token, onUpdated, checkoutReturn }: { user: Account
     void accountRequest<Profile>(token, "GET", undefined, "/conta", controller.signal).then(profile => {
       if (controller.signal.aborted) return;
       setEmail(profile.account.email);
+      setPhone(profile.account.phone ?? "");
       setAddress(profile.address ? { ...profile.address, cep: formatCep(profile.address.cep) } : { ...emptyAddress });
       setLoaded(true);
     }).catch(() => { if (!controller.signal.aborted) setError("Não foi possível carregar sua conta. Tente novamente."); });
@@ -110,9 +113,10 @@ function AccountForm({ user, token, onUpdated, checkoutReturn }: { user: Account
     const controller = new AbortController(); pending.current = controller;
     try {
       const hasAddress = Object.values(address).some(value => value.trim());
-      const profile = await accountRequest<Profile>(token, "PATCH", { email, address: hasAddress ? { ...address, cep: address.cep.replace(/\D/g, "") } : null }, "/conta", controller.signal);
+      const profile = await accountRequest<Profile>(token, "PATCH", { email, phone: phone.trim() || null, address: hasAddress ? { ...address, cep: address.cep.replace(/\D/g, "") } : null }, "/conta", controller.signal);
       if (!alive.current) return;
       setEmail(profile.account.email);
+      setPhone(profile.account.phone ?? "");
       setAddress(profile.address ? { ...profile.address, cep: formatCep(profile.address.cep) } : { ...emptyAddress });
       onUpdated(token, profile.account);
       setSuccess("Alteração salva.");
@@ -144,6 +148,7 @@ function AccountForm({ user, token, onUpdated, checkoutReturn }: { user: Account
             <h2 id="personal-title" className="font-serif text-xl font-bold">Dados pessoais</h2>
             <label className="block text-sm font-medium">Nome completo<input className={inputClass + " bg-muted"} value={user.name} readOnly autoComplete="name" /></label>
             <label className="block text-sm font-medium">E-mail<input className={inputClass} type="email" autoComplete="email" required maxLength={254} value={email} onChange={e => { setEmail(e.target.value); setSuccess(""); }} /></label>
+            <label className="block text-sm font-medium">Telefone para contato<input className={inputClass} type="tel" autoComplete="tel" maxLength={40} placeholder="DDD e número, ex.: (11) 99999-9999" value={phone} onChange={e => { setPhone(e.target.value); setSuccess(""); }} /></label>
           </section>
           <section aria-labelledby="address-title" className="space-y-4">
             <h2 id="address-title" className="font-serif text-xl font-bold">Endereço</h2>

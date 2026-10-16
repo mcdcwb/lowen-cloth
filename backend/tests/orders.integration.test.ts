@@ -11,7 +11,7 @@ import { startTestServer } from "./helpers/http.js";
 process.env.JWT_SECRET = randomBytes(32).toString("hex");
 test("ADMIN order reads validate filters, pagination and historical snapshots", async t => {
   assert.match(new URL(process.env.DATABASE_URL!).pathname, /^\/lowen_test_/);
-  const tag = randomUUID(), password = randomUUID(), email = `${tag}@example.test`, adminEmail = `admin-${tag}@example.test`;
+  const tag = randomUUID(), password = randomUUID(), email = `${tag}@example.test`, adminEmail = `admin-${tag}@example.test`, otherEmail = `other-${tag}@example.test`;
   const address = { cep: "80000000", street: "Rua Histórica", number: "123", complement: "", neighborhood: "Centro", city: "Curitiba", state: "PR" };
   const storeAddress = { ...address, street: "Loja Histórica", number: "456" };
   const server = await startTestServer(createApp());
@@ -175,11 +175,27 @@ test("ADMIN order reads validate filters, pagination and historical snapshots", 
         for (const field of ["requestHash", "idempotencyKey", "whatsappUrl", "whatsappMessage", "user", "userId"]) assert.ok(!(field in detail));
       }
     });
+    await t.test("customer order list is scoped to the authenticated USER", async () => {
+      const other = await createUser({ name: "Outro cliente", email: otherEmail, password });
+      const foreignOrder = await prisma.order.create({ data: {
+        number: "26119998", sequence: 9998, userId: other.id, customerName: "Outro cliente", status: "PENDING_CONFIRMATION",
+        fulfillmentMethod: "PICKUP", total: "1.00", idempotencyKey: randomUUID(), requestHash: "foreign",
+        whatsappUrl: "https://wa.me/5541999999999", whatsappMessage: "fixture"
+      } });
+      const mine = await server.request("/orders/mine", "GET", undefined, customer);
+      assert.equal(mine.status, 200);
+      const result = await mine.json();
+      const ownOrders = await prisma.order.findMany({ where: { userId: user.id }, select: { id: true } });
+      assert.deepEqual(result.items.map((order: { id: number }) => order.id).sort((a: number, b: number) => a - b), ownOrders.map(order => order.id).sort((a, b) => a - b));
+      assert.ok(!result.items.some((order: { id: number }) => order.id === foreignOrder.id));
+      assert.equal((await server.request("/orders/mine", "GET", undefined, admin)).status, 403);
+      assert.equal((await server.request("/orders/mine")).status, 401);
+    });
   } finally {
-    await server.close(); await prisma.order.deleteMany({ where: { user: { email } } });
+    await server.close(); await prisma.order.deleteMany({ where: { user: { email: { in: [email, otherEmail] } } } });
     await prisma.product.deleteMany({ where: { name: tag } });
     await prisma.category.deleteMany({ where: { normalizedName: tag.toLowerCase() } });
-    await prisma.user.deleteMany({ where: { email } }); await prisma.admin.deleteMany({ where: { email: adminEmail } });
+    await prisma.user.deleteMany({ where: { email: { in: [email, otherEmail] } } }); await prisma.admin.deleteMany({ where: { email: adminEmail } });
     await prisma.$disconnect();
   }
 });

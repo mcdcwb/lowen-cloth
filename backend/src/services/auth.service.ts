@@ -12,7 +12,9 @@ const dummyPasswordHash = hashPassword(randomBytes(32).toString("hex"));
 export async function login(input: z.infer<typeof loginSchema>) {
     const [admin, user] = await Promise.all([
         prisma.admin.findUnique({ where: { email: input.email } }),
-        prisma.user.findUnique({ where: { email: input.email } })
+        prisma.user.findUnique({ where: { email: input.email }, select: {
+            id: true, name: true, email: true, passwordHash: true, active: true
+        } })
     ]);
     const record = admin ?? user;
     const validPassword = await verifyPassword(record?.passwordHash ?? await dummyPasswordHash, input.password);

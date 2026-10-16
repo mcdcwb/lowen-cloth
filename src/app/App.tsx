@@ -22,9 +22,10 @@ import { useLocation, useNavigate } from "react-router";
 import { AccountMenu } from "./components/AccountMenu";
 import { FilterSection, FilterOptions } from "./components/CatalogFilters";
 import { AccountPage } from "./components/AccountPage";
+import { MyOrdersPage } from "./components/MyOrdersPage";
 import { validateLogin, validateRegistration } from "./lib/auth";
 import {
-  ShoppingCart, X, ChevronDown, ChevronLeft, ChevronRight, Plus, Minus, Trash2,
+  ShoppingCart, X, ChevronDown, ChevronLeft, ChevronRight, ArrowLeft, Plus, Minus, Trash2,
   User, Menu, Tag, Leaf, Truck, Star,
   LeafyGreen, ArrowUp, ArrowDown, ArrowUpDown,
   GemIcon, Sprout, MessageCircle
@@ -70,7 +71,7 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const accountPath = location.pathname.replace(/\/$/, "");
-  const isAccountPage = accountPath === "/minha-conta" || accountPath === "/favoritos";
+  const isAccountPage = accountPath === "/minha-conta" || accountPath === "/favoritos" || accountPath === "/meus-pedidos";
   const isCheckoutPage = accountPath === "/checkout";
   const [activePublic, setActivePublic] = useState<Public | "todos">("todos");
   const [selectedCategory, setActiveCategory] = useState<Category | null>(null);
@@ -397,7 +398,7 @@ export default function App() {
                 onClick={() => { clearFilters(); setMobileMenuOpen(false); if (isAccountPage || isCheckoutPage) navigate("/"); }}
                 className="w-full text-left px-3 py-2.5 text-[15px] font-medium rounded-lg hover:bg-muted"
               >
-                <a href="#home">Todas as Peças</a>
+                <a href="#home" onClick={() => { clearFilters(); setMobileMenuOpen(false); if (isAccountPage || isCheckoutPage) navigate("/"); }}>Início</a>
               </button>
               <div className="px-3 pt-2 pb-1 text-[15px] font-semibold uppercase tracking-widest text-muted-foreground">
                 Categorias
@@ -409,7 +410,7 @@ export default function App() {
               <a
                 href="/#contato"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block px-3 py-2.5 text-[15px] font-medium hover:bg-muted rounded-lg"
+                className="mt-4 block rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-[15px] font-semibold text-primary hover:bg-primary/10"
               >
                 Contato
               </a>
@@ -452,7 +453,7 @@ export default function App() {
           }}
           onAddToCart={addToCart} addState={shopping.addState}
         />
-      </div> : isCheckoutPage ? <CheckoutPage user={user} token={accessToken} validating={validating} shopping={shopping} store={store} cartOpen={cartOpen}
+      </div> : accountPath === "/meus-pedidos" ? <MyOrdersPage token={user?.role === "USER" ? accessToken : undefined} onLogin={() => setAuthOpen(true)} /> : isCheckoutPage ? <CheckoutPage user={user} token={accessToken} validating={validating} shopping={shopping} store={store} cartOpen={cartOpen}
         onOpenCart={() => { setCartOpen(true); shopping.retry(); }} onLogin={startCheckout} onUnauthorized={message => invalidate(accessToken, message)} /> : isAccountPage ? <AccountPage accessToken={accessToken} onUpdated={updateAccount} user={user} favorites={accountPath === "/favoritos"} onLogin={() => setAuthOpen(true)}>
           {shopping.ready && !shopping.favorites.length && <p className="mt-4">Nenhum favorito salvo.</p>}
           <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -617,8 +618,8 @@ export default function App() {
             <section className="flex-1 min-w-0">
               {/* Section header */}
               <div className="flex flex-wrap items-end justify-between mb-6 gap-4">
-                <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
+                <div className="flex w-full flex-row flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1 lg:flex-none">
                     <h2 className="font-serif text-2xl font-bold text-foreground leading-tight">
                       {catalogTitle}
                     </h2>
@@ -626,12 +627,8 @@ export default function App() {
                       {productsLoading ? "Carregando..." : productsError ? "Catálogo indisponível" : `${filteredProducts.length} ${filteredProducts.length === 1 ? "peça encontrada" : "peças encontradas"}`}
                     </p>
                   </div>
-                  <div className="flex max-w-full flex-wrap items-center justify-end gap-2 self-end sm:flex-nowrap sm:self-auto">
-                    {hasActiveFilters && <button type="button" onClick={clearFilters}
-                      className="min-h-11 shrink-0 px-2 text-sm text-primary transition-colors duration-200 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
-                      Limpar filtros
-                    </button>}
-                    <div role="group" aria-label="Ordenar produtos" className="flex shrink-0 gap-1">
+                  <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 self-end lg:ml-auto">
+                    <div role="group" aria-label="Ordenar produtos" className="ml-auto flex shrink-0 gap-1 lg:ml-0">
                       {(["name", "price"] as const).map(field => {
                         const active = catalogSort?.field === field;
                         const label = field === "name" ? "Nome" : "Preço";
@@ -644,6 +641,10 @@ export default function App() {
                         </button>;
                       })}
                     </div>
+                    {hasActiveFilters && <button type="button" onClick={clearFilters}
+                      className="min-h-11 basis-full px-2 text-left text-sm text-primary transition-colors duration-200 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:basis-full lg:basis-full sm:text-left lg:text-right">
+                      Limpar filtros
+                    </button>}
                   </div>
                 </div>
 
@@ -759,8 +760,8 @@ function ColorSelector({ product, onSelect, card = false }: { product: Product; 
       {product.colors.map(color => <button key={color.id} type="button" title={color.colorName} aria-label={color.colorName}
         aria-pressed={product.colorId === color.id} onClick={() => onSelect(color.id)}
         className={card
-          ? `h-7 w-7 shrink-0 rounded-full border border-border transition-[border-color,box-shadow] duration-150 hover:border-primary/60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring ${product.colorId === color.id ? "ring-1 ring-primary ring-offset-2 ring-offset-card" : ""}`
-          : `h-7 w-7 border rounded-none shadow-sm ${product.colorId === color.id ? "ring-1 ring-primary ring-offset-2 ring-offset-card border-primary" : "border-border"}`}
+          ? `h-7 w-7 shrink-0 rounded-[3px] border border-border transition-[border-color,box-shadow] duration-150 hover:border-primary/60 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring ${product.colorId === color.id ? "ring-1 ring-primary ring-offset-2 ring-offset-card" : ""}`
+          : `h-7 w-7 border rounded-[3px] shadow-sm ${product.colorId === color.id ? "ring-1 ring-primary ring-offset-2 ring-offset-card border-primary" : "border-border"}`}
         style={{ backgroundColor: color.colorValue }} />)}
     </div>
   </div>;
@@ -845,7 +846,7 @@ function ProductDetailPage({
           onClick={onBack}
           className="mb-6 inline-flex items-center text-sm font-medium text-muted-foreground hover:text-primary"
         >
-          ← Voltar para a loja
+          <ArrowLeft aria-hidden="true" size={16} className="mr-2" /> Voltar para a loja
         </button>
 
         <div className="store-product-detail-content grid lg:grid-cols-[1.1fr_0.9fr] gap-8 items-start">
@@ -1085,7 +1086,7 @@ function ProductCard({
       {/* Info */}
       <div className="p-3 flex flex-col gap-2 flex-1 rounded-t-2xl rounded-b-[15px] bg-card">
         <div>
-          <p className="text-[15px] font-medium leading-[1.25] text-foreground line-clamp-2 min-h-[2.5rem]">
+          <p className="text-base sm:text-[17px] font-medium leading-[1.25] text-foreground line-clamp-2 min-h-[2.5rem] break-words">
             {product.name}
           </p>
           <p className="mt-1 text-base font-bold text-primary">{formatPrice(product.price)}</p>

@@ -250,7 +250,7 @@ test("home category filters use subtle tracking and product card names use a sli
   await header.getByRole("button", { name: "Categorias", exact: true }).click();
   await expect(header.getByRole("button", { name: "Camisetas / Camisas", exact: true })).toHaveCSS("letter-spacing", "0.375px");
   const productName = page.locator(".store-product-card").filter({ has: page.getByText("Camiseta API", { exact: true }) }).locator("p").first();
-  await expect(productName).toHaveCSS("font-size", "15px");
+  await expect(productName).toHaveCSS("font-size", "17px");
 });
 
 for (const width of [320, 390, 768, 1440]) test(`product card sizes never underline and retain selection and keyboard focus at ${width}px`, async ({ page }) => {
@@ -618,7 +618,7 @@ for (const width of [1440, 390, 320]) test(`sorting header fits and remains stab
   expect(await controls.boundingBox()).toEqual(before);
 });
 
-for (const width of [1440, 390, 320]) test(`clear filters sits beside stable sort controls at ${width}px`, async ({ page }, testInfo) => {
+for (const width of [1440, 768, 390, 320]) test(`clear filters sits below the header row without overflow at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 900 });
   await page.goto("/");
   const sizes = width === 1440 ? page.locator("aside").locator("section").first() : page.getByRole("group", { name: "Filtrar por tamanho" });
@@ -640,10 +640,9 @@ for (const width of [1440, 390, 320]) test(`clear filters sits beside stable sor
     expect(box!.x).toBeGreaterThanOrEqual(0);
     expect(box!.x + box!.width).toBeLessThanOrEqual(width);
   }
-  expect(bounds[0]!.y + bounds[0]!.height <= bounds[1]!.y || bounds[0]!.x + bounds[0]!.width <= bounds[1]!.x).toBe(true);
+  expect(bounds[0]!.y).toBeGreaterThanOrEqual(Math.max(bounds[1]!.y + bounds[1]!.height, bounds[2]!.y + bounds[2]!.height) - 1);
   if (width === 1440) {
-    expect(bounds[0]!.x + bounds[0]!.width).toBeLessThanOrEqual(bounds[1]!.x);
-    expect(bounds[0]!.y).toBe(bounds[1]!.y);
+    expect(bounds[0]!.y).toBeGreaterThan(bounds[1]!.y);
   }
   await page.screenshot({ path: testInfo.outputPath(`inactive-${width}.png`), animations: "disabled" });
   for (const [index, control] of [name, name, price, price, name].entries()) {

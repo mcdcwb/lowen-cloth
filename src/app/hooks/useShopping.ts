@@ -245,12 +245,14 @@ export function useShopping(products: Product[], accessToken: string | undefined
     updateGuest(guestItems.map(i => i === item ? { ...i, quantity: confirmed } : i));
     reportQuantity(confirmed);
   }
-  async function clear() {
-    if (!ready || locked.current || !items.length) return;
+  async function clear(options: { silent?: boolean } = {}) {
+    if (!items.length) return true;
+    if (!ready || locked.current) return false;
     if (token) {
-      if (!await mutate("/carrinho", "DELETE")) return;
+      if (!await mutate("/carrinho", "DELETE")) return false;
     } else updateGuest([]);
-    notify.removal("Carrinho esvaziado com sucesso.");
+    if (!options.silent) notify.removal("Carrinho esvaziado com sucesso.");
+    return true;
   }
   async function toggleFavorite(productId: number) {
     if (!favoriteToken || !favoriteReady || !isCurrent()) return false;

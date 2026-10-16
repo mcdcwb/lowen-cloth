@@ -64,7 +64,7 @@ export async function prepareCheckoutWhatsapp(userId: number, input: z.infer<typ
     if (!current.items.length) throw new CheckoutError(409, "Seu carrinho está vazio.", current);
     if (current.conflicts.length) throw new CheckoutError(409, "Revise os itens com disponibilidade alterada.", current);
     if (current.reviewKey !== input.reviewKey) throw new CheckoutError(409, "Os itens ou preços mudaram. Confira os valores atualizados antes de finalizar.", current);
-    const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true, active: true,
+    const user = await tx.user.findUniqueOrThrow({ where: { id: userId }, select: { name: true, phone: true, active: true,
       address: { select: { cep: true, street: true, number: true, complement: true, neighborhood: true, city: true, state: true } } } });
     if (!user.active) throw new CheckoutError(403, "Conta inativa.");
     const store = publicStoreDetails(await (storeDatabase === prisma ? tx : storeDatabase).storeSettings.findUniqueOrThrow({ where: { id: 1 }, select: storeDetailsSelect }));
@@ -95,9 +95,10 @@ export async function prepareCheckoutWhatsapp(userId: number, input: z.infer<typ
     const money = (cents: number) => new Prisma.Decimal(cents).div(100);
     const order = await tx.order.create({ data: {
       number, sequence: counters[0].value, userId, fulfillmentMethod: input.fulfillmentMethod,
-      customerName: user.name, deliveryAddress: context.address ?? Prisma.DbNull,
+      customerName: user.name, customerPhone: user.phone, deliveryAddress: context.address ?? Prisma.DbNull,
       pickupAddress: context.pickupAddress ?? Prisma.DbNull, total: money(current.totalCents),
       idempotencyKey: input.idempotencyKey, requestHash, whatsappUrl: url, whatsappMessage: message, createdAt,
+      statusEvents: { create: { status: "PENDING_CONFIRMATION", createdAt } },
       items: { create: current.items.map(item => ({ variantId: item.variantId, originalVariantId: item.variantId,
         productName: item.product.name, colorName: item.product.colors.find(color => color.id === item.colorId)!.colorName,
         size: item.size, quantity: item.quantity, unitPrice: money(item.unitPriceCents), subtotal: money(item.subtotalCents) })) }

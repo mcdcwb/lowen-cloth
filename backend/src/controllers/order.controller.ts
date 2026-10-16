@@ -1,7 +1,11 @@
 import type { Request, Response } from "express";
 import { prisma } from "../lib/prisma.js";
 import { orderIdSchema, confirmOrderSchema, advanceOrderSchema, cancelOrderSchema, orderListSchema } from "../schemas/order.schema.js";
-import { confirmOrder, advanceOrder, cancelOrder, getOrder, listOrders, archiveOrder, orderReports, OrderError } from "../services/order.service.js";
+import { confirmOrder, advanceOrder, cancelOrder, getOrder, listOrders, archiveOrder, orderReports, OrderError, listCustomerOrders } from "../services/order.service.js";
+export async function myOrders(_req: Request, res: Response) {
+  try { return res.json({ items: await listCustomerOrders(res.locals.account.id) }); }
+  catch (error) { console.error(error); return res.status(500).json({ error: "Não foi possível carregar seus pedidos." }); }
+}
 export async function archive(req: Request, res: Response) {
   const id = orderIdSchema.safeParse(req.params.id);
   if (!id.success) return res.status(400).json({ error: "Pedido inválido." });

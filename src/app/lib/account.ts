@@ -2,7 +2,7 @@ import type { Account } from "./auth";
 
 import type { Address } from "./address";
 export { emptyAddress, formatCep, lookupCep, type Address } from "./address";
-export interface Profile { account: Account; address: Address | null }
+export interface Profile { account: Account & { phone: string | null }; address: Address | null }
 export async function accountRequest<T>(token: string, method = "GET", body?: unknown, path = "/conta", signal?: AbortSignal): Promise<T> {
   const response = await fetch((import.meta.env.VITE_API_URL || "/api").replace(/\/$/, "") + path, {
     method, signal, cache: "no-store", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },

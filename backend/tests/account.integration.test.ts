@@ -35,8 +35,12 @@ test("customer profile, address and password use the authenticated identity", as
         await t.test("real name/email, optional address and no password hash exposure", async () => {
             const result = await req();
             assert.equal(result.status, 200);
-            assert.deepEqual(await result.json(), { account: { ...a, role: "USER" }, address: null });
+            assert.deepEqual(await result.json(), { account: { ...a, phone: null, role: "USER" }, address: null });
             assert.equal((await req("/conta", "PATCH", { email: emails[0], address: null })).status, 200);
+            const phone = await req("/conta", "PATCH", { email: emails[0], address: null, phone: "(11) 99999-8888" });
+            assert.equal(phone.status, 200);
+            assert.equal((await phone.json()).account.phone, "(11) 99999-8888");
+            assert.equal((await req()).status, 200);
             for (const extra of [{ name: "Hacked" }, { userId: b.id }, { role: "ADMIN" }, { passwordHash: "fake" }]) {
                 assert.equal((await req("/conta", "PATCH", { email: emails[0], address: null, ...extra })).status, 400);
             }
@@ -73,7 +77,7 @@ test("customer profile, address and password use the authenticated identity", as
                 assert.equal((await server.request(path, method, body)).status, 401);
                 assert.equal((await req(path, method, body, adminToken)).status, 403);
             }
-            assert.deepEqual((await (await req("/conta", "GET", undefined, bToken)).json()), { account: { ...b, role: "USER" }, address: null });
+            assert.deepEqual((await (await req("/conta", "GET", undefined, bToken)).json()), { account: { ...b, phone: null, role: "USER" }, address: null });
         });
         await t.test("password verification, confirmation, hashing and login after change", async () => {
             const body = { currentPassword: password, newPassword, confirmPassword: newPassword };

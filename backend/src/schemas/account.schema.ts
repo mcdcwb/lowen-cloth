@@ -11,7 +11,8 @@ export const addressSchema = z.object({
 }).strict();
 export const updateAccountSchema = z.object({
     email: adminEmailSchema,
-    address: addressSchema.nullable()
+    address: addressSchema.nullable(),
+    phone: z.string().trim().max(40).nullable().optional()
 }).strict();
 export const changePasswordSchema = z.object({
     currentPassword: z.string().min(1).max(128),

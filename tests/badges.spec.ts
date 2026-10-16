@@ -78,7 +78,7 @@ test("single-color API products need only an explicit size; changes and deselect
   await expect(card.locator(".store-badge-manual")).toBeVisible();
 });
 
-test("multicolor selections use exact color IDs and never borrow another variant's stock", async ({ page }) => {
+test("multicolor selections use square spaced color swatches and exact variant stock", async ({ page }) => {
   await page.route("**/api/produtos", route => route.fulfill({ json: [{
     id: 9910, name: "Seleção completa", price: "30.00", public: "unissex", category: { id: 1, name: "Camisetas" }, isPublished: true,
     colors: [
@@ -89,6 +89,9 @@ test("multicolor selections use exact color IDs and never borrow another variant
   await page.route("**/api/settings/public", route => route.fulfill({ json: { address: null, whatsapp: null, lowStockThreshold: 5, showLowStockBadge: true, showLastUnitBadge: true } }));
   await page.goto("/");
   const card = page.locator(".store-product-card"), badge = card.locator(".store-badge-automatic");
+  const swatches = card.getByRole("group", { name: "Selecionar cor" }).getByRole("button");
+  await expect(swatches.first()).toHaveCSS("border-radius", "3px");
+  await expect(swatches.first().locator("..")).toHaveCSS("column-gap", "8px");
   await card.getByRole("button", { name: "Preto", exact: true }).click();
   await expect(badge).toHaveCount(0);
   await card.getByRole("button", { name: "P", exact: true }).click();

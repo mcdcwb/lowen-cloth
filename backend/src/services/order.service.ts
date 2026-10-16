@@ -32,13 +32,22 @@ export async function listOrders(input: z.infer<typeof orderListSchema>) {
 export async function getOrder(id: number) {
   const order = await prisma.order.findFirst({ where: { id, archivedAt: null }, select: {
     ...orderSummarySelect, updatedAt: true, deliveryAddress: true, pickupAddress: true,
-    completedAt: true, archivedAt: true,
+    completedAt: true, archivedAt: true, customerPhone: true,
     items: { orderBy: { id: "asc" }, select: {
       id: true, productName: true, colorName: true, size: true, quantity: true, unitPrice: true, subtotal: true
     } }
   } });
   if (!order) throw new OrderError(404, "Pedido não encontrado.");
   return order;
+}
+export async function listCustomerOrders(userId: number) {
+  const orders = await prisma.order.findMany({ where: { userId }, orderBy: [{ createdAt: "desc" }, { sequence: "desc" }], select: {
+    id: true, number: true, createdAt: true, status: true, fulfillmentMethod: true,
+    deliveryAddress: true, pickupAddress: true, total: true,
+    statusEvents: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { status: true, createdAt: true } },
+    items: { orderBy: { id: "asc" }, select: { id: true, productName: true, colorName: true, size: true, quantity: true, unitPrice: true, subtotal: true } }
+  } });
+  return orders;
 }
 export interface StockConflict {
   variantId: number; productName: string; colorName: string; size: string; requested: number; available: number;
@@ -85,7 +94,10 @@ export async function cancelOrder(id: number, expectedStatus: "PENDING_CONFIRMAT
           throw new OrderError(409, "A reposição excede o limite de estoque. O pedido não foi cancelado e nenhuma reposição foi aplicada.");
       }
     }
-    return tx.order.update({ where: { id }, data: { status: "CANCELLED" }, select: { id: true, number: true, status: true, updatedAt: true } });
+    const changedAt = new Date();
+    const updated = await tx.order.update({ where: { id }, data: { status: "CANCELLED", updatedAt: changedAt }, select: { id: true, number: true, status: true, updatedAt: true } });
+    await tx.orderStatusEvent.create({ data: { orderId: id, status: "CANCELLED", createdAt: changedAt } });
+    return updated;
   }, { isolationLevel: "ReadCommitted" });
 }
 export async function advanceOrder(id: number, expectedStatus: "PREPARING" | "READY_OR_SHIPPED") {
@@ -94,13 +106,15 @@ export async function advanceOrder(id: number, expectedStatus: "PREPARING" | "RE
     throw new OrderError(409, "Transição de status inválida.");
   const status = expectedStatus === "PREPARING" ? "READY_OR_SHIPPED" : "COMPLETED";
   return prisma.$transaction(async tx => {
-    const updated = await tx.order.updateMany({ where: { id, status: expectedStatus, archivedAt: null }, data: { status, ...(status === "COMPLETED" ? { completedAt: new Date() } : {}) } });
+    const changedAt = new Date();
+    const updated = await tx.order.updateMany({ where: { id, status: expectedStatus, archivedAt: null }, data: { status, updatedAt: changedAt, ...(status === "COMPLETED" ? { completedAt: changedAt } : {}) } });
     if (updated.count !== 1) {
       const order = await tx.order.findUnique({ where: { id }, select: { id: true, archivedAt: true } });
       if (!order) throw new OrderError(404, "Pedido não encontrado.");
       if (order.archivedAt) throw new OrderError(409, "O pedido foi arquivado e não pode ser atualizado operacionalmente.");
       throw new OrderError(409, "O status do pedido mudou ou não permite esta ação. Confira os dados atualizados.");
     }
+    await tx.orderStatusEvent.create({ data: { orderId: id, status, createdAt: changedAt } });
     return tx.order.findUniqueOrThrow({ where: { id }, select: { id: true, number: true, status: true, updatedAt: true, completedAt: true } });
   }, { isolationLevel: "ReadCommitted" });
 }
@@ -174,7 +188,9 @@ export async function confirmOrder(id: number) {
       const updated = await tx.productVariant.updateMany({ where: { id: variantId, stock: { gte: quantity } }, data: { stock: { decrement: quantity } } });
       if (updated.count !== 1) throw new OrderError(409, "O estoque mudou. Tente novamente.");
     }
-    await tx.order.update({ where: { id }, data: { status: "PREPARING" }, select: { id: true } });
+    const changedAt = new Date();
+    await tx.order.update({ where: { id }, data: { status: "PREPARING", updatedAt: changedAt }, select: { id: true } });
+    await tx.orderStatusEvent.create({ data: { orderId: id, status: "PREPARING", createdAt: changedAt } });
     return tx.order.findUniqueOrThrow({ where: { id }, select: { id: true, number: true, status: true, updatedAt: true } });
   }, { isolationLevel: "ReadCommitted" });
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, CircleX, Clock3, PackageCheck, Search, Store, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { notify } from "../lib/notifications";
 import { createManagerApi, ManagerApiError } from "./api";
@@ -7,9 +7,29 @@ import { orderStatusLabels, orderStatusLabel, orderAction, canCancelOrder, order
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "../components/ui/dialog";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "../components/ui/alert-dialog";
 import { useSearchParams } from "react-router";
+import { formatWhatsapp, normalizeWhatsapp } from "../../../backend/src/lib/store-contact";
 const action = "min-h-11 rounded-lg px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 disabled:cursor-not-allowed";
+function whatsappMessage(order: Pick<OrderDetails, "number" | "status" | "fulfillmentMethod">) {
+  if (order.status === "PREPARING" && order.fulfillmentMethod === "DELIVERY") return `Olá! Recebemos seu pedido #${order.number}. Vamos verificar as opções e os valores de entrega e entraremos em contato em breve.`;
+  if (order.status === "PREPARING" && order.fulfillmentMethod === "PICKUP") return `Olá! Seu pedido #${order.number} foi confirmado. Em breve, voltaremos com mais detalhes.`;
+  if (order.status === "READY_OR_SHIPPED" && order.fulfillmentMethod === "PICKUP") return `Olá! Seu pedido #${order.number} está pronto para retirada na loja. Aguardamos você!`;
+  return null;
+}
 function Status({ status, fulfillmentMethod }: Pick<OrderDetails, "status" | "fulfillmentMethod">) {
-  return <span className={`inline-block rounded-full px-2.5 py-1 text-xs font-medium ${status === "CANCELLED" ? "bg-destructive/10 text-destructive" : status === "PENDING_CONFIRMATION" ? "bg-muted text-foreground" : "bg-primary/10 text-primary"}`}>{orderStatusLabel(status, fulfillmentMethod)}</span>;
+  const [tone, Icon] = status === "PENDING_CONFIRMATION"
+    ? ["border-amber-300 bg-amber-100 text-amber-900 dark:border-amber-700 dark:bg-amber-950/70 dark:text-amber-200", Clock3]
+    : status === "PREPARING"
+      ? ["border-sky-300 bg-sky-100 text-sky-900 dark:border-sky-700 dark:bg-sky-950/70 dark:text-sky-200", PackageCheck]
+      : status === "READY_OR_SHIPPED" && fulfillmentMethod === "PICKUP"
+        ? ["border-emerald-300 bg-emerald-100 text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-200", Store]
+        : status === "READY_OR_SHIPPED"
+          ? ["border-blue-300 bg-blue-100 text-blue-900 dark:border-blue-700 dark:bg-blue-950/70 dark:text-blue-200", Truck]
+          : status === "COMPLETED"
+            ? ["border-slate-300 bg-slate-100 text-slate-800 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100", CheckCircle2]
+            : ["border-rose-300 bg-rose-100 text-rose-900 dark:border-rose-700 dark:bg-rose-950/70 dark:text-rose-200", CircleX];
+  return <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold shadow-sm ${tone}`}>
+    <Icon aria-hidden="true" size={15} strokeWidth={2.25} />{orderStatusLabel(status, fulfillmentMethod)}
+  </span>;
 }
 export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
   token: string; onUnauthorized: (message: string) => void; onConfirmed: () => void; onBusy: (busy: boolean) => void;
@@ -152,6 +172,7 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
         {detailLoading ? <p role="status" className="py-12 text-center">Carregando detalhes...</p> : detailError ? <div role="alert"><p className="text-destructive">{detailError}</p><button type="button" onClick={() => setDetailRevision(old => old + 1)} className={`${action} text-primary underline`}>Tentar carregar detalhes novamente</button></div> : detail && <>
           <Status status={detail.status} fulfillmentMethod={detail.fulfillmentMethod} />
           <dl className="grid gap-3 sm:grid-cols-2 text-sm"><div><dt className="text-muted-foreground">Cliente</dt><dd>{detail.customerName}</dd></div><div><dt className="text-muted-foreground">Data e horário</dt><dd>{orderDate(detail.createdAt, true)}</dd></div><div><dt className="text-muted-foreground">Recebimento</dt><dd>{detail.fulfillmentMethod === "DELIVERY" ? "Entrega" : "Retirada na loja"}</dd></div></dl>
+          <section aria-label="Contato do cliente" className="rounded-lg border border-border p-3"><h3 className="font-semibold">Telefone do cliente</h3>{normalizeWhatsapp(detail.customerPhone ?? "") ? <a className="text-sm text-primary underline" href={`https://wa.me/${normalizeWhatsapp(detail.customerPhone!)}`} target="_blank" rel="noreferrer">{formatWhatsapp(detail.customerPhone!)}</a> : <p className="text-sm text-muted-foreground">Telefone ausente ou inválido. Não é possível abrir uma conversa com segurança.</p>}</section>
           <section><h3 className="font-semibold mb-2">{detail.fulfillmentMethod === "DELIVERY" ? "Endereço de entrega" : "Local de retirada"}</h3>{(() => {
             const address = detail.fulfillmentMethod === "DELIVERY" ? detail.deliveryAddress : detail.pickupAddress;
             return address ? <address className="not-italic text-sm leading-6">{address.street}, {address.number}{address.complement && <><br />{address.complement}</>}<br />{address.neighborhood}<br />{address.city} - {address.state}<br />CEP {address.cep.replace(/^(\d{5})(\d{3})$/, "$1-$2")}</address> : <p className="text-sm text-muted-foreground">Endereço não registrado neste pedido.</p>;
@@ -162,6 +183,7 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
           <div className="flex flex-wrap gap-3">
             {orderAction(detail) && <button type="button" disabled={busy} onClick={event => { confirmButton.current = event.currentTarget; setCancelling(false); setConfirming(true); }} className={`${action} max-w-full whitespace-normal bg-primary text-primary-foreground`}>{busy && !cancelling ? detail.status === "PENDING_CONFIRMATION" ? "Confirmando..." : "Atualizando..." : orderAction(detail)?.label}</button>}
             {canCancelOrder(detail.status) && <button type="button" disabled={busy} onClick={event => { confirmButton.current = event.currentTarget; setCancelling(true); setConfirming(true); }} className={`${action} max-w-full whitespace-normal border border-destructive/30 text-destructive`}>{busy && cancelling ? "Cancelando..." : "Cancelar pedido"}</button>}
+            {whatsappMessage(detail) && normalizeWhatsapp(detail.customerPhone ?? "") && <a target="_blank" rel="noreferrer" href={`https://wa.me/${normalizeWhatsapp(detail.customerPhone!)}?text=${encodeURIComponent(whatsappMessage(detail)!)}`} className={`${action} inline-flex items-center border border-[#25D366] bg-[#25D366] text-[#073B22] shadow-sm transition-colors hover:bg-[#20BD5A] hover:border-[#20BD5A] hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#25D366] focus-visible:ring-offset-2`}>Avisar cliente pelo WhatsApp</a>}
             {!detail.archivedAt && <button type="button" disabled={busy} onClick={event => { confirmButton.current = event.currentTarget; setArchiving(true); setConfirming(true); }} className={`${action} border border-border`}>Arquivar pedido</button>}
 
           </div>

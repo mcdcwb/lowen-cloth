@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router";
-import { MessageCircle } from "lucide-react";
+import { Link, useNavigate } from "react-router";
+import { ArrowLeft, MessageCircle } from "lucide-react";
 import { notify } from "../lib/notifications";
 import type { Account } from "../lib/auth";
 import { AUTH_STORAGE_KEY } from "../lib/auth-session";
@@ -28,8 +28,9 @@ export function CheckoutPage({ user, token, validating, shopping, store, cartOpe
   user: Account | null; token?: string; validating: boolean; shopping: ReturnType<typeof useShopping>; store: ReturnType<typeof useStoreDetails>;
   cartOpen: boolean; onOpenCart: () => void; onLogin: () => void; onUnauthorized: (message: string) => void;
 }) {
+  const navigate = useNavigate();
   return <main className="max-w-7xl mx-auto px-4 sm:px-6 py-10 sm:py-14 min-h-[60vh]">
-    <Link to="/" className={action + " inline-flex items-center text-sm text-primary"}>← Voltar para a loja</Link>
+    <Link to="/" className={action + " inline-flex items-center text-sm text-primary"}><ArrowLeft aria-hidden="true" size={16} className="mr-2" />Voltar para a loja</Link>
     <h1 className="font-serif text-3xl font-bold mt-5 mb-2">Checkout</h1>
     {validating ? <p role="status">Validando sua conta...</p> : user?.role === "ADMIN" ? <section className={panel + " mt-6"}>
       <h2 className="font-semibold">Checkout exclusivo para clientes</h2><p className="mt-2">Para comprar, saia da conta administrativa e entre com uma conta de cliente.</p>
@@ -39,13 +40,17 @@ export function CheckoutPage({ user, token, validating, shopping, store, cartOpe
       <button onClick={onLogin} className={action + " bg-primary text-primary-foreground mt-4"}>Entrar para continuar</button>
     </section> : !shopping.ready || shopping.error ? <section className={panel + " mt-6"}>
       {shopping.error ? <><p role="alert">{shopping.error}</p><button onClick={shopping.retry} className={action + " text-primary underline"}>Tentar sincronizar novamente</button></> : <p role="status">Sincronizando seu carrinho...</p>}
-    </section> : <CheckoutReviewPage key={token} user={user} token={token} shopping={shopping} store={store} cartOpen={cartOpen} onOpenCart={onOpenCart} onUnauthorized={onUnauthorized} />}
+    </section> : <CheckoutReviewPage key={token} user={user} token={token} shopping={shopping} store={store} cartOpen={cartOpen} onOpenCart={onOpenCart} onUnauthorized={onUnauthorized} onOrderOpened={async (orderId) => {
+      const cleared = await shopping.clear({ silent: true });
+      if (cleared) navigate("/meus-pedidos", { state: { expandedOrderId: orderId } });
+      return cleared;
+    }} />}
   </main>;
 }
 
-function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart, onUnauthorized }: {
+function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart, onUnauthorized, onOrderOpened }: {
   user: Account; token: string; shopping: ReturnType<typeof useShopping>; store: ReturnType<typeof useStoreDetails>;
-  cartOpen: boolean; onOpenCart: () => void; onUnauthorized: (message: string) => void;
+  cartOpen: boolean; onOpenCart: () => void; onUnauthorized: (message: string) => void; onOrderOpened: (orderId: number) => Promise<boolean>;
 }) {
   const [method, setMethod] = useState<FulfillmentMethod | null>(() => readCheckoutMethod(user.id));
   const [review, setReview] = useState<CheckoutReview | null>(null);
@@ -127,6 +132,8 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
         throw new Error("Os dados do checkout mudaram durante a validação. Confira novamente antes de finalizar.");
       tab.location.replace(prepared.url); popup.current = null;
       setOpened(true);
+      notify.positive("Pedido solicitado! Acompanhe o status em Meus Pedidos.");
+      if (!await onOrderOpened(prepared.orderId)) setFinalError("Seu pedido foi criado e o WhatsApp foi aberto, mas nÃ£o foi possÃ­vel esvaziar o carrinho. Tente novamente pelo carrinho.");
     } catch (reason) {
       tab.close(); popup.current = null;
       if (!alive.current) return;

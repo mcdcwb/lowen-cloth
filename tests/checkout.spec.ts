@@ -80,10 +80,9 @@ test("GUEST checkout login cancellation preserves cart, then login merges and re
   await expect(page.locator('input[type="radio"]:checked')).toHaveCount(0);
 });
 
-for (const width of [1440, 390, 320]) test(`DELIVERY/PICKUP, exact message, repeated click guard and unchanged cart/stock at ${width}px`, async ({ page }, testInfo) => {
+for (const width of [1440, 390, 320]) test(`DELIVERY/PICKUP, exact message, cart clears after confirmation and stock stays unchanged at ${width}px`, async ({ page }, testInfo) => {
   await page.setViewportSize({ width, height: 900 });
   const user = await customer(page); await fakePopup(page);
-  const beforeCart = await (await page.request.get("/api/carrinho/conferencia", { headers: api(user.token) })).json();
   const beforeProduct = (await (await page.request.get("/api/produtos")).json()).find((product: any) => product.id === shirt.id);
   await page.goto("/");
   await page.getByRole("button", { name: "Abrir carrinho" }).click();
@@ -127,22 +126,30 @@ for (const width of [1440, 390, 320]) test(`DELIVERY/PICKUP, exact message, repe
   expect(message).toContain("Precisa de entrega? *Sim*.");
   expect(message).toContain("Endereço: Rua São João, 123 · Apto 7 · Centro · Curitiba - PR · CEP 80000-000.");
   expect(message).toContain("Valor Total de produtos: *R$309,70*.");
-  await expect(finalButton(page)).toBeDisabled();
+  await expect(page).toHaveURL(/\/meus-pedidos$/);
+  await expect(page).toHaveURL(/\/meus-pedidos$/);
+  expect((await (await page.request.get("/api/carrinho/conferencia", { headers: api(user.token) })).json()).items).toEqual([]);
+  for (const [product, quantity] of [[shirt, 2], [cargo, 1]] as const)
+    expect((await page.request.post("/api/carrinho", { headers: api(user.token), data: { productId: product.id, colorId: product.colors[0].id, size: product.colors[0].variants[0].value, quantity } })).ok()).toBe(true);
+  await page.goto("/checkout");
+  await fakePopup(page);
   await page.getByRole("radio", { name: "Não preciso, irei retirar os produtos na loja." }).check();
   await expect(page.locator("main address")).toContainText("Rua da Loja, 456");
   await finalButton(page).click();
-  await expect.poll(async () => (await received(page)).urls.length).toBe(2);
-  const pickup = new URL((await received(page)).urls[1]);
+  await expect.poll(async () => (await received(page)).urls.length).toBe(1);
+  const pickup = new URL((await received(page)).urls[0]);
   expect(pickup.pathname).toBe("/5541999999999"); expect(pickup.searchParams.get("text")).toContain("Precisa de entrega? *Não*.");
   expect(pickup.searchParams.get("text")).not.toContain("Endereço:");
   expect(pickup.searchParams.get("text")!.replace(/\n\nPedido: \*#\d{8}\*/, "")).toBe(`${expectedItems}\n\nPrecisa de entrega? *Não*.\n\nValor Total de produtos: *R$309,70*.`);
-  expect(await (await page.request.get("/api/carrinho/conferencia", { headers: api(user.token) })).json()).toEqual(beforeCart);
+  await expect(page).toHaveURL(/\/meus-pedidos$/);
+  expect((await (await page.request.get("/api/carrinho/conferencia", { headers: api(user.token) })).json()).items).toEqual([]);
   expect((await (await page.request.get("/api/produtos")).json()).find((product: any) => product.id === shirt.id)).toEqual(beforeProduct);
 });
 
 test("missing customer address is registered in Minha Conta and returns with delivery preserved", async ({ page }) => {
   await customer(page, { address: false });
   await page.goto("/checkout");
+  await fakePopup(page);
   await page.getByRole("radio", { name: "Sim, preciso de entrega" }).check();
   await expect(finalButton(page)).toBeDisabled();
   await page.getByRole("link", { name: "Cadastrar endereço" }).click();
@@ -166,6 +173,7 @@ test("missing store address/contact and loading failures block finalization with
   await customer(page);
   await page.route("**/api/settings/public", route => route.fulfill({ json: { address: null, whatsapp: null } }));
   await page.goto("/checkout");
+  await fakePopup(page);
   await page.getByRole("radio", { name: "Não preciso, irei retirar os produtos na loja." }).check();
   await expect(page.locator("main")).toContainText("local de retirada está temporariamente indisponível");
   await expect(page.locator("main")).toContainText("contato da loja está temporariamente indisponível");

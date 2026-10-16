@@ -3,7 +3,7 @@ import { OrdersPage } from "./OrdersPage";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { CategoryManagement } from "./CategoryManagement";
 import { Link, NavLink, useLocation, useNavigate } from "react-router";
-import { LayoutDashboard, Package, ClipboardList, ArrowUpRight, ArrowRight, LogOut, Settings, ChartNoAxesCombined, UserRound } from "lucide-react";
+import { LayoutDashboard, Package, ClipboardList, ArrowLeft, ArrowUpRight, ArrowRight, LogOut, Settings, ChartNoAxesCombined, UserRound } from "lucide-react";
 import type { Account } from "../lib/auth";
 import { ProductList } from "./ProductList";
 import { ProductForm } from "./ProductForm";
@@ -30,7 +30,7 @@ export function Manager(props: Props) {
       <h1 className="font-serif text-3xl font-bold">{props.user ? "Acesso restrito" : "Acesso administrativo"}</h1>
       <p className="text-muted-foreground">{props.user ? "Esta área é exclusiva para administradores." : "Entre com sua conta de administrador para continuar."}</p>
       {props.sessionError && <p role="alert" className="text-destructive text-sm">{props.sessionError}</p>}
-      <div className="flex flex-wrap gap-4 items-center">{!props.user && <button onClick={props.onLogin} className="rounded-lg bg-primary text-primary-foreground px-5 py-2.5">Entrar</button>}<Link to="/" className="inline-flex px-3 py-2.5 text-lg font-medium text-primary underline underline-offset-4">← Voltar para a loja</Link></div>
+      <div className="flex flex-wrap gap-4 items-center">{!props.user && <button onClick={props.onLogin} className="rounded-lg bg-primary text-primary-foreground px-5 py-2.5">Entrar</button>}<Link to="/" className="inline-flex items-center px-3 py-2.5 text-lg font-medium text-primary underline underline-offset-4"><ArrowLeft aria-hidden="true" size={18} className="mr-2" />Voltar para a loja</Link></div>
     </section>
   </main>;
   return <ManagerWorkspace key={props.token} {...props} user={props.user} token={props.token} />;

@@ -93,6 +93,7 @@ model Admin {
 
 model User {
   address UserAddress?
+  phone String?
   favorites Favorite[]
   cartItems CartItem[]
   orders Order[]
@@ -173,6 +174,7 @@ model Order {
   status OrderStatus @default(PENDING_CONFIRMATION)
   fulfillmentMethod FulfillmentMethod
   customerName String
+  customerPhone String?
   deliveryAddress Json?
   pickupAddress Json?
   total Decimal @db.Decimal(18, 2)
@@ -185,8 +187,18 @@ model Order {
   completedAt DateTime?
   archivedAt DateTime?
   items OrderItem[]
+  statusEvents OrderStatusEvent[]
   @@unique([userId, idempotencyKey])
   @@index([status, createdAt])
+}
+
+model OrderStatusEvent {
+  id Int @id @default(autoincrement())
+  orderId Int
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status OrderStatus
+  createdAt DateTime @default(now())
+  @@index([orderId, createdAt])
 }
 
 model OrderItem {

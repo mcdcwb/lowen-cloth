@@ -132,7 +132,7 @@ test("customer menu opens only by click, toggles, navigates, restores session an
   await expect(menu).toHaveCount(0);
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
-  await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Favoritos", "Sair"]);
+  await expect(menu.locator("a, button")).toHaveText(["Minha Conta", "Favoritos", "Meus Pedidos", "Sair"]);
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   await trigger.click();
   await expect(menu).toHaveCount(0);

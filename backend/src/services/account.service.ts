@@ -4,7 +4,7 @@ import { registerUniqueEmail } from "../lib/account-registration.js";
 import { hashPassword, verifyPassword } from "../lib/password.js";
 import type { updateAccountSchema, changePasswordSchema } from "../schemas/account.schema.js";
 
-const select = { id: true, name: true, email: true, address: {
+const select = { id: true, name: true, email: true, phone: true, address: {
     select: { cep: true, street: true, number: true, complement: true, neighborhood: true, city: true, state: true }
 } } as const;
 function profile(user: NonNullable<Awaited<ReturnType<typeof getRecord>>>) {
@@ -20,7 +20,7 @@ export async function updateProfile(id: number, input: z.infer<typeof updateAcco
     return registerUniqueEmail(input.email, async tx => {
         if (input.address) await tx.userAddress.upsert({ where: { userId: id }, create: { userId: id, ...input.address }, update: input.address });
         else await tx.userAddress.deleteMany({ where: { userId: id } });
-        return profile(await tx.user.update({ where: { id }, data: { email: input.email }, select }));
+        return profile(await tx.user.update({ where: { id }, data: { email: input.email, ...(input.phone !== undefined ? { phone: input.phone } : {}) }, select }));
     }, id);
 }
 export async function changePassword(id: number, input: z.infer<typeof changePasswordSchema>) {

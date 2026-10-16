@@ -33,7 +33,7 @@ export function orderAction(order: Pick<OrderSummary, "status" | "fulfillmentMet
   return null;
 }
 export interface OrderDetails extends OrderSummary {
-  updatedAt: string; completedAt: string | null; archivedAt: string | null; deliveryAddress: Address | null; pickupAddress: Address | null;
+  updatedAt: string; completedAt: string | null; archivedAt: string | null; customerPhone: string | null; deliveryAddress: Address | null; pickupAddress: Address | null;
   items: { id: number; productName: string; colorName: string; size: string; quantity: number; unitPrice: string; subtotal: string }[];
 }
 export interface OrderPage { items: OrderSummary[]; total: number; page: number; pageSize: number; totalPages: number }
