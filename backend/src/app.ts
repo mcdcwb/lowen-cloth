@@ -16,6 +16,7 @@ import { createSettingsRoutes } from "./routes/settings.routes.js";
 export function createApp(options: { uploadProductImage?: ProductImageUploader; settingsDatabase?: Pick<typeof prisma, "storeSettings"> } = {}) {
     getJwtKey();
     const app = express();
+    app.set("trust proxy", 1);
 
     const allowedOrigins = new Set((process.env.FRONTEND_ORIGIN ?? "")
         .split(",").map(origin => origin.trim().replace(/\/$/, "")).filter(Boolean));
