@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { Link, useLocation } from "react-router";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import type { OrderStatus } from "../../../backend/src/generated/prisma/enums";
@@ -35,6 +35,7 @@ function customerEventLabel(status: OrderStatus, method: FulfillmentMethod) {
 }
 export function MyOrdersPage({ token, onLogin }: { token?: string; onLogin: () => void }) {
   const location = useLocation();
+  useLayoutEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }, []);
   const expandedOrderId = (location.state as { expandedOrderId?: number } | null)?.expandedOrderId;
   const [items, setItems] = useState<CustomerOrder[]>([]);
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(() =>

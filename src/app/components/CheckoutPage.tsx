@@ -200,8 +200,8 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
         </section>
       </div>
       <aside className={panel + " lg:sticky lg:top-24"} aria-labelledby="checkout-summary-title">
-        <h2 id="checkout-summary-title" className="font-serif text-xl font-bold">Resumo dos produtos</h2>
-        <p className="mt-5 text-sm">Valor total dos produtos</p><p className="text-2xl font-bold text-primary mt-1">{review ? `R$ ${moneyFromCents(review.totalCents)}` : "—"}</p>
+        <h2 id="checkout-summary-title" className="font-serif text-xl font-bold">Valor total dos produtos</h2>
+        <p className="text-2xl font-bold text-primary mt-1">{review ? `R$ ${moneyFromCents(review.totalCents)}` : "—"}</p>
         {method === "DELIVERY" && <p className="mt-4 text-sm text-muted-foreground">O valor de entrega será informado e combinado com a loja pelo WhatsApp. Ele não está incluído no total dos produtos.</p>}
         {method === "PICKUP" && <p className="mt-4 text-sm text-muted-foreground">Retirada na loja. Por favor, verifique a disponibilidade pelo WhatsApp.</p>}
         {!method && <p className="mt-4 text-sm">Escolha entrega ou retirada para continuar.</p>}
