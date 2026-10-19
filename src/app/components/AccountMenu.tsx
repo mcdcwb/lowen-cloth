@@ -31,8 +31,8 @@ export function AccountMenu({ name, role, onLogout, compactMobile = false }: { n
         <span className={`${compactMobile ? "sr-only sm:not-sr-only " : ""}text-[15px] font-medium max-w-24 max-[390px]:max-w-6 sm:max-w-40 truncate`}>{name.trim().split(/\s+/)[0]}</span>
       </button>
       {open && (
-        <div id={id} className="absolute top-full right-0 pt-2 w-44 z-50">
-          <nav aria-label="Menu da conta" className="bg-card border border-border rounded-xl shadow-xl overflow-hidden text-[15px]">
+        <div id={id} className="fixed left-0 right-0 top-16 z-50 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:w-44 sm:pt-2">
+          <nav aria-label="Menu da conta" className="overflow-hidden border-y border-border bg-card text-[15px] shadow-xl sm:rounded-xl sm:border">
             <Link to="/minha-conta" onClick={() => setOpen(false)} className="block px-4 py-3 hover:bg-muted focus-visible:bg-muted">Minha Conta</Link>
             {role === "ADMIN" && <Link to="/manager" onClick={() => setOpen(false)} className="block px-4 py-3 hover:bg-muted focus-visible:bg-muted">Painel Administrativo</Link>}
             <Link to="/favoritos" onClick={() => setOpen(false)} className="block px-4 py-3 hover:bg-muted focus-visible:bg-muted">Favoritos</Link>

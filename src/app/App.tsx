@@ -387,7 +387,7 @@ export default function App() {
 
 
             {/* Right actions */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3 md:gap-2">
               {user ? <AccountMenu name={user.name} role={user.role} onLogout={handleLogout} compactMobile={isCheckoutPage} /> : (<button
                 onClick={() => { setAuthOpen(true); }}
                 className="hidden md:flex items-center gap-1.5 text-[15px] font-medium px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:text-primary transition-all"
