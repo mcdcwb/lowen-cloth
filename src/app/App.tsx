@@ -644,16 +644,17 @@ export default function App() {
             <section className="flex-1 min-w-0">
               {/* Section header */}
               <div className="flex flex-wrap items-end justify-between mb-6 gap-4">
-                <div className="flex w-full flex-row flex-wrap items-center justify-between gap-2">
-                  <div className="min-w-0 flex-1 lg:flex-none">
+                <div className="flex w-full flex-col gap-2">
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <div className="min-w-0 flex-1 lg:flex-none">
                     <h2 className="font-serif text-2xl font-bold text-foreground leading-tight">
                       {catalogTitle}
                     </h2>
                     <p className="text-sm text-muted-foreground mt-0.5">
                       {productsLoading ? "Carregando..." : productsError ? "Catálogo indisponível" : `${filteredProducts.length} ${filteredProducts.length === 1 ? "peça encontrada" : "peças encontradas"}`}
                     </p>
-                  </div>
-                  <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 self-end lg:ml-auto">
+                    </div>
+                    <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 self-end lg:ml-auto">
                     <div role="group" aria-label="Ordenar produtos" className="ml-auto flex shrink-0 gap-1 lg:ml-0">
                       {(["name", "price"] as const).map(field => {
                         const active = catalogSort?.field === field;
@@ -667,8 +668,11 @@ export default function App() {
                         </button>;
                       })}
                     </div>
+                    </div>
+                  </div>
+                  <div className="flex min-h-11 justify-end lg:justify-center">
                     {hasActiveFilters && <button type="button" onClick={clearFilters}
-                      className="min-h-11 basis-full px-2 text-left text-sm text-primary transition-colors duration-200 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary sm:basis-full lg:basis-full sm:text-left lg:text-right">
+                      className="min-h-11 px-3 text-right text-sm text-primary transition-colors duration-200 hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
                       Limpar filtros
                     </button>}
                   </div>
@@ -689,15 +693,6 @@ export default function App() {
                       {size}
                     </button>
                   ))}
-                  {selectedSizes.length > 0 && (
-                    <button
-                      onClick={() => setSelectedSizes([])}
-                      aria-label="Limpar tamanhos"
-                      className="h-8 px-2 text-xs text-muted-foreground border border-border hover:text-primary"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
                 </div>
               </div>
 
