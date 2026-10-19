@@ -16,6 +16,7 @@ import {
 import { ProductImage } from "./ProductImage";
 
 const action = "min-h-11 rounded-lg px-4 py-2.5 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary";
+const checkoutEditAction = action + " inline-flex text-primary underline mt-4 pl-0";
 const panel = "rounded-xl border border-border bg-card p-5 sm:p-7 min-w-0";
 function AddressDisplay({ address }: { address: Address }) {
   return <address className="not-italic text-sm leading-6 break-words">{address.street}, {address.number}
@@ -133,7 +134,7 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
       tab.location.replace(prepared.url); popup.current = null;
       setOpened(true);
       notify.positive("Pedido solicitado! Acompanhe o status em Meus Pedidos.");
-      if (!await onOrderOpened(prepared.orderId)) setFinalError("Seu pedido foi criado e o WhatsApp foi aberto, mas nÃ£o foi possÃ­vel esvaziar o carrinho. Tente novamente pelo carrinho.");
+      if (!await onOrderOpened(prepared.orderId)) setFinalError("Seu pedido foi criado e o WhatsApp foi aberto, mas nÃo foi possí­vel esvaziar o carrinho. Tente novamente pelo carrinho.");
     } catch (reason) {
       tab.close(); popup.current = null;
       if (!alive.current) return;
@@ -154,21 +155,21 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
         <section className={panel}>
           <fieldset disabled={sending}>
             <legend className="font-serif text-xl font-bold mb-5">Precisa de entrega?</legend>
-            <label className="flex items-start gap-3 p-4 rounded-lg border border-border cursor-pointer">
+            <label className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${method === "DELIVERY" ? "border-primary" : "border-border"}`}>
               <input className="mt-1 accent-primary focus-visible:outline-2 focus-visible:outline-primary" type="radio" name="fulfillment" checked={method === "DELIVERY"}
                 onChange={() => { setMethod("DELIVERY"); setOpened(false); setFinalError(""); }} />
               <span>Sim, preciso de entrega</span>
             </label>
-            {method === "DELIVERY" && <div className="p-4 space-y-3" aria-live="polite">
+            {method === "DELIVERY" && <div className="py-4 space-y-3" aria-live="polite">
               <h2 className="font-semibold">Endereço de entrega</h2>
               {loading ? <p role="status">Carregando endereço...</p> : profileError ? <p role="alert" className="text-destructive">{profileError}</p> : validAddress(profile?.address ?? null) ?
                 <AddressDisplay address={profile!.address!} /> : <p>Você ainda não possui um endereço válido cadastrado. Cadastre um endereço para receber seu pedido.</p>}
-              {!profileError && !loading && <Link to={accountLink} className={action + " inline-flex text-primary underline"}>{validAddress(profile?.address ?? null) ? "Alterar endereço" : "Cadastrar endereço"}</Link>}
+              {!profileError && !loading && <Link to={accountLink} className={checkoutEditAction}>{validAddress(profile?.address ?? null) ? "Alterar endereço" : "Cadastrar endereço"}</Link>}
             </div>}
-            <label className="flex items-start gap-3 mt-3 p-4 rounded-lg border border-border cursor-pointer">
+            <label className={`flex items-start gap-3 mt-3 p-4 rounded-lg border cursor-pointer transition-colors ${method === "PICKUP" ? "border-primary" : "border-border"}`}>
               <input className="mt-1 accent-primary focus-visible:outline-2 focus-visible:outline-primary" type="radio" name="fulfillment" checked={method === "PICKUP"}
                 onChange={() => { setMethod("PICKUP"); setOpened(false); setFinalError(""); }} />
-              <span>Não preciso, irei retirar os produtos na loja.</span>
+              <span>Não preciso, irei retirar os produtos na loja</span>
             </label>
             {method === "PICKUP" && <div className="p-4 space-y-3" aria-live="polite">
               <h2 className="font-semibold">Local de retirada</h2>
@@ -195,23 +196,25 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
             {review.conflicts.map(conflict => <p key={conflict.variantId}>{conflict.message}</p>)}
             <button onClick={onOpenCart} className={action + " underline font-medium"}>Revisar no carrinho</button>
           </div>}
-          <button onClick={onOpenCart} disabled={sending} className={action + " text-primary underline mt-4"}>Alterar itens no carrinho</button>
+          <button onClick={onOpenCart} disabled={sending} className={checkoutEditAction}>Alterar itens no carrinho</button>
         </section>
       </div>
       <aside className={panel + " lg:sticky lg:top-24"} aria-labelledby="checkout-summary-title">
         <h2 id="checkout-summary-title" className="font-serif text-xl font-bold">Resumo dos produtos</h2>
         <p className="mt-5 text-sm">Valor total dos produtos</p><p className="text-2xl font-bold text-primary mt-1">{review ? `R$ ${moneyFromCents(review.totalCents)}` : "—"}</p>
-        {method === "DELIVERY" && <p className="mt-4 text-sm text-destructive">O valor de entrega será informado e combinado com a loja pelo WhatsApp. Ele não está incluído no total dos produtos.</p>}
+        {method === "DELIVERY" && <p className="mt-4 text-sm text-muted-foreground">O valor de entrega será informado e combinado com a loja pelo WhatsApp. Ele não está incluído no total dos produtos.</p>}
         {method === "PICKUP" && <p className="mt-4 text-sm text-muted-foreground">Retirada na loja. Por favor, verifique a disponibilidade pelo WhatsApp.</p>}
         {!method && <p className="mt-4 text-sm">Escolha entrega ou retirada para continuar.</p>}
         {profileError && <p role="alert" className="mt-4 text-sm text-destructive">{profileError}</p>}
         {store.error ? <p role="alert" className="mt-4 text-sm text-destructive">{store.error}</p> : !store.loading && !whatsappUrl(store.whatsapp) && <p role="alert" className="mt-4 text-sm text-destructive">O contato da loja está temporariamente indisponível.</p>}
         {finalError && <p role="alert" className="mt-4 text-sm text-destructive">{finalError}</p>}
-        <button onClick={() => { attempt.current = null; setRevision(value => value + 1); store.reload(); setOpened(false); }} disabled={sending || loading} className={action + " text-primary underline text-sm mt-3"}>Conferir dados novamente</button>
+        <div className="flex justify-center">
+          <button onClick={() => { attempt.current = null; setRevision(value => value + 1); store.reload(); setOpened(false); }} disabled={sending || loading} className={action + " text-primary underline text-sm mt-3"}>Conferir dados novamente</button>
+        </div>
         <button onClick={finalize} disabled={!canSend} aria-busy={sending} className={action + " w-full bg-primary text-primary-foreground font-semibold mt-4 disabled:opacity-50 disabled:cursor-not-allowed inline-flex gap-2 items-center justify-center"}>
           <MessageCircle className="w-5 h-5 shrink-0" aria-hidden="true" />{sending ? "Validando pedido..." : "Finalizar compra pelo WhatsApp"}
         </button>
-        {opened && <p role="status" className="text-sm mt-4">WhatsApp aberto. Seu carrinho foi mantido. Se precisar abrir novamente, confira os dados novamente.</p>}
+        {opened && <p role="status" className="text-sm mt-4">WhatsApp aberto em uma nova aba. Volte para esta aba para continuar na loja e acompanhar seu pedido.</p>}
         <p className="text-xs text-muted-foreground mt-4">Abrir o WhatsApp não confirma a venda nem reserva os produtos. O atendimento confirmará disponibilidade, entrega e pagamento.</p>
       </aside>
     </div>

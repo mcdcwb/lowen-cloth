@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, CircleX, Clock3, PackageCheck, Search, Store, Truck } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, CheckCircle2, CircleX, Clock3, PackageCheck, Search, Store, Truck, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { notify } from "../lib/notifications";
 import { createManagerApi, ManagerApiError } from "./api";
@@ -83,11 +83,11 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
   useEffect(() => {
     const request = new AbortController();
     listHeight.current = Math.max(192, listSection.current?.getBoundingClientRect().height ?? 192);
-    setLoading(true); setError("");
+    setLoading(true);
     const timer = setTimeout(() => {
       lastSearch.current = query.search;
       api.orders(query, request.signal).then(data => {
-        if (!request.signal.aborted) { setResult(data); if (data.page !== query.page) setQuery(old => ({ ...old, page: data.page })); }
+        if (!request.signal.aborted) { setResult(data); setError(""); if (data.page !== query.page) setQuery(old => ({ ...old, page: data.page })); }
       }).catch(reason => { if (!request.signal.aborted) setError(failure(reason)); })
         .finally(() => { if (!request.signal.aborted) setLoading(false); });
     }, query.search !== lastSearch.current ? 300 : 0);
@@ -148,7 +148,7 @@ export function OrdersPage({ token, onUnauthorized, onConfirmed, onBusy }: {
   }
 
   return <>
-    <header className="mb-6"><h1 className="font-serif text-3xl font-bold">Pedidos</h1><p className="text-muted-foreground mt-1">Confira os pedidos e confirme a disponibilidade dos produtos.</p></header>
+    <header className="mb-6 flex flex-wrap items-start justify-between gap-3"><div><h1 className="font-serif text-3xl font-bold">Pedidos</h1><p className="text-muted-foreground mt-1">Confira os pedidos e confirme a disponibilidade dos produtos.</p></div><button type="button" onClick={() => { if (!loading) setRevision(value => value + 1); }} disabled={loading} aria-busy={loading} className={`${action} inline-flex items-center gap-2 border border-border bg-card`}><RefreshCw size={16} aria-hidden="true" className={loading ? "animate-spin" : ""} />{loading ? "Atualizando..." : "Atualizar pedidos"}</button></header>
     <div className="grid gap-3 sm:grid-cols-2 rounded-xl border border-border bg-card p-4 mb-5">
       <label className="flex flex-col gap-2 text-sm"><span className="flex items-center gap-2"><Search size={14} aria-hidden="true" />Pesquisar pedidos</span><input ref={searchInput} type="search" maxLength={100} value={query.search} onChange={event => setQuery(old => ({ ...old, search: event.target.value, page: 1 }))} placeholder="Número ou nome do cliente" className="min-h-11 w-full min-w-0 rounded-lg border border-border bg-background px-3 py-2 focus-visible:outline-2 focus-visible:outline-primary" /></label>
       <label className="flex flex-col gap-2 text-sm"><span>Status</span><select aria-label="Status" value={query.status} onChange={event => setQuery(old => ({ ...old, status: event.target.value as OrderStatus | "", page: 1 }))} className="min-h-11 min-w-0 w-full rounded-lg border border-border bg-background px-3 py-2 focus-visible:outline-2 focus-visible:outline-primary"><option value="">Todos</option>{Object.entries(orderStatusLabels).map(([value, label]) => <option key={value} value={value}>{label === "Finalizado" ? "Finalizados" : label === "Cancelado" ? "Cancelados" : label}</option>)}</select></label>

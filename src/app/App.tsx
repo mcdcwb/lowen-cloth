@@ -88,6 +88,8 @@ export default function App() {
   const [checkoutIntent, setCheckoutIntent] = useState(false);
   const checkoutOwner = useRef<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mobileMenuRef = useRef<HTMLDivElement>(null);
+  const mobileMenuToggleRef = useRef<HTMLButtonElement>(null);
   const [catDropdownOpen, setCatDropdownOpen] = useState(false);
   const [featuredIndex, setFeaturedIndex] = useState(0);
   const [isFeaturedHovering, setIsFeaturedHovering] = useState(false);
@@ -148,6 +150,17 @@ export default function App() {
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, []);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (mobileMenuRef.current?.contains(target) || mobileMenuToggleRef.current?.contains(target)) return;
+      setMobileMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [mobileMenuOpen]);
 
   // Filtered products
   const filteredProducts = products.filter((p) => {
@@ -241,6 +254,23 @@ export default function App() {
   }, [location.search, products]);
 
   useEffect(() => {
+    document.title = detailProduct?.name || "Löwen";
+  }, [detailProduct?.name]);
+
+  useEffect(() => {
+    if (!isCheckoutPage) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+  }, [isCheckoutPage]);
+
+  useEffect(() => {
+    if (location.hash !== "#contato") return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById("contato")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [location.pathname, location.hash]);
+
+  useEffect(() => {
     if (isFeaturedHovering || featuredProducts.length < 2) return;
 
     const interval = window.setInterval(() => {
@@ -285,11 +315,12 @@ export default function App() {
     <div className="min-h-screen bg-background font-sans text-foreground">
       {shoppingStatus}
       {/* ── Header ─────────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 bg-card/95 [&_button]:text-[15px] backdrop-blur border-b border-border shadow-sm">
+      <header className="sticky top-0 z-50 relative bg-card/95 [&_button]:text-[15px] backdrop-blur border-b border-border shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <button onClick={() => {
+              setMobileMenuOpen(false);
               navigate("/");
               window.scrollTo({
                 top: 0,
@@ -381,7 +412,7 @@ export default function App() {
               </button>
 
               {/* Mobile hamburger */}
-              <button
+              <button ref={mobileMenuToggleRef}
                 aria-label="Abrir menu de navegação"
                 onClick={() => setMobileMenuOpen((v) => !v)}
                 className="md:hidden p-2 rounded-lg hover:bg-muted transition-colors"
@@ -393,13 +424,15 @@ export default function App() {
 
           {/* Mobile nav */}
           {mobileMenuOpen && (
-            <div className="md:hidden border-t border-border py-4 space-y-1">
+            <div ref={mobileMenuRef} className="absolute inset-x-0 top-full z-50 border-y border-border bg-card py-4 shadow-xl md:hidden space-y-1">
               <button
-                onClick={() => { clearFilters(); setMobileMenuOpen(false); if (isAccountPage || isCheckoutPage) navigate("/"); }}
-                className="w-full text-left px-3 py-2.5 text-[15px] font-medium rounded-lg hover:bg-muted"
+                onClick={() => { clearFilters(); setMobileMenuOpen(false); navigate("/"); window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }}
+                className="w-full text-left rounded-lg px-3 py-3 text-[15px] font-medium hover:bg-muted"
               >
-                <a href="#home" onClick={() => { clearFilters(); setMobileMenuOpen(false); if (isAccountPage || isCheckoutPage) navigate("/"); }}>Início</a>
+                Início
               </button>
+              <a href="/#contato" onClick={event => { event.preventDefault(); setMobileMenuOpen(false); navigate("/#contato"); }} className="block rounded-lg px-3 py-3 text-[15px] font-medium text-foreground transition-colors hover:text-primary focus-visible:outline-2 focus-visible:outline-primary">Contato</a>
+              <div className="mx-3 my-2 border-t border-border" />
               <div className="px-3 pt-2 pb-1 text-[15px] font-semibold uppercase tracking-widest text-muted-foreground">
                 Categorias
               </div>
@@ -407,13 +440,6 @@ export default function App() {
               <div className="hidden"><div className="px-3 pt-2 pb-1 text-[15px] font-semibold uppercase tracking-widest text-muted-foreground">Público</div>
                 <FilterOptions options={PUBLICS} value={activePublic} allValue="todos" onChange={value => selectPublic(value ?? "todos")} />
               </div>
-              <a
-                href="/#contato"
-                onClick={() => setMobileMenuOpen(false)}
-                className="mt-4 block rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-[15px] font-semibold text-primary hover:bg-primary/10"
-              >
-                Contato
-              </a>
               {!user && (
                 <button
                   onClick={() => { setAuthOpen(true); setMobileMenuOpen(false); }}
@@ -723,6 +749,7 @@ export default function App() {
           onChangeQty={changeQty}
           onClearCart={clearCart}
           onCheckout={startCheckout}
+          onExplore={() => { setCartOpen(false); navigate("/"); window.scrollTo({ top: 0, left: 0, behavior: "instant" }); }}
           onOpenAuth={() => { setCartOpen(false); setAuthOpen(true); }}
         />
       )}
@@ -1086,7 +1113,7 @@ function ProductCard({
       {/* Info */}
       <div className="p-3 flex flex-col gap-2 flex-1 rounded-t-2xl rounded-b-[15px] bg-card">
         <div>
-          <p className="text-base sm:text-[17px] font-medium leading-[1.25] text-foreground line-clamp-2 min-h-[2.5rem] break-words">
+          <p className="text-[17px] sm:text-[17px] font-medium leading-[1.25] text-foreground line-clamp-2 min-h-[2.5rem] break-words">
             {product.name}
           </p>
           <p className="mt-1 text-base font-bold text-primary">{formatPrice(product.price)}</p>
@@ -1149,6 +1176,7 @@ function CartDrawer({
   onClearCart,
   onOpenAuth,
   onCheckout,
+  onExplore,
 }: {
   busy: boolean;
   items: CartItem[];
@@ -1160,6 +1188,7 @@ function CartDrawer({
   onOpenAuth: () => void;
   onClearCart: () => void;
   onCheckout: () => void;
+  onExplore: () => void;
 }) {
   const drawerRef = useRef<HTMLDivElement>(null);
   // Trap focus, close on ESC
@@ -1221,7 +1250,7 @@ function CartDrawer({
                 <p className="text-sm mt-1">Adicione peças para começar</p>
               </div>
               <button
-                onClick={onClose}
+                onClick={onExplore}
                 className="mt-2 px-5 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90"
               >
                 Explorar peças

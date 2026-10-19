@@ -37,8 +37,10 @@ async function customer(page: Page, options: { authenticated?: boolean; address?
   if (options.address !== false) expect((await page.request.patch("/api/conta", { headers: api(token), data: { email, address } })).ok()).toBe(true);
   expect((await page.request.put("/api/settings/store", { headers: api(admin), data: store })).ok()).toBe(true);
   // Every test begins with sufficient stock, without changing variant identity.
-  const colors = shirt.colors.map((color: any) => ({ id: color.id, colorName: color.colorName, colorValue: color.colorValue, images: color.images,
-    variants: color.variants.map((variant: any) => ({ id: variant.id, value: variant.value, stock: 5 })) }));
+  const colors = shirt.colors.map((color: any) => ({
+    id: color.id, colorName: color.colorName, colorValue: color.colorValue, images: color.images,
+    variants: color.variants.map((variant: any) => ({ id: variant.id, value: variant.value, stock: 5 }))
+  }));
   expect((await page.request.put(`/api/produtos/${shirt.id}`, { headers: api(admin), data: { price: 79.9, colors } })).ok()).toBe(true);
   if (options.cart !== false) {
     for (const [product, quantity] of [[shirt, 2], [cargo, 1]] as const)
@@ -53,8 +55,12 @@ async function fakePopup(page: Page) {
   await page.addInitScript(() => {
     const state = { opens: 0, closes: 0, urls: [] as string[] };
     (window as any).checkoutPopup = state;
-    window.open = (() => { state.opens++; return { opener: null, closed: false, document: { title: "", body: { textContent: "" } },
-      close() { state.closes++; }, location: { replace(url: string) { state.urls.push(url); } } }; }) as any;
+    window.open = (() => {
+      state.opens++; return {
+        opener: null, closed: false, document: { title: "", body: { textContent: "" } },
+        close() { state.closes++; }, location: { replace(url: string) { state.urls.push(url); } }
+      };
+    }) as any;
   });
 }
 async function received(page: Page) { return page.evaluate(() => (window as any).checkoutPopup); }
@@ -133,7 +139,7 @@ for (const width of [1440, 390, 320]) test(`DELIVERY/PICKUP, exact message, cart
     expect((await page.request.post("/api/carrinho", { headers: api(user.token), data: { productId: product.id, colorId: product.colors[0].id, size: product.colors[0].variants[0].value, quantity } })).ok()).toBe(true);
   await page.goto("/checkout");
   await fakePopup(page);
-  await page.getByRole("radio", { name: "Não preciso, irei retirar os produtos na loja." }).check();
+  await page.getByRole("radio", { name: "Não preciso, irei retirar os produtos na loja" }).check();
   await expect(page.locator("main address")).toContainText("Rua da Loja, 456");
   await finalButton(page).click();
   await expect.poll(async () => (await received(page)).urls.length).toBe(1);
@@ -174,7 +180,7 @@ test("missing store address/contact and loading failures block finalization with
   await page.route("**/api/settings/public", route => route.fulfill({ json: { address: null, whatsapp: null } }));
   await page.goto("/checkout");
   await fakePopup(page);
-  await page.getByRole("radio", { name: "Não preciso, irei retirar os produtos na loja." }).check();
+  await page.getByRole("radio", { name: "Não preciso, irei retirar os produtos na loja" }).check();
   await expect(page.locator("main")).toContainText("local de retirada está temporariamente indisponível");
   await expect(page.locator("main")).toContainText("contato da loja está temporariamente indisponível");
   await expect(finalButton(page)).toBeDisabled();
@@ -193,8 +199,10 @@ test("stock changes immediately before finalization block WhatsApp until explici
   const user = await customer(page); await fakePopup(page);
   await page.goto("/checkout"); await page.getByRole("radio", { name: "Sim, preciso de entrega" }).check();
   await expect(finalButton(page)).toBeEnabled();
-  const colors = shirt.colors.map((color: any, index: number) => ({ id: color.id, colorName: color.colorName, colorValue: color.colorValue, images: color.images,
-    variants: color.variants.map((variant: any, v: number) => ({ id: variant.id, value: variant.value, stock: index === 0 && v === 0 ? 1 : 5 })) }));
+  const colors = shirt.colors.map((color: any, index: number) => ({
+    id: color.id, colorName: color.colorName, colorValue: color.colorValue, images: color.images,
+    variants: color.variants.map((variant: any, v: number) => ({ id: variant.id, value: variant.value, stock: index === 0 && v === 0 ? 1 : 5 }))
+  }));
   expect((await page.request.put(`/api/produtos/${shirt.id}`, { headers: api(admin), data: { colors } })).ok()).toBe(true);
   await finalButton(page).click();
   await expect(page.locator("main")).toContainText("Você selecionou 2 unidades, mas agora existem apenas 1 disponíveis");
@@ -215,7 +223,7 @@ test("empty cart and ADMIN direct access; logout clears checkout draft", async (
   await customer(page, { cart: false }); await page.goto("/checkout");
   await expect(page.locator("main")).toContainText("Seu carrinho está vazio");
   await expect(finalButton(page)).toBeDisabled();
-  await page.getByRole("radio", { name: "Não preciso, irei retirar os produtos na loja." }).check();
+  await page.getByRole("radio", { name: "Não preciso, irei retirar os produtos na loja" }).check();
   await page.getByRole("button", { name: "João", exact: true }).click();
   await page.getByRole("button", { name: "Sair", exact: true }).click();
   expect(await page.evaluate(() => sessionStorage.getItem("lowen-cloth_checkout_v1"))).toBeNull();
