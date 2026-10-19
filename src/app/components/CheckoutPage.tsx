@@ -42,9 +42,9 @@ export function CheckoutPage({ user, token, validating, shopping, store, cartOpe
     </section> : !shopping.ready || shopping.error ? <section className={panel + " mt-6"}>
       {shopping.error ? <><p role="alert">{shopping.error}</p><button onClick={shopping.retry} className={action + " text-primary underline"}>Tentar sincronizar novamente</button></> : <p role="status">Sincronizando seu carrinho...</p>}
     </section> : <CheckoutReviewPage key={token} user={user} token={token} shopping={shopping} store={store} cartOpen={cartOpen} onOpenCart={onOpenCart} onUnauthorized={onUnauthorized} onOrderOpened={async (orderId) => {
-      const cleared = await shopping.clear({ silent: true });
-      if (cleared) navigate("/meus-pedidos", { state: { expandedOrderId: orderId } });
-      return cleared;
+      navigate("/meus-pedidos", { state: { expandedOrderId: orderId } });
+      void shopping.clear({ silent: true });
+      return true;
     }} />}
   </main>;
 }
@@ -134,7 +134,7 @@ function CheckoutReviewPage({ user, token, shopping, store, cartOpen, onOpenCart
       tab.location.replace(prepared.url); popup.current = null;
       setOpened(true);
       notify.positive("Pedido solicitado! Acompanhe o status em Meus Pedidos.");
-      if (!await onOrderOpened(prepared.orderId)) setFinalError("Seu pedido foi criado e o WhatsApp foi aberto, mas nÃo foi possí­vel esvaziar o carrinho. Tente novamente pelo carrinho.");
+      await onOrderOpened(prepared.orderId);
     } catch (reason) {
       tab.close(); popup.current = null;
       if (!alive.current) return;
