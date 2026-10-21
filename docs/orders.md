@@ -25,14 +25,15 @@ O proprietário usa RESTRICT para evitar exclusão acidental do histórico.
 
 ## Número e concorrência
 
-Formato AAMMNNNN, exemplo 26100001. OrderCounter contém uma única linha id=1.
-`UPDATE ... SET value = value + 1 WHERE value < 9999 RETURNING value` aloca o
-próximo valor na mesma transação que cria o pedido. O PostgreSQL serializa updates
-da linha: usuários distintos não recebem a mesma sequência. UNIQUE em number e
-sequence reforça a garantia. Não usamos MAX+1. Rollback desfaz também o contador.
-O contador nunca reinicia com o mês. No limite 9999, criação nova retorna 409;
-repetir uma tentativa já persistida ainda retorna seu resultado. Ampliar o formato
-exigirá migration e ajuste explícito das validações, sem truncamento.
+Formato AAMMNNNN para as primeiras 9.999 sequências (exemplo 26100001); acima
+disso, o sufixo cresce (sequência 10000 em outubro/2026: 261010000).
+OrderCounter contém uma única linha id=1. `UPDATE ... SET value = value + 1
+WHERE value < 2147483647 RETURNING value` aloca o próximo valor na mesma transação
+que cria o pedido. O PostgreSQL serializa updates da linha: usuários distintos não
+recebem a mesma sequência. UNIQUE em number e sequence reforça a garantia. Não
+usamos MAX+1. Rollback desfaz também o contador. O contador não reinicia com o mês;
+seu teto atual é o máximo de INTEGER do PostgreSQL, em vez de 9999. Repetir uma
+tentativa já persistida ainda retorna seu resultado.
 
 A data vem de clock_timestamp() do banco após alocação, sendo gravada em createdAt.
 AA/MM usa essa mesma data com a constante BUSINESS_TIME_ZONE, centralizada em

@@ -84,7 +84,7 @@ export async function prepareCheckoutWhatsapp(userId: number, input: z.infer<typ
     if (context.customerName !== input.reviewedContext.customerName || context.whatsapp !== input.reviewedContext.whatsapp ||
       !sameAddress(context.address, input.reviewedContext.address) || !sameAddress(context.pickupAddress, input.reviewedContext.pickupAddress))
       throw new CheckoutError(409, "Os dados de endereço ou contato mudaram. Confira os dados atualizados antes de finalizar.");
-    const counters = await tx.$queryRaw<{ value: number }[]>`UPDATE "OrderCounter" SET value = value + 1 WHERE id = 1 AND value < 9999 RETURNING value`;
+    const counters = await tx.$queryRaw<{ value: number }[]>`UPDATE "OrderCounter" SET value = value + 1 WHERE id = 1 AND value < 2147483647 RETURNING value`;
     if (!counters.length) throw new CheckoutError(409, "Limite de numeração de pedidos atingido. Entre em contato com a loja.");
     const [{ createdAt }] = await tx.$queryRaw<{ createdAt: Date }[]>`SELECT clock_timestamp() AS "createdAt"`;
     const number = orderNumber(counters[0].value, createdAt);

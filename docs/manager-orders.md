@@ -180,7 +180,8 @@ retry. Respostas 401/403 usam a revogação de acesso já existente no Manager.
 
 ## Escopo e testes
 
-Mantêm-se intactos Order, OrderItem, OrderCounter, enums, timezone, formato AAMMNNNN
+Mantêm-se intactos Order, OrderItem, OrderCounter, enums e timezone; números existentes
+mantêm o formato AAMMNNNN e sequências acima de 9999 passam a usar sufixo expandido.
 e transação de confirmação. Criar pedido, carrinho, checkout e WhatsApp continuam
 sem baixa ou reserva. Somente confirmar como ADMIN baixa estoque.
 

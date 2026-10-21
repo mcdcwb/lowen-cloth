@@ -144,12 +144,19 @@ test("checkout persists orders without changing cart/stock and confirms atomical
       }
       const count = await prisma.order.count({ where: { userId: user.id } });
       const counter = await prisma.orderCounter.findUniqueOrThrow({ where: { id: 1 } });
+      let boundaryOrderId: number | undefined;
       try {
         await prisma.orderCounter.update({ where: { id: 1 }, data: { value: 9999 } });
-        const limit = await req("/checkout/whatsapp", "POST", await body("PICKUP"));
-        assert.equal(limit.status, 409); assert.match((await limit.json()).error, /Limite de numeração/);
-        assert.equal(await prisma.order.count({ where: { userId: user.id } }), count);
-      } finally { await prisma.orderCounter.update({ where: { id: 1 }, data: { value: counter.value } }); }
+        const beyondFormerLimit = await req("/checkout/whatsapp", "POST", await body("PICKUP"));
+        assert.equal(beyondFormerLimit.status, 200);
+        const generated = await beyondFormerLimit.json(); boundaryOrderId = generated.order.id;
+        assert.match(generated.order.number, /^\d{9,}$/);
+        assert.equal((await prisma.order.findUniqueOrThrow({ where: { id: boundaryOrderId } })).sequence, 10000);
+      } finally {
+        if (boundaryOrderId) await prisma.order.delete({ where: { id: boundaryOrderId } });
+        await prisma.orderCounter.update({ where: { id: 1 }, data: { value: counter.value } });
+      }
+      assert.equal(await prisma.order.count({ where: { userId: user.id } }), count);
       const fresh = await (await req("/checkout/whatsapp", "POST", await body("PICKUP"))).json();
       const samePending = await Promise.all([1, 2].map(() => server.request(`/orders/${fresh.order.id}/confirm`, "POST", {}, admin)));
       assert.deepEqual(samePending.map(r => r.status).sort(), [200, 409]);
