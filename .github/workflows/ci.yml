@@ -23,7 +23,6 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
-      - run: npm test
       - run: npm run build
 
   backend:
@@ -67,6 +66,9 @@ jobs:
       - name: Typecheck frontend with generated Prisma types
         working-directory: .
         run: npm run typecheck
+      - name: Frontend unit tests after Prisma generation
+        working-directory: .
+        run: npm test
       - name: Backend tests on isolated PostgreSQL database
         working-directory: backend
         run: npm test

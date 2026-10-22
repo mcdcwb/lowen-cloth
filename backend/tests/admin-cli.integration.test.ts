@@ -23,7 +23,8 @@ test("admin CLI creates an account and rejects duplicate email and invalid input
 
         const created = run(email, password);
         assert.equal(created.status, 0, created.stderr);
-        assert.ok(created.stdout.includes(email));
+        assert.equal(created.stdout.trim(), "Administrador criado com sucesso.");
+        assert.equal((created.stdout + created.stderr).includes(email), false);
         assert.equal((created.stdout + created.stderr).includes(password), false);
         const admin = await prisma.admin.findUniqueOrThrow({ where: { email } });
         assert.equal(await verifyPassword(admin.passwordHash, password), true);
