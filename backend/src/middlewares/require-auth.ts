@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { verifyAccountToken } from "../lib/token.js";
 import { getAccount } from "../services/auth.service.js";
 import type { TokenIdentity } from "../types/auth.js";
+import { preservePublicErrorResponse } from "./error-handler.js";
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction) {
     res.setHeader("Cache-Control", "no-store");
@@ -25,8 +26,9 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
         if (found.account.role === "ADMIN") {
             res.locals.admin = { id: found.account.id, email: found.account.email };
         }
-    } catch {
-        return res.status(500).json({ error: "Erro ao verificar autenticação." });
+    } catch (error) {
+        preservePublicErrorResponse(res, "AUTH_ACCOUNT_LOOKUP");
+        return next(error);
     }
     next();
 }

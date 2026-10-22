@@ -8,6 +8,7 @@ export async function startTestServer(app: Express) {
     if (!address || typeof address === "string") throw new Error("Servidor sem porta.");
     const baseUrl = "http://127.0.0.1:" + address.port;
     return {
+        baseUrl,
         request(path: string, method = "GET", body?: unknown, token?: string) {
             return fetch(baseUrl + path, {
                 method,

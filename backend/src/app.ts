@@ -1,6 +1,7 @@
 import "dotenv/config";
 import orderRoutes from "./routes/order.routes.js";
 import express from "express";
+import helmet from "helmet";
 import { getJwtKey } from "./config/auth.js";
 import { createAuthRoutes } from "./routes/auth.routes.js";
 import { prisma } from "./lib/prisma.js";
@@ -12,11 +13,16 @@ import { createCheckoutRoutes } from "./routes/checkout.routes.js";
 import { createUploadRoutes } from "./routes/upload.routes.js";
 import type { ProductImageUploader } from "./services/upload.service.js";
 import { createSettingsRoutes } from "./routes/settings.routes.js";
+import { logHttpError } from "./lib/logger.js";
+import { errorHandler } from "./middlewares/error-handler.js";
+import { requestContext, requestLogFields } from "./middlewares/request-context.js";
 
 export function createApp(options: { uploadProductImage?: ProductImageUploader; settingsDatabase?: Pick<typeof prisma, "storeSettings"> } = {}) {
     getJwtKey();
     const app = express();
     app.set("trust proxy", 1);
+    app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+    app.use(requestContext);
 
     const allowedOrigins = new Set((process.env.FRONTEND_ORIGIN ?? "")
         .split(",").map(origin => origin.trim().replace(/\/$/, "")).filter(Boolean));
@@ -37,7 +43,7 @@ export function createApp(options: { uploadProductImage?: ProductImageUploader; 
         next();
     });
 
-    app.use(express.json());
+    app.use(express.json({ limit: "1mb" }));
     app.use("/produtos", productRoutes);
     app.use("/categorias", categoryRoutes);
     app.use("/settings", createSettingsRoutes(options.settingsDatabase));
@@ -54,10 +60,12 @@ export function createApp(options: { uploadProductImage?: ProductImageUploader; 
 
             res.send("API do Löwen funcionando e conectada ao PostgreSQL!");
         } catch (error) {
-            console.error(error);
+            logHttpError("healthcheck.error", error, requestLogFields(req, res, 500));
             res.status(500).send("Erro ao conectar ao banco de dados.");
         }
     });
+
+    app.use(errorHandler);
 
     return app;
 }

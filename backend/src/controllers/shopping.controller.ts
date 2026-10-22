@@ -1,11 +1,11 @@
-import type { Request, Response } from "express";
+import type { Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import * as service from "../services/shopping.service.js";
 
 const id = z.number().int().positive().max(2147483647);
 const selection = z.object({ productId: id, colorId: id.optional(), size: z.string().trim().min(1).max(100), quantity: id }).strict();
 export function shopping(action: "favorites" | "favorite" | "unfavorite" | "read" | "review" | "add" | "set" | "remove" | "clear" | "merge") {
-    return async (req: Request, res: Response) => {
+    return async (req: Request, res: Response, next: NextFunction) => {
         try {
             const userId = res.locals.account.id as number;
             if (action === "review") return res.json(await service.cartForReview(userId));
@@ -21,8 +21,7 @@ export function shopping(action: "favorites" | "favorite" | "unfavorite" | "read
         } catch (error) {
             if (error instanceof z.ZodError) return res.status(400).json({ error: "Dados inválidos." });
             if (error instanceof service.ShoppingError) return res.status(error.status).json({ error: error.message });
-            console.error(error);
-            return res.status(500).json({ error: "Não foi possível atualizar seus dados. Tente novamente." });
+            return next(error);
         }
     };
 }

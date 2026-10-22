@@ -236,6 +236,27 @@ test("checkout persists orders without changing cart/stock and confirms atomical
         await prisma.$executeRaw`ALTER TABLE "Order" ADD COLUMN "completedAt" TIMESTAMP(3), ADD COLUMN "archivedAt" TIMESTAMP(3)`;
       }
     });
+    await t.test("checkout finalization rate limit is per authenticated account", async () => {
+      const limitedServer = await startTestServer(createApp({ settingsDatabase: isolated }));
+      try {
+        const orderCount = await prisma.order.count({ where: { userId: user.id } });
+        assert.equal((await limitedServer.request("/checkout/whatsapp", "POST", {})).status, 401);
+        assert.equal((await limitedServer.request("/checkout/whatsapp", "POST", {}, admin)).status, 403);
+        const createdInputs = [];
+        for (let attempt = 0; attempt < 20; attempt++) {
+          const input = await body("PICKUP");
+          createdInputs.push(input);
+          assert.equal((await limitedServer.request("/checkout/whatsapp", "POST", input, token)).status, 200);
+        }
+        const limited = await limitedServer.request("/checkout/whatsapp", "POST", await body("PICKUP"), token);
+        assert.equal(limited.status, 429);
+        assert.match(limited.headers.get("ratelimit") ?? "", /^"20-in-15min";/);
+        assert.equal((await limitedServer.request("/checkout/whatsapp", "POST", createdInputs[0], token)).status, 200);
+        assert.equal(await prisma.order.count({ where: { userId: user.id } }), orderCount + 20);
+      } finally {
+        await limitedServer.close();
+      }
+    });
   } finally {
     await server.close(); await isolated.$disconnect();
     if (productId) await prisma.product.deleteMany({ where: { id: productId } });

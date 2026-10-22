@@ -12,8 +12,8 @@ try {
         console.error("Defina ADMIN_EMAIL válido e ADMIN_PASSWORD com 5 a 128 caracteres.");
         process.exitCode = 1;
     } else {
-        const admin = await createAdmin(input.data);
-        console.log("Administrador criado: " + admin.email);
+        await createAdmin(input.data);
+        console.log("Administrador criado com sucesso.");
     }
 } catch (error) {
     if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {

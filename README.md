@@ -1,222 +1,104 @@
-  ##
+# Lowen Cloth
 
-  Demo: https://lowen-cloth.vercel.app/
-  
-  
-  ## Running the code
+Lowen Cloth é uma loja virtual de vestuário. O frontend React apresenta o catálogo e os fluxos de compra; uma API Express mantém contas, catálogo, carrinhos, favoritos, pedidos e configurações da loja em PostgreSQL.
 
-  Run `npm i` to install the dependencies.
+## Funcionalidades
 
-  Run `npm run dev` to start the development server.
-  
+- Catálogo público com categorias, filtros, detalhes, cores, imagens, tamanhos, estoque, destaques e carrossel.
+- Cadastro público de clientes, login compartilhado entre clientes e administradores e páginas de conta.
+- Favoritos e carrinho de clientes persistidos por conta. Visitantes podem manter um carrinho local, que é mesclado ao da conta no login conforme as regras implementadas.
+- Revisão de checkout e criação idempotente de pedido para contato com a loja pelo WhatsApp. O projeto não integra pagamento online.
+- Área administrativa para produtos, variantes e imagens, categorias, configurações da loja e operação/relatórios de pedidos.
+- Endereço de cliente com consulta opcional ao ViaCEP.
 
-## Autenticação da loja
+O repositório contém um frontend Vite/React/TypeScript na raiz e um backend Express 5/TypeScript com Prisma e PostgreSQL em `backend/`. O modelo de produto organiza variantes por cor; estoque é mantido nas variantes. Consulte [backend/README.md](backend/README.md) para os contratos da API, banco e testes do servidor.
 
-O frontend usa `POST /auth/login` e valida o token retornado com `GET /auth/me`.
-O login só termina após as duas respostas serem válidas. Credenciais incorretas,
-falhas de conexão e indisponibilidade do serviço não criam uma sessão.
+## Requisitos
 
-### Desenvolvimento local
+- Node.js e npm. Os `package.json` não fixam uma versão do Node; use uma versão compatível com Vite, Playwright e Prisma.
+- PostgreSQL para executar o backend e os testes de integração/navegador.
+- Para desenvolvimento local completo, dependências instaladas separadamente na raiz e em `backend/`.
 
-1. Inicie PostgreSQL e o backend conforme [backend/README.md](backend/README.md).
-2. Administradores continuam sendo cadastrados pelo comando do backend. Clientes usam `Criar conta` no mesmo modal de login.
-3. Na raiz do projeto, execute `npm run dev`.
+## Instalação e execução local
 
-O frontend chama `/api/auth/register`, `/api/auth/login` e `/api/auth/me` na mesma origem.
-O proxy do Vite encaminha `/api/*` para `http://127.0.0.1:3000/*`.
-Se necessário, `API_PROXY_TARGET` no ambiente do processo Vite altera esse destino.
-Não é preciso habilitar CORS para esse fluxo local.
-
-`.env.example` documenta a variável pública opcional `VITE_API_URL`, cujo padrão é
-`/api`. Nunca coloque `JWT_SECRET`, senha de administrador ou conexão PostgreSQL
-no ambiente do frontend.
-
-### Sessão e validação
-
-- O token e seu prazo ficam em `localStorage`, na chave `lowen-cloth_auth_v1`,
-  compartilhados pelas abas da mesma origem e preservados ao reabrir o navegador.
-  USER e ADMIN usam JWT com prazo fixo de 30 dias desde o login, sem renovação automática.
-  Senha e identidade da conta não são persistidas.
-- Recarregar a página ou voltar à aba exige validação com `/auth/me`.
-  A identidade exibida vem dessa resposta, não do armazenamento local.
-- O cliente envia `Authorization: Bearer <accessToken>` para `/auth/me`.
-- A chave antiga `brecho_user_v1` é removida e nunca concede acesso.
-- O token antigo em `sessionStorage` é descartado: após atualizar uma sessão
-  antiga, entre novamente uma vez. Ele nunca restaura uma sessão após logout.
-- Eventos `storage` propagam login/logout e troca de conta; foco e visibilidade
-  revalidam a credencial compartilhada. Uma identidade diferente fica oculta
-  até `/auth/me` confirmar. A revalidação da mesma sessão mantém formulários
-  administrativos montados, inclusive durante seleção/upload de arquivo.
-- Um identificador de operação em `lowen-cloth_auth_change_v1` impede que login
-  ou validação atrasados sobrescrevam logout ou login posterior em outra aba.
-- `expiresAt` vem do backend, em milissegundos Unix, e corresponde ao `exp` assinado.
-  Não existe prazo independente no frontend. O timer apenas consulta `/auth/me`,
-  com intervalos entre 60 segundos e 24 horas para evitar overflow de `setTimeout`
-  e repetição imediata com relógio local adiantado. O relógio local não decide a validade.
-- Rejeição por `/auth/me` (401/403) remove a sessão e propaga o logout. O Manager
-  também invalida a sessão em 401/403. Carrinho e perfil exibem erros de requisição;
-  a revalidação compartilhada continua responsável por confirmar a identidade.
-- Falhas de rede, 5xx e 429 em `/auth/me` preservam a credencial para nova tentativa.
-  Uma identidade já validada permanece montada; a restauração inicial não concede
-  acesso sem resposta válida. Foco, visibilidade e recarga tentam novamente.
-- Logout explícito remove a credencial imediatamente de todas as abas.
-- Sair limpa a sessão deste navegador; não revoga o JWT no backend.
-- A senha no login aceita de 1 a 128 caracteres; novas contas exigem de 5 a 128.
-- O mesmo formulário identifica clientes e administradores pelo perfil devolvido pelo backend.
-  O cadastro público cria somente clientes; administradores não têm cadastro público.
-
-O token é acessível ao JavaScript da página. Não registre tokens em logs nem os
-inclua em URLs; a aplicação deve ser servida por HTTPS em produção.
-
-A validade maior amplia a janela de uso de um token roubado, inclusive de ADMIN.
-Não há refresh token nem revogação individual: logout e troca de senha não invalidam
-uma cópia do JWT. Desativar/excluir a conta bloqueia suas requisições; trocar o segredo
-invalida todos os tokens. Assinatura, expiração, perfil e conta ativa continuam
-sendo verificados pelo backend.
-
-A causa anterior do logout periódico era o prazo fixo de 15 minutos, aplicado a
-`exp`, `maxTokenAge` e `expiresIn`, sem extensão por atividade. O frontend também
-limitava `expiresIn` a 900 segundos, calculava outro vencimento pelo relógio local
-e removia a sessão no timer sem consultar o servidor. Falhas transitórias de
-`/auth/me` também apagavam a credencial. A política atual fica em
-`backend/src/lib/token.ts` (`tokenLifetimeSeconds`) e é usada na emissão e validação;
-`auth.service.ts` devolve a duração e o vencimento exato. Tokens antigos conservam
-seu `exp` original de 15 minutos; os 30 dias se aplicam ao próximo login.
-Publique backend e frontend juntos: o contrato de login agora inclui `expiresAt`.
-
-### Publicação
-
-A publicação web está preparada para Vercel (`vercel.json`): `npm run build`
-gera `dist`, e o rewrite serve a aplicação SPA nas rotas diretas como `/manager`
-e `/favoritos`. O Vite mantém o proxy `/api` apenas no desenvolvimento. Em
-produção, configure no projeto Vercel a variável pública `VITE_API_URL` como
-`https://lowen-cloth-api.onrender.com` para os ambientes Production e Preview
-que forem usados. Não inclua `/api` nem a barra final. Como o Vite incorpora
-essa variável no bundle, faça um novo deploy após alterá-la.
-
-No serviço Render, configure `FRONTEND_ORIGIN=https://lowen-cloth.vercel.app`.
-O backend permite essa origem exata (sem barra final); origens adicionais, como
-um domínio próprio, podem ser separadas por vírgulas. O CORS aceita os métodos
-e cabeçalhos necessários, incluindo o Bearer JWT, e responde a preflight OPTIONS.
-O servidor escuta `PORT` fornecida pelo Render e vincula em `0.0.0.0`.
-
-Variáveis do backend Render:
-
-- `DATABASE_URL`: URL de conexão do PostgreSQL Neon, com SSL exigido.
-- `JWT_SECRET`: segredo aleatório forte usado para assinar tokens; mantenha-o
-  somente no Render.
-- `NODE_ENV=production`.
-- `FRONTEND_ORIGIN=https://lowen-cloth.vercel.app` (e domínios frontend adicionais,
-  se houver).
-- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` e `CLOUDINARY_API_SECRET` são
-  opcionais para a aplicação funcionar, mas necessários para upload de imagens
-  pelo Manager. Sem eles, ainda é possível cadastrar URLs de imagem.
-- `PORT` é injetada pela plataforma; não é necessário defini-la manualmente.
-
-Variável do frontend Vercel:
-
-- `VITE_API_URL=https://lowen-cloth-api.onrender.com` (Production; adicione também
-  a Preview se os previews precisarem falar com o backend de produção).
-
-Não configure `DATABASE_URL`, `JWT_SECRET` nem segredos Cloudinary no frontend.
-O catálogo público, produtos/variantes/estoque e Manager, autenticação, conta,
-favoritos, carrinho e revisão de checkout usam as rotas existentes do backend.
-O checkout implementado prepara o pedido para envio pelo WhatsApp; esta versão
-não possui integração de pagamento online por cartão. A plataforma de deploy
-não configura variáveis nos painéis Render/Vercel automaticamente: salve-as
-nos respectivos serviços e publique/republique depois de configurá-las.
-
-### Testes
-
-Requer Node.js 24 para o executor dos testes unitários:
+Na raiz, instale as dependências do frontend e configure a URL pública da API, se necessário:
 
 ```sh
-npm test
-npm run typecheck
-npm run build
-npx playwright install chromium
-npm run test:e2e
+npm ci
 ```
 
-Os testes de navegador iniciam frontend e backend isolados nas portas 4178 e
-3187. Usam PostgreSQL configurado em `backend/.env`, criam contas temporárias
-de cliente e administrador com credenciais aleatórias e removem as contas ao terminar.
-Execute em banco de desenvolvimento/testes com as migrations aplicadas.
-Falhas de rede e respostas 500/401 são simuladas no navegador; o login válido
-e o caso de senha incorreta usam o backend e o PostgreSQL reais.
+O arquivo `.env.example` documenta `VITE_API_URL`; seu padrão é `/api`. Em desenvolvimento, o Vite encaminha `/api/*` ao backend em `http://127.0.0.1:3000`. `API_PROXY_TARGET` permite trocar o destino do proxy. Não use segredos do servidor em variáveis `VITE_*`: elas são incorporadas ao código entregue ao navegador.
 
-A regressão do backend permanece disponível com `npm test` na pasta `backend`.
+Configure e inicie o backend conforme [backend/README.md](backend/README.md), com PostgreSQL local e migrations aplicadas. Depois, na raiz:
 
-## Painel administrativo
+```sh
+npm run dev
+```
 
-O login existente direciona contas ADMIN para `/manager` depois de validar `/auth/me`.
-Contas USER continuam no fluxo da loja. O painel não aparece durante a validação da
-sessão e recusa acesso de clientes. Respostas administrativas 401/403 encerram a sessão
-local e removem o acesso ao painel; a autorização no backend permanece obrigatória.
+O Vite mostra o endereço local no terminal. A configuração `vercel.json` define o build Vite e o rewrite de rotas SPA; isso não configura variáveis de ambiente nem publica o serviço.
 
-- `/manager`: dashboard com totais reais de produtos, variantes e disponibilidade.
-- `/manager/produtos`: catálogo administrativo com busca, filtros e exclusão confirmada.
-- `/manager/produtos/novo`: cadastro com imagens por URL/caminho e variantes livres.
-- `/manager/produtos/:id/editar`: o mesmo formulário, preenchido com dados atuais.
+## Configuração
 
-O estoque total é a soma das variantes. O limite de estoque baixo está centralizado em
-`LOW_STOCK_LIMIT`, em `src/app/manager/products.ts` (padrão: 5 unidades).
-O formulário envia a lista completa de variantes: remover todas envia `variants: []`.
-As gravações usam POST/PUT/DELETE de `/produtos` com Bearer JWT, e os resultados
-atualizam a listagem e o catálogo público sem recarregamento manual. Não há upload de
-imagens, criação de contas administrativas ou funcionalidades de pedidos nesta versão.
+Frontend: `VITE_API_URL` é opcional e aponta para a base da API. O exemplo `/api` usa o proxy local.
 
-Os testes de manager cobrem CRUD real no PostgreSQL, variantes, bloqueio de USER,
-sessão em validação, 401/403, falhas de gravação e responsividade. Produtos criados
-pelos testes são removidos ao terminar.
+Backend: os nomes e exemplos estão em `backend/.env.example`. Configure `DATABASE_URL` para o PostgreSQL escolhido e `JWT_SECRET` como 32 bytes aleatórios codificados em 64 caracteres hexadecimais. `FRONTEND_ORIGIN` aceita uma ou mais origens, separadas por vírgula, para CORS. `PORT` é opcional localmente (padrão 3000); `NODE_ENV` seleciona o modo de execução. As três variáveis `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` e `CLOUDINARY_API_SECRET` são necessárias para usar uploads remotos; sem elas, o servidor pode funcionar, mas o upload não fica disponível.
 
-## Favoritos e carrinho persistentes
+Use valores fictícios nos exemplos e mantenha `.env` fora do controle de versão. Não configure `DATABASE_URL`, `JWT_SECRET` ou credenciais Cloudinary no frontend. O código não determina os valores dos painéis de hospedagem: confirme-os diretamente na configuração de cada ambiente antes de publicar.
 
-Para USER autenticado, o PostgreSQL é a fonte de favoritos e carrinho. O hook
-`src/app/hooks/useShopping.ts` carrega os dados via API após validar a sessão e
-só atualiza a interface após confirmação da gravação. Logout limpa a visão da
-conta, preservando seus registros no banco; respostas de sessões anteriores
-são ignoradas. Um novo login, inclusive em outro navegador, recupera os dados.
+## Autenticação e áreas da loja
 
-Visitantes usam `brecho_guest_cart_v2` no localStorage. No login de USER, esse
-carrinho é mesclado ao da conta: variantes diferentes são mantidas e variantes
-iguais usam a maior quantidade, respeitando estoque. A interface informa a
-regra e eventuais indisponibilidades. Antes da requisição, o snapshot passa para
-`brecho_guest_pending_v2:USER:<id>`; só essa identidade pode repetir a importação.
-A confirmação remove esse snapshot; falhas preservam a tentativa sem misturar
-contas. Web Locks serializa importações entre abas (HTTPS/localhost e navegador
-compatível); sem essa capacidade a importação informa um erro e preserva os dados.
-Eventos `lowen-cloth_shopping_change_v1` e foco recarregam os dados do backend.
-ADMIN tem carrinho apenas em memória, por identidade/sessão/aba, descartado ao
-trocar a sessão ou recarregar; nunca lê/importa o carrinho visitante e não usa
-os endpoints de compras exclusivos de USER. Favoritos continuam exclusivos de USER.
-O antigo `brecho_cart_v1` é ignorado, pois misturava ADMIN e visitante sem registrar
-o proprietário. Seus itens não são importados automaticamente; carrinhos de USER
-já persistidos no banco permanecem intactos.
-Corações de visitantes abrem o login; `/favoritos` mostra os produtos da conta.
+O cadastro público cria contas de cliente. Contas administrativas são criadas pelo comando descrito no README do backend. O login retorna um Bearer JWT; clientes e administradores usam validade fixa de 30 dias, sem renovação automática. As rotas protegidas consultam a conta e seu estado. O frontend mantém o token no navegador e valida a sessão com a API; logout local não revoga uma cópia já emitida do token.
 
-Os testes em `tests/shopping.spec.ts` usam API e PostgreSQL reais para verificar
-persistência, outro contexto de navegador, sincronização e falhas de gravação.
-`tests/session-tabs.spec.ts` cobre abas reais na mesma origem, USER/ADMIN, troca
-de conta, logout, token inválido e respostas concorrentes/atrasadas.
-Execute `npm test`, `npm run test:e2e`, `npm run typecheck` e `npm run build`.
-Os endpoints e comandos de migration estão documentados em `backend/README.md`.
+Clientes autenticados têm perfil, favoritos, carrinho e pedidos próprios. A API determina a identidade pelo token, não por um ID de usuário informado pelo cliente. A área administrativa exige perfil ADMIN e inclui manutenção de catálogo/categorias/configurações, upload de imagens quando Cloudinary está configurado e operações de pedidos.
 
-## Minha Conta
+O checkout revalida carrinho, estoque e dados da loja, cria o pedido e prepara uma mensagem/link do WhatsApp. A chamada de finalização aceita chave de idempotência para recuperar a mesma operação da conta. Novas finalizações estão limitadas a 20 por conta em 15 minutos; o contador é mantido em memória por processo. Consulte o README backend para as limitações operacionais e demais proteções HTTP.
 
-`/minha-conta` exibe o nome real somente para leitura e permite salvar e-mail,
-endereço principal opcional e alterar senha. Após salvar, o e-mail é atualizado
-na sessão atual sem novo login. O formulário rejeita endereços parciais, permite
-limpar todo o endereço e mantém complemento opcional.
+## Comandos e testes
 
-A consulta automática usa o [ViaCEP](https://viacep.com.br/) diretamente por HTTPS,
-sem chave. Aguarda 350ms após completar oito dígitos, cancela consultas anteriores
-e limita a espera a seis segundos. Preenche somente rua, bairro, cidade e UF;
-número/complemento e correções digitadas durante a consulta são preservados.
-Endereços salvos não são sobrescritos por consultas ao abrir a página. Falhas e
-CEP inexistente deixam todos os campos disponíveis para preenchimento manual.
+Na raiz:
 
-`tests/account.spec.ts` intercepta o ViaCEP para testar os fluxos sem depender
-da disponibilidade externa. As gravações de perfil e senha usam a API real e
-contas temporárias, removidas após a suíte. O backend cobre também isolamento,
-e-mail duplicado entre User/Admin e concorrência com criação de administrador.
+```sh
+npm test             # testes unitários do frontend
+npm run typecheck    # TypeScript do frontend
+npm run build        # build de produção do frontend
+npx playwright install chromium
+```
+
+Os testes de navegador são executados por `npm run test:e2e`. Eles iniciam Vite e uma API de teste nas portas 4178 e 3187 e criam/removem fixtures no banco apontado por `DATABASE_URL`. Não execute esse comando com uma URL de produção. Para executar em banco descartável local, use o fluxo `node tests/helpers/run-isolated.mjs browser` descrito no README do backend.
+
+Os testes do backend, o banco temporário e as migrations usadas pelo helper também estão documentados em [backend/README.md](backend/README.md). Os comandos de build/typecheck não acessam banco; testes de integração e migrations, sim.
+
+O workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) executa essas verificações em push e pull request. O job de backend fornece PostgreSQL temporário ao runner e usa apenas valores fictícios; não há etapas de publicação.
+
+### Validação local antes de publicar
+
+Após instalar dependências com `npm ci` na raiz e em `backend/`, execute uma vez cada etapa pertinente:
+
+```sh
+# Frontend: typecheck, testes unitários e build
+npm run typecheck
+npm test
+npm run build
+
+# Backend: compilação (inclui TypeScript) e testes de integração isolados
+cd backend
+npm run build
+npm test
+```
+
+Para validar também os fluxos de navegador, instale Chromium uma vez (`npx playwright install chromium`) e, a partir de `backend/`, execute `node tests/helpers/run-isolated.mjs browser`. Esse helper cria banco temporário local, aplica migrations e o remove ao final. Confira os requisitos e a proteção contra uso de bancos remotos em [backend/README.md](backend/README.md). Não use `npm run test:e2e` direto com um banco de produção.
+
+## Estrutura principal
+
+```text
+src/                     frontend React, páginas, componentes e hooks
+tests/                   testes unitários e de navegador do frontend
+backend/src/routes/      montagem das rotas HTTP
+backend/src/controllers/ adaptação HTTP e validação de entrada
+backend/src/services/    regras de aplicação e acesso via Prisma
+backend/src/middlewares/ autenticação, contexto e erros
+backend/prisma/          schema e migrations
+backend/tests/           testes de unidade e integração do backend
+```
+
+O fluxo geral do servidor é rotas e middlewares → controllers → services → Prisma/PostgreSQL. O frontend usa `/api` em desenvolvimento e `VITE_API_URL` quando precisa apontar diretamente para uma API.

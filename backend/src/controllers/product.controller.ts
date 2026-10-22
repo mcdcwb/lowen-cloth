@@ -1,4 +1,4 @@
-import type { Request, Response } from "express";
+import type { Request, Response, NextFunction } from "express";
 import * as productService from "../services/product.service.js";
 import { Prisma } from "../generated/prisma/client.js";
 import {
@@ -7,7 +7,7 @@ import {
     updateProductSchema
 } from "../schemas/product.schema.js";
 
-export async function setProductCarousel(req: Request, res: Response) {
+export async function setProductCarousel(req: Request, res: Response, next: NextFunction) {
     const id = Number(req.params.id);
     if (!Number.isSafeInteger(id) || id <= 0 || id > 2147483647) return res.status(400).json({ error: "ID inválido." });
     const result = carouselSchema.safeParse(req.body);
@@ -16,37 +16,30 @@ export async function setProductCarousel(req: Request, res: Response) {
         return res.json(await productService.setProductCarousel(id, result.data.inCarousel));
     } catch (error) {
         if (error instanceof productService.ProductError) return res.status(error.status).json({ error: error.message });
-        console.error(error);
-        return res.status(500).json({ error: "Não foi possível atualizar o carrossel." });
+        return next(error);
     }
 }
 
-export async function getProducts(req: Request, res: Response) {
+export async function getProducts(_req: Request, res: Response, next: NextFunction) {
     try {
         const products = await productService.getPublicProducts();
 
         res.set("Cache-Control", "no-store").json(products);
     } catch (error) {
         if (error instanceof productService.ProductError) return res.status(error.status).json({ error: error.message });
-        console.error(error);
-
-        res.status(500).json({
-            error: "Erro ao buscar produtos."
-        });
+        return next(error);
     }
 }
 
 export async function getAdminProducts(_req: Request, res: Response) {
-    try { res.set("Cache-Control", "no-store").json(await productService.getProducts()); }
-    catch (error) { console.error(error); res.status(500).json({ error: "Erro ao buscar produtos." }); }
+    res.set("Cache-Control", "no-store").json(await productService.getProducts());
 }
 
 export async function getCarouselProducts(_req: Request, res: Response) {
-    try { res.set("Cache-Control", "no-store").json(await productService.getCarouselProducts()); }
-    catch (error) { console.error(error); res.status(500).json({ error: "Erro ao buscar o carrossel." }); }
+    res.set("Cache-Control", "no-store").json(await productService.getCarouselProducts());
 }
 
-export async function createProduct(req: Request, res: Response) {
+export async function createProduct(req: Request, res: Response, next: NextFunction) {
     try {
         const result = createProductSchema.safeParse(req.body);
 
@@ -63,15 +56,11 @@ export async function createProduct(req: Request, res: Response) {
     } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") return res.status(409).json({ error: "Categoria indisponível. Atualize a lista de categorias." });
         if (error instanceof productService.ProductError) return res.status(error.status).json({ error: error.message });
-        console.error(error);
-
-        res.status(500).json({
-            error: "Erro ao criar produto."
-        });
+        return next(error);
     }
 }
 
-export async function updateProduct(req: Request, res: Response) {
+export async function updateProduct(req: Request, res: Response, next: NextFunction) {
     try {
         const id = Number(req.params.id);
 
@@ -104,15 +93,11 @@ export async function updateProduct(req: Request, res: Response) {
     } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") return res.status(409).json({ error: "Categoria indisponível. Atualize a lista de categorias." });
         if (error instanceof productService.ProductError) return res.status(error.status).json({ error: error.message });
-        console.error(error);
-
-        res.status(500).json({
-            error: "Erro ao atualizar produto."
-        });
+        return next(error);
     }
 }
 
-export async function deleteProduct(req: Request, res: Response) {
+export async function deleteProduct(req: Request, res: Response, next: NextFunction) {
     try {
         const id = Number(req.params.id);
 
@@ -137,10 +122,6 @@ export async function deleteProduct(req: Request, res: Response) {
         });
     } catch (error) {
         if (error instanceof productService.ProductError) return res.status(error.status).json({ error: error.message });
-        console.error(error);
-
-        res.status(500).json({
-            error: "Erro ao excluir produto."
-        });
+        return next(error);
     }
 }
